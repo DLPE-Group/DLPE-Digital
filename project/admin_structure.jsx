@@ -1,0 +1,308 @@
+/* ============================================================
+   GROUP STRUCTURE — multi-company / multi-country tree with
+   cascading, overridable settings.  (Spec §1)
+   ============================================================ */
+
+const KIND_LABEL = { group: 'Group', region: 'Region', country: 'Country', company: 'Company' };
+
+/* Walk the tree to find a node and the chain of ancestors (root → node). */
+function findPath(node, id, trail = []) {
+  const here = [...trail, node];
+  if (node.id === id) return here;
+  for (const c of (node.children || [])) {
+    const r = findPath(c, id, here);
+    if (r) return r;
+  }
+  return null;
+}
+
+/* Resolve a setting key by walking up the path; returns
+   { value, sourceName, sourceId, inherited, overridden }. */
+function resolveSetting(path, key) {
+  // own value on the selected node?
+  const self = path[path.length - 1];
+  const ownExplicit = (self.settings && key in self.settings) || (self.overrides && key in self.overrides);
+  const ownVal = (self.overrides && self.overrides[key]) ?? (self.settings && self.settings[key]);
+
+  // find nearest ancestor (excluding self) that defines it
+  let inheritedFrom = null, inheritedVal;
+  for (let i = path.length - 2; i >= 0; i--) {
+    const n = path[i];
+    const v = (n.settings && n.settings[key]) ?? (n.overrides && n.overrides[key]);
+    if (v != null) { inheritedFrom = n; inheritedVal = v; break; }
+  }
+
+  if (ownExplicit && ownVal != null) {
+    return { value: ownVal, inherited: false, overridden: !!inheritedFrom,
+             sourceName: inheritedFrom ? inheritedFrom.name : null };
+  }
+  if (inheritedFrom) {
+    return { value: inheritedVal, inherited: true, overridden: false, sourceName: inheritedFrom.name };
+  }
+  return { value: null, inherited: false, overridden: false, sourceName: null };
+}
+
+const TreeNode = ({ node, depth, selectedId, onSelect, expanded, toggle, onAdd }) => {
+  const hasChildren = node.children && node.children.length > 0;
+  const isOpen = expanded[node.id] !== false; // default open
+  const canAdd = node.kind === 'country' || node.kind === 'region' || node.kind === 'group';
+  return (
+    <>
+      <div className={`treeNode ${selectedId === node.id ? 'sel' : ''}`}
+           style={{ paddingLeft: 8 + depth * 16 }}
+           onClick={() => onSelect(node.id)}>
+        <button className="treeCaret" onClick={(e) => { e.stopPropagation(); if (hasChildren) toggle(node.id); }}
+                style={{ visibility: hasChildren ? 'visible' : 'hidden' }}>
+          <Icon name="chevron" size={12} className={isOpen ? '' : 'rot'} />
+        </button>
+        <span className={`treeDot k-${node.kind}`} />
+        <span className="treeName">{node.name}</span>
+        <span className="treeCode">{node.code}</span>
+        {canAdd && (
+          <button className="treeAdd" title={`Add under ${node.name}`}
+                  onClick={(e) => { e.stopPropagation(); onAdd(node); }}>
+            <Icon name="plus" size={11} strokeWidth={2} />
+          </button>
+        )}
+      </div>
+      {hasChildren && isOpen && node.children.map(c => (
+        <TreeNode key={c.id} node={c} depth={depth + 1} selectedId={selectedId}
+                  onSelect={onSelect} expanded={expanded} toggle={toggle} onAdd={onAdd} />
+      ))}
+    </>
+  );
+};
+
+const SettingRow = ({ label, resolved, parentKindLabel }) => {
+  if (!resolved || resolved.value == null) {
+    return (
+      <div className="setRow">
+        <div className="setLabel">{label}</div>
+        <div className="setVal empty">— not set —</div>
+      </div>
+    );
+  }
+  return (
+    <div className="setRow">
+      <div className="setLabel">{label}</div>
+      <div className={`setVal ${resolved.inherited ? 'inherited' : ''}`}>
+        <span className="setValText">{resolved.value}</span>
+        {resolved.inherited ? (
+          <span className="inheritTag"><Icon name="arrow" size={10} className="up" /> inherited from {resolved.sourceName}</span>
+        ) : resolved.overridden ? (
+          <span className="overrideTag">overrides {resolved.sourceName} · <button className="revertLink">↩ revert</button></span>
+        ) : (
+          <span className="setHereTag">set here</span>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const AddCompanyPanel = ({ country, onClose, onSave }) => {
+  const def = COUNTRY_DEFAULTS[country.code] || {};
+  const [name, setName] = React.useState('');
+  const [entity, setEntity] = React.useState('');
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="sidePanel" onClick={e => e.stopPropagation()}>
+        <div className="sidePanelHead">
+          <div>
+            <h2>Add company</h2>
+            <div className="sub">Under {country.name} ({country.code}) · regulatory settings pre-fill from the country</div>
+          </div>
+          <button className="iconBtn" onClick={onClose}><Icon name="close" size={16} /></button>
+        </div>
+        <div className="sidePanelBody">
+          <label className="fieldBlock">
+            <span className="fl">Company name</span>
+            <input className="textInput" autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Ghent Branch" />
+          </label>
+          <label className="fieldBlock">
+            <span className="fl">Legal entity number</span>
+            <input className="textInput" value={entity} onChange={e => setEntity(e.target.value)} placeholder="BCE / KvK / HRB number" />
+          </label>
+          <div className="prefillNote">
+            <Icon name="check" size={13} /> Pre-filled from {country.name} — change only if this branch differs.
+          </div>
+          <div className="prefillGrid">
+            <div><div className="k">VAT</div><div className="v">{def.vat}</div></div>
+            <div><div className="k">Currency</div><div className="v">{def.currency}</div></div>
+            <div style={{ gridColumn: 'span 2' }}><div className="k">PEPPOL profile</div><div className="v">{def.peppol}</div></div>
+            <div style={{ gridColumn: 'span 2' }}><div className="k">Languages</div><div className="v">{def.languages}</div></div>
+          </div>
+        </div>
+        <div className="sidePanelFoot">
+          <button className="cta ghost" onClick={onClose}>Cancel</button>
+          <button className="cta" disabled={!name.trim()} onClick={() => onSave(name.trim())}>
+            <Icon name="plus" size={12} strokeWidth={2} /> Add company
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const GroupStructureView = () => {
+  const [tree, setTree] = React.useState(GROUP_TREE);
+  const [selectedId, setSelectedId] = React.useState('co-nl');
+  const [expanded, setExpanded] = React.useState({});
+  const [query, setQuery] = React.useState('');
+  const [addUnder, setAddUnder] = React.useState(null);
+  const [sharing, setSharing] = React.useState(
+    Object.fromEntries(DATA_SHARING.map(d => [d.type, d.mode]))
+  );
+
+  const toggle = (id) => setExpanded(e => ({ ...e, [id]: e[id] === false ? true : false }));
+  const path = findPath(tree, selectedId) || [tree];
+  const node = path[path.length - 1];
+  const parent = path.length > 1 ? path[path.length - 2] : null;
+
+  const counts = React.useMemo(() => {
+    let countries = 0, companies = 0, regions = 0;
+    const walk = n => { if (n.kind === 'country') countries++; if (n.kind === 'company') companies++; if (n.kind === 'region') regions++; (n.children || []).forEach(walk); };
+    walk(tree);
+    return { countries, companies, regions };
+  }, [tree]);
+
+  const addCompany = (name) => {
+    const country = addUnder;
+    const code = country.code + '-' + name.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase();
+    const newCmp = { id: 'cmp-' + Date.now(), kind: 'company', name, code,
+      meta: { entity: 'New entity · pending registration', address: '—' },
+      overrides: { invoiceSeq: code + '-2026-####' } };
+    const clone = JSON.parse(JSON.stringify(tree));
+    const p = findPath(clone, country.id);
+    p[p.length - 1].children = [...(p[p.length - 1].children || []), newCmp];
+    setTree(clone);
+    setAddUnder(null);
+    setSelectedId(newCmp.id);
+  };
+
+  const r = (key) => resolveSetting(path, key);
+
+  return (
+    <div className="viewWrap" style={{ maxWidth: 1240 }}>
+      <div className="viewHero">
+        <div>
+          <h1>Group structure</h1>
+          <div className="sub">The organizational tree — group, regions, countries and companies. Settings cascade down each level; any level can override the one above. Inherited values appear greyed.</div>
+        </div>
+        <button className="cta ghost"><Icon name="download" size={12} strokeWidth={2} /> Export structure</button>
+      </div>
+
+      <div className="viewStats" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
+        <div className="viewStat"><div className="l">Countries</div><div className="v">{counts.countries}</div><div className="s">NL · BE · LU · DE</div></div>
+        <div className="viewStat"><div className="l">Companies</div><div className="v">{counts.companies}</div><div className="s">legal entities / branches</div></div>
+        <div className="viewStat"><div className="l">Regions</div><div className="v">{counts.regions}</div><div className="s">Benelux + DE direct</div></div>
+        <div className="viewStat good"><div className="l">Users</div><div className="v">{ADMIN_USERS.length}</div><div className="s">across all scopes</div></div>
+      </div>
+
+      <div className="structLayout">
+        {/* ---- Tree ---- */}
+        <div className="structTree">
+          <div className="treeSearch">
+            <Icon name="search" size={13} />
+            <input placeholder="Filter companies…" value={query} onChange={e => setQuery(e.target.value)} />
+          </div>
+          <div className="treeScroll">
+            <TreeNode node={tree} depth={0} selectedId={selectedId} onSelect={setSelectedId}
+                      expanded={expanded} toggle={toggle} onAdd={(n) => {
+                        if (n.kind === 'country') setAddUnder(n);
+                        else setSelectedId(n.id);
+                      }} />
+          </div>
+          <div className="treeLegend">
+            <span><span className="treeDot k-group" /> Group</span>
+            <span><span className="treeDot k-region" /> Region</span>
+            <span><span className="treeDot k-country" /> Country</span>
+            <span><span className="treeDot k-company" /> Company</span>
+          </div>
+        </div>
+
+        {/* ---- Settings panel ---- */}
+        <div className="structPanel">
+          <div className="structPanelHead">
+            <div>
+              <div className="sphKind">{KIND_LABEL[node.kind]}{parent ? ` · in ${parent.name}` : ''}</div>
+              <h2>{node.name} <span className="sphCode">{node.code}</span></h2>
+            </div>
+            <div className="sphActions">
+              {node.kind === 'company' && <span className="statusPill ok"><span className="d" /> Active</span>}
+              <button className="miniBtn"><Icon name="settings" size={11} /> Rename</button>
+            </div>
+          </div>
+
+          {/* General */}
+          <div className="setGroup">
+            <div className="setGroupHead">General</div>
+            <div className="setRow"><div className="setLabel">Name</div><div className="setVal"><span className="setValText">{node.name}</span><span className="setHereTag">set here</span></div></div>
+            <div className="setRow"><div className="setLabel">Code</div><div className="setVal"><span className="setValText">{node.code}</span><span className="setHereTag">set here</span></div></div>
+            {node.meta?.entity && <div className="setRow"><div className="setLabel">Legal entity</div><div className="setVal"><span className="setValText">{node.meta.entity}</span></div></div>}
+            {node.meta?.address && <div className="setRow"><div className="setLabel">Address</div><div className="setVal"><span className="setValText">{node.meta.address}</span></div></div>}
+            {node.meta?.manager && <div className="setRow"><div className="setLabel">Regional manager</div><div className="setVal"><span className="setValText">{node.meta.manager}</span></div></div>}
+          </div>
+
+          {/* Regulatory */}
+          <div className="setGroup">
+            <div className="setGroupHead">Regulatory</div>
+            <SettingRow label="VAT rate(s)" resolved={r('vat')} />
+            <SettingRow label="Currency" resolved={r('currency')} />
+            <SettingRow label="PEPPOL profile" resolved={r('peppol')} />
+            <SettingRow label="Language(s)" resolved={r('languages')} />
+            <SettingRow label="Fiscal year start" resolved={r('fiscalYear')} />
+            {node.kind === 'company' && <SettingRow label="Invoice number sequence" resolved={r('invoiceSeq')} />}
+          </div>
+
+          {/* Operational */}
+          <div className="setGroup">
+            <div className="setGroupHead">Operational</div>
+            <SettingRow label="Service interval" resolved={r('serviceInterval')} />
+            <SettingRow label="Working hours" resolved={r('workingHours')} />
+          </div>
+
+          {/* Data sharing — only meaningful at group/country */}
+          {(node.kind === 'group' || node.kind === 'country' || node.kind === 'region') && (
+            <div className="setGroup">
+              <div className="setGroupHead">Data sharing
+                <span className="setGroupHint">defaults for {node.name}\u2019s companies · most-restrictive wins at runtime</span>
+              </div>
+              {DATA_SHARING.map(d => (
+                <div className="shareRow" key={d.type}>
+                  <div className="shareMain">
+                    <div className="shareType">{d.type}</div>
+                    <div className="shareNote">{d.note}</div>
+                  </div>
+                  <div className="shareSeg">
+                    {['private', 'shared', 'group'].map(m => {
+                      const disabled = d.mode === 'group'; // user accounts fixed
+                      const on = sharing[d.type] === m;
+                      const labels = { private: 'Company-private', shared: 'Shared in group', group: 'Group-level' };
+                      if (m === 'group' && d.mode !== 'group') return null;
+                      if (m !== 'group' && d.mode === 'group') return null;
+                      return (
+                        <button key={m} className={`segBtn ${on ? 'on' : ''}`} disabled={disabled}
+                                onClick={() => !disabled && setSharing(s => ({ ...s, [d.type]: m }))}>
+                          {labels[m]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="structFoot">
+            <span className="muted">Inherited settings are greyed. Override any field, then ↩ revert to fall back to the parent.</span>
+            <button className="cta"><Icon name="check" size={12} strokeWidth={2} /> Save changes</button>
+          </div>
+        </div>
+      </div>
+
+      {addUnder && <AddCompanyPanel country={addUnder} onClose={() => setAddUnder(null)} onSave={addCompany} />}
+    </div>
+  );
+};
+
+window.GroupStructureView = GroupStructureView;

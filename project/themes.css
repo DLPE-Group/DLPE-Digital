@@ -1,0 +1,380 @@
+/* ============================================================
+   Theme variants — 3 alternative light themes
+   Applied via data-theme="..." on <html>
+   ============================================================ */
+
+/* ---- Theme A: Sober Pro · deep navy + cooler grays + sharper corners ---- */
+html[data-theme="sober"] {
+  --brand: #0F3B6E;
+  --brand-hover: #0a2f5c;
+  --brand-tint: #e6edf6;
+
+  --bg: #fbfbfc;
+  --bg-muted: #f3f4f6;
+  --bg-sunken: #e9ecef;
+  --border: #dde1e6;
+  --border-strong: #c4c9d0;
+  --text: #0d1321;
+  --text-secondary: #3d4252;
+  --text-tertiary: #5c6373;
+  --text-quiet: #8b91a0;
+
+  --track-sales: #1f4d8a;
+  --track-ops: #a64228;
+  --track-workshop: #2d6a3f;
+  --track-finance: #5a3c8f;
+
+  --track-sales-tint: #eaf0f8;
+  --track-ops-tint: #f8ede8;
+  --track-workshop-tint: #ebf2ed;
+  --track-finance-tint: #efeaf6;
+
+  --status-green: #15803d;
+  --status-amber: #b45309;
+  --status-red: #b91c1c;
+
+  --status-green-bg: #ebf2ed;
+  --status-amber-bg: #faeec9;
+  --status-red-bg: #f9e1e1;
+
+  --radius: 5px;
+  --radius-sm: 4px;
+  --radius-lg: 8px;
+
+  --font: "Geist", "Söhne", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+/* Slightly heavier weight on titles for the Sober Pro look */
+html[data-theme="sober"] h1,
+html[data-theme="sober"] h2,
+html[data-theme="sober"] .scName,
+html[data-theme="sober"] .trackTitle,
+html[data-theme="sober"] .viewHero h1,
+html[data-theme="sober"] .contextBar h1 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* ---- Theme B: Warm Minimal · cream paper + indigo + softer corners ---- */
+html[data-theme="warm"] {
+  --brand: #5B5BD6;
+  --brand-hover: #4848bf;
+  --brand-tint: #ecedfb;
+
+  --bg: #fdfaf4;
+  --bg-muted: #f5f0e6;
+  --bg-sunken: #ece5d4;
+  --border: #e8e1d0;
+  --border-strong: #d6cdb8;
+  --text: #1f1b17;
+  --text-secondary: #4a4540;
+  --text-tertiary: #6f6963;
+  --text-quiet: #9b958e;
+
+  --track-sales: #5B5BD6;
+  --track-ops: #d97757;
+  --track-workshop: #4a8a6c;
+  --track-finance: #b87fcb;
+
+  --track-sales-tint: #ecedfb;
+  --track-ops-tint: #faece2;
+  --track-workshop-tint: #e6f1eb;
+  --track-finance-tint: #f5e8f9;
+
+  --status-green: #4a8a6c;
+  --status-amber: #d97757;
+  --status-red: #c5483a;
+
+  --status-green-bg: #ecf3ee;
+  --status-amber-bg: #fbece1;
+  --status-red-bg: #faeae8;
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+
+  --font: "Söhne", "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+
+/* Slightly softer card shadows + warmer feel */
+html[data-theme="warm"] .scorecard,
+html[data-theme="warm"] .itemCard,
+html[data-theme="warm"] .integrationCard,
+html[data-theme="warm"] .auditEntry,
+html[data-theme="warm"] .snapshot,
+html[data-theme="warm"] .settingsSection {
+  box-shadow: 0 1px 0 rgba(74,69,64,0.04);
+}
+
+html[data-theme="warm"] .scorecard:hover,
+html[data-theme="warm"] .itemCard:hover {
+  box-shadow: 0 2px 8px rgba(74,69,64,0.06);
+}
+
+/* ---- Theme C: Mono Operational · near-black + neutral + dense ---- */
+html[data-theme="mono"] {
+  --brand: #1f1f23;
+  --brand-hover: #000;
+  --brand-tint: #eeeef2;
+
+  --bg: #ffffff;
+  --bg-muted: #f6f6f7;
+  --bg-sunken: #ebebed;
+  --border: #e0e0e3;
+  --border-strong: #c8c8cc;
+  --text: #0a0a0c;
+  --text-secondary: #3a3a3f;
+  --text-tertiary: #6a6a70;
+  --text-quiet: #9a9aa0;
+
+  /* Tracks become a single neutral — no per-track accent colors */
+  --track-sales: #5a5a60;
+  --track-ops: #5a5a60;
+  --track-workshop: #5a5a60;
+  --track-finance: #5a5a60;
+
+  --track-sales-tint: #f0f0f2;
+  --track-ops-tint: #f0f0f2;
+  --track-workshop-tint: #f0f0f2;
+  --track-finance-tint: #f0f0f2;
+
+  /* Status keeps red/amber/green but flatter */
+  --status-green: #2e7d3e;
+  --status-amber: #b46c00;
+  --status-red: #c33232;
+
+  --status-green-bg: #ecf1ed;
+  --status-amber-bg: #f7eddc;
+  --status-red-bg: #f7e8e6;
+
+  --radius: 4px;
+  --radius-sm: 3px;
+  --radius-lg: 6px;
+
+  --font: "Geist Mono", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+html[data-theme="mono"] {
+  font-feature-settings: "ss01", "ss02", "tnum";
+}
+
+/* Mono theme: headings + chrome stay monospace too, but reduce its weight */
+html[data-theme="mono"] body {
+  font-size: 13px;
+}
+
+html[data-theme="mono"] h1 { letter-spacing: -0.02em; font-weight: 600; }
+html[data-theme="mono"] .scHero .num,
+html[data-theme="mono"] .tileValue,
+html[data-theme="mono"] .viewStat .v {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* Mono theme: tighter padding and density */
+html[data-theme="mono"] .itemCard { padding: 10px 12px 10px 16px; gap: 8px; }
+html[data-theme="mono"] .scorecard .scHero { padding: 8px 12px 6px; }
+html[data-theme="mono"] .scHead { padding: 10px 12px 8px; }
+html[data-theme="mono"] .trackHead { padding: 8px 12px; }
+html[data-theme="mono"] .snapshot { padding: 12px 16px; }
+html[data-theme="mono"] .logoMark {
+  background: var(--text);
+  color: var(--bg);
+  border-radius: 3px;
+  font-family: var(--font);
+}
+
+/* Mono theme: more obvious "data" feel */
+html[data-theme="mono"] .typeBadge,
+html[data-theme="mono"] .miniBadge,
+html[data-theme="mono"] .kindBadge {
+  border-radius: 3px;
+  border: 1px solid currentColor;
+  background: transparent !important;
+  font-weight: 500;
+}
+
+html[data-theme="mono"] .swatch { border-radius: 1px; }
+
+/* ---- Theme D: Pitch-aligned · navy + bright yellow accents ---- */
+/* Tokens extracted from the pitch target's brand stylesheet.
+   Theme is named neutrally per the spec — the target name does
+   not appear in the design itself. */
+html[data-theme="pitch"] {
+  --brand: #133778;
+  --brand-hover: #0e2858;
+  --brand-tint: #edeff6;
+
+  --bg: #ffffff;
+  --bg-muted: #f6f7fb;
+  --bg-sunken: #edeff6;
+  --border: #d8e0ee;
+  --border-strong: #cdd7e9;
+  --text: #0e2858;
+  --text-secondary: #305392;
+  --text-tertiary: #4f6ea8;
+  --text-quiet: #97a7c4;
+
+  /* Tracks: a navy-dominant palette plus their yellow as the Ops accent */
+  --track-sales: #133778;
+  --track-ops: #c98a00;          /* warm-yellow ops; bright #fdc207 is too light for text */
+  --track-workshop: #027a48;
+  --track-finance: #5a3c8f;
+
+  --track-sales-tint: #edeff6;
+  --track-ops-tint: #fff5d6;
+  --track-workshop-tint: #ecfdf3;
+  --track-finance-tint: #efeaf6;
+
+  --status-green: #027a48;
+  --status-amber: #b45309;
+  --status-red: #b42318;
+
+  --status-green-bg: #ecfdf3;
+  --status-amber-bg: #fdf3e3;
+  --status-red-bg: #fef3f2;
+
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-lg: 12px;
+
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+}
+
+/* Heavier slab-feel headings to match the wordmark vibe */
+html[data-theme="pitch"] h1,
+html[data-theme="pitch"] h2,
+html[data-theme="pitch"] .scName,
+html[data-theme="pitch"] .trackTitle,
+html[data-theme="pitch"] .viewHero h1,
+html[data-theme="pitch"] .contextBar h1,
+html[data-theme="pitch"] .portalHero h1 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+/* Signature yellow accent stripe under scorecards (echoing their card style) */
+html[data-theme="pitch"] .scorecard {
+  border-bottom: 3px solid #fdc207;
+}
+html[data-theme="pitch"] .scorecard.open {
+  border-color: var(--brand);
+  border-bottom-color: #fdc207;
+}
+
+/* Primary buttons: navy with high contrast (their style is yellow buttons but
+   that would clash with status amber; keep brand navy primary, give an
+   optional yellow "accent" treatment to the demo trigger only) */
+html[data-theme="pitch"] .demoTrigger {
+  background: #fdc207;
+  color: #0e2858;
+}
+html[data-theme="pitch"] .demoTrigger:hover { background: #e7b000; }
+html[data-theme="pitch"] .demoTrigger .pulseDot {
+  background: #0e2858;
+  box-shadow: 0 0 0 0 rgba(14, 40, 88, 0.6);
+}
+
+/* Logo mark in their navy */
+html[data-theme="pitch"] .logoMark {
+  background: var(--brand);
+  color: white;
+  border-radius: 4px;
+}
+
+/* Slightly cooler card hover */
+html[data-theme="pitch"] .scorecard:hover,
+html[data-theme="pitch"] .itemCard:hover {
+  border-color: var(--brand);
+}
+
+/* ============================================================
+   Theme switcher button + dropdown
+   ============================================================ */
+
+.themeSwitch {
+  position: relative;
+}
+
+.themeTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  background: white;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.themeTrigger:hover { background: var(--bg-muted); color: var(--text); }
+
+.themeTrigger .themeSwatchRow {
+  display: inline-flex;
+  gap: 2px;
+}
+.themeTrigger .themeSwatchRow span {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  border: 0.5px solid rgba(0,0,0,0.05);
+}
+
+.themeMenu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+  width: 320px;
+  padding: 6px;
+  z-index: 60;
+}
+
+.themeOption {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  width: 100%;
+  font-family: inherit;
+  text-align: left;
+}
+
+.themeOption:hover { background: var(--bg-muted); }
+.themeOption.selected { background: var(--brand-tint); }
+
+.themeOption .name { font-size: 13.5px; font-weight: 500; color: var(--text); }
+.themeOption .desc { font-size: 11.5px; color: var(--text-tertiary); margin-top: 2px; line-height: 1.4; }
+
+.themeOption .preview {
+  display: flex;
+  gap: 3px;
+}
+.themeOption .preview span {
+  width: 16px;
+  height: 24px;
+  border-radius: 3px;
+  border: 1px solid rgba(0,0,0,0.08);
+}
+
+.themeMenu .themeHead {
+  padding: 8px 10px 6px;
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  font-weight: 600;
+}

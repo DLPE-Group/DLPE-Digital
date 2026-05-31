@@ -1,0 +1,746 @@
+/* ============================================================
+   Nango Connect UI — self-contained embedded widget styling.
+   Scoped under .nangoConnect so it reads as the genuine
+   third-party popup, independent of the app's active theme.
+   ============================================================ */
+
+.nangoOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 12, 20, 0.45);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  animation: nangoFade .14s ease-out;
+}
+@keyframes nangoFade { from { opacity: 0; } to { opacity: 1; } }
+
+.nangoConnect {
+  --n-fg: #0b0b0f;
+  --n-fg-2: #4a4a52;
+  --n-fg-3: #7c7c86;
+  --n-border: #ececef;
+  --n-border-2: #e0e0e4;
+  --n-bg-soft: #f6f6f7;
+  --n-accent: #0b0b0f;
+  --n-green: #16a34a;
+  --n-radius: 14px;
+
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  background: #fff;
+  color: var(--n-fg);
+  width: 100%;
+  max-width: 420px;
+  border-radius: var(--n-radius);
+  box-shadow: 0 24px 64px rgba(10, 12, 20, 0.28), 0 2px 8px rgba(10,12,20,0.12);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 64px);
+  animation: nangoPop .18s cubic-bezier(.2,.8,.3,1);
+  -webkit-font-smoothing: antialiased;
+}
+@keyframes nangoPop { from { transform: translateY(8px) scale(.98); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.nangoConnect * { box-sizing: border-box; }
+
+/* ---- Top bar ---- */
+.nangoBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--n-border);
+  flex-shrink: 0;
+}
+.nangoBar .nangoTitle {
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+}
+.nangoIconBtn {
+  width: 30px; height: 30px;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  color: var(--n-fg-3);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background .12s, color .12s;
+}
+.nangoIconBtn:hover { background: var(--n-bg-soft); color: var(--n-fg); }
+.nangoIconBtn.ghost { visibility: hidden; }
+
+/* ---- List screen ---- */
+.nangoIntro {
+  padding: 18px 20px 12px;
+  text-align: center;
+}
+.nangoIntro h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.nangoIntro p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--n-fg-3);
+}
+
+.nangoSearchWrap {
+  padding: 0 16px 8px;
+  flex-shrink: 0;
+}
+.nangoSearch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--n-border-2);
+  border-radius: 9px;
+  background: #fff;
+  transition: border-color .12s, box-shadow .12s;
+}
+.nangoSearch:focus-within {
+  border-color: #b9b9c0;
+  box-shadow: 0 0 0 3px rgba(11,11,15,0.05);
+}
+.nangoSearch svg { color: var(--n-fg-3); flex-shrink: 0; }
+.nangoSearch input {
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: 13.5px;
+  width: 100%;
+  color: var(--n-fg);
+  background: transparent;
+}
+.nangoSearch input::placeholder { color: var(--n-fg-3); }
+
+.nangoList {
+  overflow-y: auto;
+  padding: 4px 8px 8px;
+  flex: 1;
+  min-height: 120px;
+}
+.nangoCat {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--n-fg-3);
+  padding: 12px 10px 5px;
+}
+.nangoRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 0;
+  background: transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: background .1s;
+}
+.nangoRow:hover { background: var(--n-bg-soft); }
+.nangoRow .nangoRowMain { flex: 1; min-width: 0; }
+.nangoRow .nm { font-size: 13.5px; font-weight: 500; letter-spacing: -0.01em; }
+.nangoRow .sub { font-size: 11.5px; color: var(--n-fg-3); margin-top: 1px; }
+.nangoRow .chev { color: #c2c2c9; flex-shrink: 0; }
+.nangoEmpty {
+  text-align: center;
+  font-size: 13px;
+  color: var(--n-fg-3);
+  padding: 32px 16px;
+}
+
+/* ---- Provider logo tile ---- */
+.nangoLogo {
+  flex-shrink: 0;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.02em;
+  font-feature-settings: "ss01";
+}
+.nangoLogo.sm { width: 34px; height: 34px; font-size: 12.5px; }
+.nangoLogo.lg { width: 58px; height: 58px; font-size: 21px; border-radius: 14px; }
+
+/* ---- Consent / auth screen ---- */
+.nangoConsent {
+  padding: 8px 24px 4px;
+  overflow-y: auto;
+  flex: 1;
+}
+.nangoConsentHero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 14px 0 6px;
+}
+.nangoLinkRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 14px;
+}
+.nangoLinkRow .dots {
+  display: flex;
+  gap: 4px;
+}
+.nangoLinkRow .dots i {
+  width: 4px; height: 4px; border-radius: 999px;
+  background: #cfcfd6;
+  display: block;
+}
+.nangoLinkRow .ng {
+  width: 40px; height: 40px;
+  border-radius: 11px;
+  background: var(--n-fg);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 19px;
+}
+.nangoConsent h3 {
+  margin: 12px 0 6px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.nangoConsent .lead {
+  margin: 0 auto;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--n-fg-2);
+  max-width: 320px;
+}
+.nangoConsent .lead b { color: var(--n-fg); font-weight: 600; }
+
+.nangoScopes {
+  margin: 18px 0 4px;
+  border: 1px solid var(--n-border);
+  border-radius: 11px;
+  overflow: hidden;
+}
+.nangoScope {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 13px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  border-bottom: 1px solid var(--n-border);
+}
+.nangoScope:last-child { border-bottom: 0; }
+.nangoScope .ck {
+  width: 18px; height: 18px;
+  border-radius: 999px;
+  background: rgba(22,163,74,0.12);
+  color: var(--n-green);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.nangoScope b { font-weight: 600; }
+.nangoScope span { color: var(--n-fg-2); }
+
+/* API-key form */
+.nangoField { margin: 16px 0 4px; text-align: left; }
+.nangoField label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.nangoField input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--n-border-2);
+  border-radius: 9px;
+  font: inherit;
+  font-size: 13.5px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  color: var(--n-fg);
+  outline: 0;
+  transition: border-color .12s, box-shadow .12s;
+}
+.nangoField input:focus {
+  border-color: #b9b9c0;
+  box-shadow: 0 0 0 3px rgba(11,11,15,0.05);
+}
+.nangoField .help {
+  font-size: 11.5px;
+  color: var(--n-fg-3);
+  margin-top: 7px;
+  line-height: 1.45;
+}
+
+/* ---- Connecting screen ---- */
+.nangoConnecting {
+  padding: 40px 28px;
+  text-align: center;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.nangoSpinner {
+  width: 46px; height: 46px;
+  border-radius: 999px;
+  border: 3px solid var(--n-border-2);
+  border-top-color: var(--n-fg);
+  animation: nangoSpin .7s linear infinite;
+  margin-bottom: 20px;
+}
+@keyframes nangoSpin { to { transform: rotate(360deg); } }
+.nangoConnecting h3 { margin: 0 0 6px; font-size: 15.5px; font-weight: 600; }
+.nangoConnecting p { margin: 0; font-size: 12.5px; color: var(--n-fg-3); line-height: 1.5; max-width: 260px; }
+
+/* ---- Success screen ---- */
+.nangoSuccess {
+  padding: 36px 28px 28px;
+  text-align: center;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.nangoSuccessMark {
+  width: 60px; height: 60px;
+  border-radius: 999px;
+  background: rgba(22,163,74,0.12);
+  color: var(--n-green);
+  display: grid;
+  place-items: center;
+  margin-bottom: 18px;
+  animation: nangoPop .3s cubic-bezier(.2,.9,.3,1.2);
+}
+.nangoSuccess h3 { margin: 0 0 6px; font-size: 17px; font-weight: 600; letter-spacing: -0.02em; }
+.nangoSuccess p { margin: 0; font-size: 13px; color: var(--n-fg-2); line-height: 1.5; max-width: 280px; }
+.nangoSuccess p b { color: var(--n-fg); font-weight: 600; }
+
+/* ---- Footer / button ---- */
+.nangoFoot {
+  padding: 14px 16px;
+  border-top: 1px solid var(--n-border);
+  flex-shrink: 0;
+}
+.nangoBtn {
+  width: 100%;
+  height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--n-accent);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform .08s, opacity .12s, background .12s;
+}
+.nangoBtn:hover { background: #23232b; }
+.nangoBtn:active { transform: scale(.99); }
+.nangoBtn:disabled { opacity: .4; cursor: not-allowed; }
+.nangoBtn.green { background: var(--n-green); }
+.nangoBtn.green:hover { background: #15893f; }
+
+.nangoSecured {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--n-fg-3);
+  padding: 11px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--n-border);
+}
+.nangoSecured .ng {
+  font-weight: 800;
+  color: var(--n-fg);
+  letter-spacing: -0.02em;
+}
+.nangoSecured svg { opacity: .7; }
+
+/* ============================================================
+   Intelligence Layer — AI field-mapping panel (app-themed).
+   ============================================================ */
+.aimPanel {
+  background: white;
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 600px;
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 56px rgba(0,0,0,0.2);
+  animation: nangoPop .18s cubic-bezier(.2,.8,.3,1);
+}
+.aimHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--border);
+}
+.aimSpark {
+  width: 30px; height: 30px;
+  border-radius: var(--radius-sm);
+  background: var(--brand-tint);
+  color: var(--brand);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.aimKind {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brand);
+  font-weight: 500;
+}
+.aimHead h2 { margin: 3px 0 0; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+
+.aimBody { padding: var(--s-4) var(--s-5); overflow-y: auto; }
+.aimLead { font-size: 13.5px; line-height: 1.55; color: var(--text-secondary); margin: 0 0 16px; }
+.aimLead b { color: var(--text); font-weight: 600; }
+
+/* scanning phase */
+.aimScan { padding: 18px 4px 8px; }
+.aimScanBar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.aimScanBar i {
+  display: block;
+  height: 100%;
+  width: 40%;
+  border-radius: 999px;
+  background: var(--brand);
+  animation: aimScanSlide 1.4s ease-in-out infinite;
+}
+@keyframes aimScanSlide {
+  0% { margin-left: -40%; }
+  100% { margin-left: 100%; }
+}
+.aimScanText { font-size: 14px; color: var(--text); }
+.aimScanText b { font-weight: 600; }
+.aimScanSub { font-size: 12.5px; color: var(--text-tertiary); margin-top: 6px; line-height: 1.5; }
+
+/* schema rows */
+.aimSchemaHead {
+  display: grid;
+  grid-template-columns: 1fr 22px 1fr 80px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 8px;
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.aimSchemaHead .cf { text-align: right; }
+.aimRows { display: flex; flex-direction: column; gap: 6px; }
+.aimRow {
+  display: grid;
+  grid-template-columns: 1fr 22px 1fr 80px;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: white;
+  animation: aimRowIn .26s ease-out;
+}
+@keyframes aimRowIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.aimRow.review { border-color: var(--status-amber); background: var(--status-amber-bg); }
+.aimRow code {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.aimRow code.dst { color: var(--brand); }
+.aimRow .arr { color: var(--text-quiet); display: grid; place-items: center; }
+.aimRow .conf {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--status-green-bg, rgba(22,163,74,0.12));
+  color: var(--status-green);
+}
+.aimRow .conf.low { background: var(--status-amber-bg); color: var(--status-amber); }
+
+.aimFoot {
+  padding: var(--s-3) var(--s-5);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.aimNote { font-size: 11.5px; color: var(--text-tertiary); }
+.aimNote b { color: var(--text-secondary); font-weight: 500; }
+.aimFoot .cta:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* "via Nango" badge on connected integration cards */
+.integrationCard.viaNango { box-shadow: inset 0 0 0 1px var(--brand-tint); }
+.nangoTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 7px 1px 4px;
+  border-radius: 999px;
+  background: var(--bg-muted);
+  color: var(--text-tertiary);
+  vertical-align: middle;
+  letter-spacing: 0.01em;
+}
+.nangoTag .ng {
+  width: 13px; height: 13px;
+  border-radius: 4px;
+  background: #0b0b0f;
+  color: #fff;
+  font-weight: 800;
+  font-size: 9px;
+  display: grid;
+  place-items: center;
+}
+
+/* ============================================================
+   Intelligence Layer — prompt-defined transform (logic) layer
+   ============================================================ */
+.aimTransforms {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--border-strong);
+}
+.aimSubhead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+.aimSubhead .fx {
+  width: 20px; height: 20px;
+  border-radius: 6px;
+  background: var(--brand);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-style: italic;
+  font-weight: 700;
+  font-size: 13px;
+}
+.aimSubhead .hint { font-weight: 400; color: var(--text-tertiary); }
+
+/* transform row */
+.aimTfRow {
+  border: 1px solid var(--brand);
+  border-radius: var(--radius);
+  background: var(--brand-tint);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  animation: aimRowIn .26s ease-out;
+}
+.aimTfTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.aimTfBadge {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--brand);
+  border-radius: 999px;
+  padding: 2px 9px;
+  flex-shrink: 0;
+}
+.aimTfChips { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
+.tfChip {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 6px;
+  color: var(--text);
+  white-space: nowrap;
+}
+.aimTfArr { color: var(--brand); display: grid; place-items: center; flex-shrink: 0; }
+.aimTfTarget {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand);
+  background: white;
+  border: 1px solid var(--brand);
+  border-radius: 5px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+.aimTfX {
+  margin-left: auto;
+  width: 24px; height: 24px;
+  border: 0; background: transparent;
+  color: var(--text-tertiary);
+  border-radius: 6px;
+  cursor: pointer;
+  display: grid; place-items: center;
+  flex-shrink: 0;
+}
+.aimTfX:hover { background: rgba(0,0,0,0.06); color: var(--text); }
+.aimTfFormula {
+  margin-top: 8px;
+  padding: 7px 9px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.aimTfFormula code { font-family: var(--mono); font-size: 11.5px; color: var(--text-secondary); }
+.aimTfSample {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+  font-size: 12px;
+}
+.aimTfSample .lbl {
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.aimTfSample .out {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--status-green);
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 8px;
+}
+
+/* composer */
+.aimComposer { margin-top: 4px; }
+.aimComposerRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 5px 5px 5px 10px;
+  background: white;
+  transition: border-color .12s, box-shadow .12s;
+}
+.aimComposerRow:focus-within {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-tint);
+}
+.aimPromptIcon { color: var(--brand); display: grid; place-items: center; flex-shrink: 0; }
+.aimComposerRow input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: transparent;
+}
+.aimComposerRow input::placeholder { color: var(--text-quiet); }
+.aimGenBtn {
+  flex-shrink: 0;
+  border: 0;
+  background: var(--brand);
+  color: #fff;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 0 14px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background .12s, opacity .12s;
+}
+.aimGenBtn:hover { background: var(--brand-hover); }
+.aimGenBtn:disabled { opacity: .45; cursor: not-allowed; }
+.aimMiniSpin {
+  width: 12px; height: 12px;
+  border-radius: 999px;
+  border: 2px solid rgba(255,255,255,0.4);
+  border-top-color: #fff;
+  animation: nangoSpin .7s linear infinite;
+}
+.aimExamples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 9px;
+  font-size: 11.5px;
+}
+.aimExamples > span { color: var(--text-tertiary); }
+.aimExample {
+  border: 1px solid var(--border);
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: border-color .12s, color .12s;
+}
+.aimExample:hover { border-color: var(--brand); color: var(--brand); }

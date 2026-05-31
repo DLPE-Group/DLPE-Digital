@@ -1,0 +1,389 @@
+/* ============================================================
+   Admin section — Group structure, Users, Roles, RBAC
+   Built on the same tokens as styles.css / styles_app_v1.css
+   ============================================================ */
+
+/* ---------- shared bits ---------- */
+.breadcrumb {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12.5px; color: var(--text-tertiary);
+  margin-bottom: var(--s-4);
+}
+.crumbLink { color: var(--brand); font-weight: 500; }
+.crumbLink:hover { text-decoration: underline; }
+
+.searchInline {
+  display: flex; align-items: center; gap: 7px;
+  background: var(--bg-muted); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 5px 10px;
+  color: var(--text-tertiary); min-width: 240px;
+}
+.searchInline input { border: 0; background: transparent; outline: 0; font: inherit; font-size: 12.5px; color: var(--text); flex: 1; min-width: 0; }
+
+.textInput {
+  font: inherit; font-size: 13px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: white; color: var(--text); width: 100%;
+}
+.textInput:focus { outline: 0; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-tint); }
+
+.cta.sm { padding: 5px 10px; font-size: 12px; }
+
+/* ============================================================
+   GROUP STRUCTURE
+   ============================================================ */
+.structLayout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: var(--s-4);
+  align-items: start;
+}
+
+.structTree {
+  background: white; border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+  position: sticky; top: 76px;
+}
+.treeSearch {
+  display: flex; align-items: center; gap: 7px;
+  padding: 9px 12px; border-bottom: 1px solid var(--border);
+  color: var(--text-tertiary); background: var(--bg-muted);
+}
+.treeSearch input { border: 0; background: transparent; outline: 0; font: inherit; font-size: 12.5px; flex: 1; min-width: 0; color: var(--text); }
+.treeScroll { padding: 6px 0; max-height: 560px; overflow-y: auto; }
+
+.treeNode {
+  display: flex; align-items: center; gap: 7px;
+  padding: 6px 10px 6px 0; cursor: pointer; position: relative;
+  font-size: 13px;
+}
+.treeNode:hover { background: var(--bg-muted); }
+.treeNode.sel { background: var(--brand-tint); }
+.treeNode.sel .treeName { color: var(--brand); font-weight: 600; }
+
+.treeCaret {
+  width: 16px; height: 16px; display: grid; place-items: center;
+  color: var(--text-tertiary); flex-shrink: 0;
+}
+.treeCaret .rot { transform: rotate(-90deg); }
+.treeDot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.treeDot.k-group   { background: var(--text); border-radius: 999px; }
+.treeDot.k-region  { background: var(--track-finance); }
+.treeDot.k-country { background: var(--track-sales); }
+.treeDot.k-company { background: var(--brand); border-radius: 999px; }
+
+.treeName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.treeCode { font-family: var(--mono); font-size: 10px; color: var(--text-quiet); letter-spacing: 0.03em; }
+.treeAdd {
+  width: 20px; height: 20px; border-radius: 4px; display: grid; place-items: center;
+  color: var(--text-tertiary); opacity: 0; transition: opacity .12s; margin-right: 6px; flex-shrink: 0;
+}
+.treeNode:hover .treeAdd { opacity: 1; }
+.treeAdd:hover { background: var(--brand); color: white; }
+
+.treeLegend {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  padding: 10px 12px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text-tertiary); background: var(--bg-muted);
+}
+.treeLegend span { display: inline-flex; align-items: center; gap: 5px; }
+
+/* settings panel */
+.structPanel { background: white; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.structPanelHead {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  padding: 16px 18px; border-bottom: 1px solid var(--border); background: var(--bg-muted); gap: 12px;
+}
+.sphKind { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary); }
+.structPanelHead h2 { margin: 3px 0 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; display: flex; align-items: center; gap: 10px; }
+.sphCode { font-family: var(--mono); font-size: 12px; color: var(--text-tertiary); background: white; border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px; font-weight: 400; letter-spacing: 0.02em; }
+.sphActions { display: flex; align-items: center; gap: 8px; }
+
+.setGroup { border-bottom: 1px solid var(--border); padding: 14px 18px; }
+.setGroup:last-of-type { border-bottom: 0; }
+.setGroupHead {
+  font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-tertiary); font-weight: 600; margin-bottom: 10px;
+  display: flex; align-items: baseline; gap: 10px;
+}
+.setGroupHint { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--text-quiet); font-size: 11px; }
+
+.setRow {
+  display: grid; grid-template-columns: 180px 1fr; gap: 16px;
+  padding: 8px 0; align-items: baseline; border-bottom: 1px dashed var(--border);
+}
+.setRow:last-child { border-bottom: 0; }
+.setLabel { font-size: 12.5px; color: var(--text-tertiary); }
+.setVal { font-size: 13px; color: var(--text); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.setVal.inherited .setValText { color: var(--text-quiet); }
+.setVal.empty { color: var(--text-quiet); font-style: italic; }
+.setValText { font-weight: 500; }
+
+.inheritTag, .overrideTag, .setHereTag {
+  font-size: 11px; display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 7px; border-radius: 999px;
+}
+.inheritTag { color: var(--text-tertiary); background: var(--bg-sunken); }
+.inheritTag .up { transform: rotate(-90deg); }
+.overrideTag { color: var(--track-ops); background: var(--track-ops-tint); }
+.setHereTag { color: var(--brand); background: var(--brand-tint); }
+.revertLink { color: inherit; font: inherit; font-size: 11px; text-decoration: underline; cursor: pointer; }
+
+/* data sharing rows */
+.shareRow {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 10px 0; border-bottom: 1px dashed var(--border);
+}
+.shareRow:last-child { border-bottom: 0; }
+.shareMain { min-width: 0; }
+.shareType { font-size: 13px; font-weight: 500; }
+.shareNote { font-size: 11.5px; color: var(--text-tertiary); margin-top: 2px; max-width: 460px; }
+.shareSeg { display: inline-flex; background: var(--bg-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px; flex-shrink: 0; }
+.segBtn {
+  padding: 4px 10px; font-size: 11.5px; font-weight: 500; color: var(--text-tertiary);
+  border-radius: 4px; white-space: nowrap;
+}
+.segBtn.on { background: white; color: var(--text); box-shadow: 0 1px 1px rgba(0,0,0,0.05); }
+.segBtn:disabled { color: var(--text-quiet); cursor: default; }
+
+.structFoot {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 14px 18px; border-top: 1px solid var(--border); background: var(--bg-muted);
+}
+.structFoot .muted { font-size: 11.5px; max-width: 560px; }
+
+/* side panel (add company) */
+.sidePanel {
+  background: white; border-radius: var(--radius-lg); width: 440px; max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 80px); display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.18); margin-left: auto; margin-right: 0;
+  animation: slideIn .18s ease-out;
+}
+.overlay:has(.sidePanel) { justify-content: flex-end; padding: 24px; }
+.sidePanelHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
+.sidePanelHead h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.sidePanelHead .sub { font-size: 12px; color: var(--text-tertiary); margin-top: 3px; line-height: 1.4; }
+.sidePanelBody { padding: 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.fieldBlock { display: flex; flex-direction: column; gap: 6px; }
+.fieldBlock .fl { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+.prefillNote { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--status-green); background: var(--status-green-bg); padding: 8px 10px; border-radius: var(--radius-sm); }
+.prefillGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; padding: 12px; background: var(--bg-muted); border-radius: var(--radius-sm); border: 1px solid var(--border); }
+.prefillGrid .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-tertiary); }
+.prefillGrid .v { font-size: 12.5px; color: var(--text); margin-top: 2px; }
+.sidePanelFoot { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 18px; border-top: 1px solid var(--border); background: var(--bg-muted); }
+
+/* create-user panel */
+.sidePanel.wide { width: 560px; }
+.panelSection { padding: 16px 0; border-bottom: 1px solid var(--border); }
+.panelSection:first-child { padding-top: 0; }
+.panelSection:last-child { border-bottom: 0; padding-bottom: 0; }
+.psHead {
+  font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-tertiary);
+  font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.psHint { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--text-quiet); }
+.seGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.seField { display: flex; flex-direction: column; gap: 6px; }
+.seField .fl { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+.scopeEditor { display: block; }
+.targetFixed { font-size: 13px; color: var(--text-secondary); padding: 8px 10px; background: var(--bg-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.targetChips { display: flex; flex-wrap: wrap; gap: 6px; }
+.targetChip {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 5px 10px;
+  border: 1px solid var(--border); border-radius: 999px; background: white; color: var(--text-secondary); font-family: inherit;
+}
+.targetChip:hover { background: var(--bg-muted); }
+.targetChip.on { background: var(--brand-tint); border-color: var(--brand); color: var(--brand); font-weight: 500; }
+.roleHint { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-tertiary); margin-top: 10px; line-height: 1.45; }
+
+.methodSeg { display: inline-flex; background: var(--bg-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px; margin-bottom: 12px; }
+.mSeg { padding: 6px 12px; font-size: 12px; font-weight: 500; color: var(--text-tertiary); border-radius: 4px; font-family: inherit; }
+.mSeg.on { background: white; color: var(--text); box-shadow: 0 1px 1px rgba(0,0,0,0.05); }
+.pwRow { display: flex; gap: 8px; align-items: center; }
+.pwRow .textInput { flex: 1; }
+.textInput.mono { font-family: var(--mono); letter-spacing: 0.04em; }
+
+/* ============================================================
+   USERS
+   ============================================================ */
+.userHeroMain { display: flex; align-items: center; gap: 14px; }
+.userAvatarLg {
+  width: 48px; height: 48px; border-radius: 999px; background: var(--brand-tint); color: var(--brand);
+  display: grid; place-items: center; font-size: 16px; font-weight: 600; flex-shrink: 0;
+}
+.userHeroMain .sub { display: flex; align-items: center; gap: 8px; }
+
+.userTable { background: white; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.userTableHead, .userRow {
+  display: grid; grid-template-columns: 2.2fr 2fr 1.6fr 1fr 1fr 24px;
+  gap: 14px; padding: 11px 16px; align-items: center;
+}
+.userTableHead {
+  font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-tertiary);
+  font-weight: 600; background: var(--bg-muted); border-bottom: 1px solid var(--border);
+}
+.userRow { border-bottom: 1px solid var(--border); cursor: pointer; transition: background .12s; }
+.userRow:last-child { border-bottom: 0; }
+.userRow:hover { background: var(--bg-muted); }
+.userCell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.userAvatar { width: 32px; height: 32px; border-radius: 999px; background: var(--bg-sunken); color: var(--text-secondary); display: grid; place-items: center; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+.urName { font-size: 13.5px; font-weight: 500; }
+.urEmail { font-size: 11.5px; color: var(--text-tertiary); }
+.userScope { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-secondary); min-width: 0; }
+.urRole { font-size: 12.5px; color: var(--text-secondary); }
+.urSeen { font-size: 12px; color: var(--text-tertiary); }
+.urChevron { color: var(--text-quiet); display: grid; place-items: center; }
+
+.scopeBadge {
+  font-size: 10.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+  background: var(--track-sales-tint); color: var(--track-sales); white-space: nowrap; letter-spacing: 0.02em;
+}
+.scopeBadge.sm { font-size: 10px; padding: 1px 7px; }
+.scopeBadge.ro { background: var(--bg-sunken); color: var(--text-secondary); }
+.secTag { font-size: 10.5px; color: var(--brand); background: var(--brand-tint); padding: 1px 6px; border-radius: 999px; font-weight: 600; }
+
+.scopeCard {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; background: white;
+}
+.scopeCard:last-child { margin-bottom: 0; }
+.scopeCard.primary { border-color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); }
+.scopeCardL { display: flex; align-items: center; gap: 12px; }
+.scopeName { font-size: 14px; font-weight: 500; }
+.scopeRole { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; }
+.scopeRole strong { color: var(--text-secondary); font-weight: 600; }
+.emptyHint { font-size: 12.5px; color: var(--text-tertiary); padding: 6px 2px; }
+.addScopeRow { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.addScopeRow .textInput { width: auto; flex: 1; }
+
+.effPanel .h { background: #f3faf9; }
+.effGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.effCol { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.effHead {
+  display: flex; align-items: center; gap: 7px; padding: 9px 12px; font-size: 12.5px; font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.effCol.can .effHead { background: var(--status-green-bg); color: var(--status-green); }
+.effCol.cannot .effHead { background: var(--status-red-bg); color: var(--status-red); }
+.effItem { font-size: 12.5px; color: var(--text-secondary); padding: 8px 12px; border-bottom: 1px dashed var(--border); line-height: 1.4; }
+.effItem:last-child { border-bottom: 0; }
+.effItem.muted { color: var(--text-quiet); font-style: italic; }
+
+/* ============================================================
+   ROLES
+   ============================================================ */
+.roleGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--s-3); }
+.roleCard { background: white; border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.roleCardTop { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.roleName { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.roleTag { font-size: 9.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; }
+.roleTag.sys { background: var(--bg-sunken); color: var(--text-tertiary); }
+.roleTag.custom { background: var(--track-finance-tint); color: var(--track-finance); }
+.roleUsers { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-tertiary); }
+.roleDesc { font-size: 12.5px; color: var(--text-secondary); line-height: 1.45; min-height: 36px; }
+.roleTracks { display: flex; flex-wrap: wrap; gap: 6px; }
+.trackChip { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--bg-muted); border: 1px solid var(--border); color: var(--text-secondary); }
+.roleEdit { font-size: 12px; color: var(--text-secondary); }
+.roleEdit .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-tertiary); display: block; margin-bottom: 2px; }
+.roleActions { display: flex; gap: 8px; margin-top: 2px; }
+.roleActions .cta { flex: 1; justify-content: center; }
+
+/* ============================================================
+   RBAC CONFIGURATOR
+   ============================================================ */
+.rbacLayout { display: grid; grid-template-columns: 300px 1fr; gap: var(--s-4); align-items: start; }
+
+.rbacContext { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 76px; }
+.ctxBlock { background: white; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+.ctxLabel { font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-tertiary); font-weight: 600; margin-bottom: 8px; }
+.ctxLabel .opt { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--text-quiet); }
+.ctxRoleMeta { font-size: 11.5px; color: var(--text-tertiary); margin-top: 8px; line-height: 1.45; }
+.dtTabs { display: flex; flex-direction: column; gap: 4px; }
+.dtTab { text-align: left; padding: 7px 10px; border-radius: var(--radius-sm); font-size: 12.5px; color: var(--text-secondary); font-weight: 500; }
+.dtTab:hover { background: var(--bg-muted); }
+.dtTab.on { background: var(--brand-tint); color: var(--brand); font-weight: 600; }
+
+.precedenceBox { background: var(--bg-muted); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+.pbHead { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.precedenceBox p { margin: 0; font-size: 11.5px; color: var(--text-tertiary); line-height: 1.5; }
+.precedenceBox strong { color: var(--text-secondary); }
+
+.versionBox { background: white; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+.vbHead { font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-tertiary); font-weight: 600; margin-bottom: 10px; }
+.vbRow { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px dashed var(--border); }
+.vbRow:last-child { border-bottom: 0; }
+.vbVer { font-family: var(--mono); font-size: 11px; color: var(--text-tertiary); flex-shrink: 0; padding-top: 1px; }
+.vbVer.cur { color: var(--brand); font-weight: 600; }
+.vbNote { font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
+.vbMeta { font-size: 11px; color: var(--text-quiet); margin-top: 2px; }
+
+.dirtyTag { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 500; color: var(--status-amber); }
+.dirtyTag .d { width: 7px; height: 7px; border-radius: 999px; background: var(--status-amber); }
+
+/* main: bulk + matrix + preview */
+.rbacMain { display: flex; flex-direction: column; gap: var(--s-4); }
+.bulkBar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: white; border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+.bulkLabel { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-tertiary); font-weight: 600; margin-right: 4px; }
+
+.matrix { background: white; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.matrixHead, .matrixRow {
+  display: grid; grid-template-columns: 1.7fr 72px 72px 72px 110px 1.5fr;
+  gap: 10px; align-items: center; padding: 9px 14px;
+}
+.matrixHead { font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-tertiary); font-weight: 600; background: var(--bg-muted); border-bottom: 1px solid var(--border); position: sticky; top: 60px; z-index: 2; }
+.matrixHead .mxCheck, .matrixHead .mxState { text-align: center; }
+.matrixCat { font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--brand); font-weight: 600; padding: 9px 14px 5px; background: #f6fbfb; border-bottom: 1px solid var(--border); }
+.matrixRow { border-bottom: 1px solid var(--border); font-size: 13px; }
+.matrixRow:last-child { border-bottom: 0; }
+.matrixRow:hover { background: var(--bg-muted); }
+.matrixRow.isHidden .mxField { color: var(--text-quiet); }
+.mxField { display: flex; align-items: center; gap: 7px; font-weight: 500; }
+.modDot { width: 6px; height: 6px; border-radius: 999px; background: var(--track-ops); flex-shrink: 0; }
+.mxCheck { display: grid; place-items: center; }
+.chk {
+  width: 22px; height: 22px; border-radius: 5px; border: 1.5px solid var(--border-strong);
+  display: grid; place-items: center; color: white; background: white; transition: background .12s, border-color .12s;
+}
+.chk.on { background: var(--brand); border-color: var(--brand); }
+.chk:disabled { background: var(--bg-sunken); border-color: var(--border); cursor: default; opacity: 0.5; }
+.mxState { display: grid; place-items: center; }
+.stateTag { font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.stateTag.rw { background: var(--status-green-bg); color: var(--status-green); }
+.stateTag.ro { background: var(--bg-sunken); color: var(--text-secondary); }
+.stateTag.masked { background: var(--track-finance-tint); color: var(--track-finance); }
+.stateTag.hidden { background: var(--status-red-bg); color: var(--status-red); }
+.mxNote { font-size: 11.5px; color: var(--text-tertiary); line-height: 1.35; }
+
+/* live preview */
+.previewPane { background: white; border: 1px solid var(--brand); border-radius: var(--radius); overflow: hidden; box-shadow: inset 0 0 0 1px var(--brand-tint); }
+.previewHead { padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--brand-tint); }
+.previewHead > div:first-child { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--brand); }
+.previewSub { font-size: 12px; color: #075a64; margin-top: 3px; }
+.previewSub strong { color: var(--text); }
+.recordCard { padding: 8px 16px 14px; columns: 2; column-gap: 28px; }
+.recRow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px dashed var(--border); break-inside: avoid; }
+.recK { font-size: 12px; color: var(--text-tertiary); }
+.recV { font-size: 12.5px; color: var(--text); font-weight: 500; display: inline-flex; align-items: center; gap: 6px; text-align: right; }
+.recRow.hidden .recK { color: var(--text-quiet); }
+.maskedVal { font-family: var(--mono); color: var(--track-finance); letter-spacing: 0.02em; }
+.maskBadge { font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--track-finance); background: var(--track-finance-tint); padding: 1px 5px; border-radius: 3px; }
+.hiddenChip { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-quiet); background: var(--bg-sunken); padding: 1px 7px; border-radius: 999px; }
+.lockMini { color: var(--text-quiet); }
+
+/* preview-as banner (rendered by App) */
+.previewBanner {
+  position: sticky; top: 0; z-index: 60;
+  display: flex; align-items: center; gap: 12px;
+  background: var(--text); color: white; padding: 9px 20px; font-size: 13px;
+}
+.previewBanner .pbDot { width: 7px; height: 7px; border-radius: 999px; background: var(--status-green); box-shadow: 0 0 0 3px rgba(22,163,74,0.3); }
+.previewBanner strong { font-weight: 600; }
+.previewBanner .exit { margin-left: auto; background: rgba(255,255,255,0.15); color: white; padding: 5px 12px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+.previewBanner .exit:hover { background: rgba(255,255,255,0.28); }
+
+@media (max-width: 1080px) {
+  .structLayout, .rbacLayout { grid-template-columns: 1fr; }
+  .structTree, .rbacContext { position: static; }
+  .roleGrid, .effGrid { grid-template-columns: 1fr; }
+  .recordCard { columns: 1; }
+}

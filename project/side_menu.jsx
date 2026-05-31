@@ -1,0 +1,92 @@
+/* Side menu — primary navigation for the dashboard */
+
+const SideMenu = ({ active, setActive, counts, onTrackSelect }) => {
+  const { t } = useT();
+  const tracks = [
+    { id: 'sales',      label: t('track.sales'),      color: 'var(--track-sales)',    count: counts.sales },
+    { id: 'operations', label: t('track.operations'), color: 'var(--track-ops)',      count: counts.operations },
+    { id: 'workshop',   label: t('track.workshop'),   color: 'var(--track-workshop)', count: counts.workshop },
+    { id: 'finance',    label: t('track.finance'),    color: 'var(--track-finance)',  count: counts.finance },
+  ];
+
+  const item = (id, icon, label, badge, badgeKind) => (
+    <button key={id}
+            className={`navItem ${active === id ? 'active' : ''}`}
+            onClick={() => setActive(id)}>
+      <span className="navIco">{icon ? <Icon name={icon} size={15} /> : null}</span>
+      <span className="navLabel">{label}</span>
+      {badge != null && <span className={`navBadge ${badgeKind || ''}`}>{badge}</span>}
+    </button>
+  );
+
+  return (
+    <nav className="sideMenu" aria-label="Main">
+      <div className="logo">
+        <div className="logoMark">DL</div>
+        <div className="logoText">
+          <span className="lt-1">{t('app.brand')}</span>
+          <span className="lt-2">{t('app.subtitle')}</span>
+        </div>
+      </div>
+
+      <div className="sideNav">
+        <div className="navSection">
+          {item('overview', 'eye', t('nav.overview'), counts.urgent || null, counts.urgent ? 'red' : '')}
+          {item('reports', 'chart', t('nav.reports'))}
+          {item('vehicles', 'truck', t('nav.vehicles'))}
+          {item('timeline', 'timeline', t('nav.timelines'))}
+        </div>
+
+        <div className="navSection">
+          <div className="navHead">
+            <span>{t('nav.tracks')}</span>
+            <button className="iconBtn" style={{ width: 22, height: 22 }} title="Add track">
+              <Icon name="plus" size={11} />
+            </button>
+          </div>
+          {tracks.map(tr => (
+            <button key={tr.id}
+                    className={`navItem ${active === tr.id ? 'active' : ''}`}
+                    onClick={() => { onTrackSelect && onTrackSelect(tr.id); setActive(tr.id); }}>
+              <span className="navIco"><span className="navSwatch" style={{ background: tr.color }} /></span>
+              <span className="navLabel">{tr.label}</span>
+              {tr.count != null && (
+                <span className={`navBadge ${tr.count.kind || ''}`}>{tr.count.value}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        <div className="navSection">
+          <div className="navHead">{t('nav.customerFacing')}</div>
+          {item('portal', 'user', t('nav.portal'))}
+          {item('messages', 'mail', t('nav.messages'), null)}
+        </div>
+
+        <div className="navSection">
+          <div className="navHead">Administration</div>
+          {item('structure', 'settings', 'Group structure')}
+          {item('users', 'user', 'Users')}
+          {item('roles', 'lock', 'Roles & permissions')}
+        </div>
+
+        <div className="navSection">
+          <div className="navHead">{t('nav.system')}</div>
+          {item('integrations', 'bolt', t('nav.integrations'))}
+          {item('audit', 'document', t('nav.audit'))}
+          {item('settings', 'settings', t('nav.settings'))}
+        </div>
+      </div>
+
+      <div className="sideFoot">
+        <span className="lamp" />
+        <div>
+          <div>{t('nav.synced')}</div>
+          <div style={{ color: 'var(--text-quiet)' }}>{t('nav.minAgo', { n: 2 })}</div>
+        </div>
+      </div>
+    </nav>
+  );
+};
+
+window.SideMenu = SideMenu;
