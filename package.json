@@ -1,0 +1,23 @@
+{
+  "name": "dlpe-digital",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Intelligence Layer — fleet operations console (frontend + backend)",
+  "workspaces": [
+    "app",
+    "server",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,app -c blue,green \"npm:dev:server\" \"npm:dev:app\"",
+    "dev:server": "npm --workspace server run dev",
+    "dev:app": "npm --workspace app run dev",
+    "build": "npm --workspace server run build && npm --workspace app run build",
+    "db:migrate": "npm --workspace server run db:migrate",
+    "db:seed": "npm --workspace server run db:seed",
+    "db:reset": "npm --workspace server run db:reset"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
