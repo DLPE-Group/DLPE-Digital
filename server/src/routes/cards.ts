@@ -19,7 +19,7 @@ cardsRouter.get('/', async (req, res) => {
 });
 
 cardsRouter.get('/:id', async (req, res) => {
-  const card = await getCard(req.params.id);
+  const card = await getCard(req.params.id, req.user?.id);
   if (!card) return res.status(404).json({ error: 'Card not found' });
   res.json(card);
 });

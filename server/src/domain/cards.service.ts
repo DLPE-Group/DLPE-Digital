@@ -2,6 +2,8 @@ import { prisma } from '../prisma.js';
 import { STAGE_CONFIG, TRACK_ENUM, TRACK_KEY_FROM_ENUM, type TrackKey } from '@dlpe/shared';
 import type { Card, Prisma, Track } from '@prisma/client';
 import { writeAudit } from './audit.service.js';
+import { buildEffectiveForUser } from '../rbac/context.js';
+import { filterCard } from '../rbac/applyCardRules.js';
 
 export function trackKeyToEnum(track: string): Track {
   const e = TRACK_ENUM[track.toLowerCase()];
@@ -13,25 +15,33 @@ export async function listCards(track?: string, userId?: string): Promise<Card[]
   const where: Prisma.CardWhereInput = {};
   if (track) where.track = trackKeyToEnum(track);
   const cards = await prisma.card.findMany({ where, orderBy: { id: 'asc' } });
-
-  // Auto-escalate (compute-on-read): when the caller's autoEscalate pref is on,
-  // a card sitting in the same stage past 2× its stage SLA is surfaced as red.
   if (!userId) return cards;
-  const pref = await prisma.userPreference.findUnique({ where: { userId } });
-  if (!((pref?.prefs as { autoEscalate?: boolean } | null)?.autoEscalate ?? true)) return cards;
 
-  return cards.map((c) => {
-    const trackKey = TRACK_KEY_FROM_ENUM[c.track] as TrackKey;
-    const sla = STAGE_CONFIG[trackKey]?.find((s) => s.id === c.stageId)?.sla ?? 0;
-    if (sla > 0 && c.days > sla * 2 && c.status !== 'red') {
-      return { ...c, status: 'red', escalated: true, daysLabel: `escalated · ${c.days}d in stage` } as Card;
+  // Per-caller: field-level RBAC (always) + auto-escalate (if the pref is on).
+  const [pref, eff] = await Promise.all([
+    prisma.userPreference.findUnique({ where: { userId } }),
+    buildEffectiveForUser(userId),
+  ]);
+  const autoEscalate = (pref?.prefs as { autoEscalate?: boolean } | null)?.autoEscalate ?? true;
+
+  return cards.map((c0) => {
+    const c = filterCard(c0, eff.effective); // strip/mask restricted fields
+    if (autoEscalate) {
+      const trackKey = TRACK_KEY_FROM_ENUM[c.track] as TrackKey;
+      const sla = STAGE_CONFIG[trackKey]?.find((s) => s.id === c.stageId)?.sla ?? 0;
+      if (sla > 0 && c.days > sla * 2 && c.status !== 'red') {
+        return { ...c, status: 'red', escalated: true, daysLabel: `escalated · ${c.days}d in stage` } as Card;
+      }
     }
     return c;
   });
 }
 
-export async function getCard(id: string): Promise<Card | null> {
-  return prisma.card.findUnique({ where: { id } });
+export async function getCard(id: string, userId?: string): Promise<Card | null> {
+  const card = await prisma.card.findUnique({ where: { id } });
+  if (!card || !userId) return card;
+  const { effective } = await buildEffectiveForUser(userId);
+  return filterCard(card, effective);
 }
 
 // Server twin of the frontend `moveStage`: set stageName from StageConfig,

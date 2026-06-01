@@ -7,7 +7,8 @@ import { api } from './api/client.js';
    ============================================================ */
 
 const dbMoney = (n) =>
-  n >= 1e6 ? '€' + (n / 1e6).toFixed(2).replace(/\.?0+$/, '') + 'M'
+  n == null ? '—'
+  : n >= 1e6 ? '€' + (n / 1e6).toFixed(2).replace(/\.?0+$/, '') + 'M'
   : n >= 1e3 ? '€' + Math.round(n / 1e3) + 'k'
   : '€' + Math.round(n);
 
@@ -32,7 +33,7 @@ const TYPES_FOR_SHAPE = {
   cats: ['bar'],
   segments: ['donut', 'bar'],
 };
-const fmtValue = (m, v) => m.shape === 'money' ? dbMoney(v) : (m.unit && m.unit !== '€' ? `${v}${m.unit === '%' ? '%' : ' ' + m.unit}` : v.toLocaleString());
+const fmtValue = (m, v) => v == null ? '—' : m.shape === 'money' ? dbMoney(v) : (m.unit && m.unit !== '€' ? `${v}${m.unit === '%' ? '%' : ' ' + m.unit}` : v.toLocaleString());
 
 /* ---- Snapshot data hook — fetched once from the server, with manual refresh. ---- */
 const useLiveData = () => {
@@ -71,8 +72,8 @@ const LiveBars = ({ cats, color }) => {
       {cats.map((c, i) => (
         <div className="dbBarRow" key={i}>
           <span className="lbl">{c.label}</span>
-          <div className="track"><i style={{ width: `${(c.value / max) * 100}%`, background: c.color || color }} /></div>
-          <span className="val">{c.value >= 1000 ? dbMoney(c.value) : c.value}</span>
+          <div className="track"><i style={{ width: `${((c.value || 0) / max) * 100}%`, background: c.color || color }} /></div>
+          <span className="val">{c.value == null ? '—' : c.value >= 1000 ? dbMoney(c.value) : c.value}</span>
         </div>
       ))}
     </div>
