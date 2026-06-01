@@ -15,9 +15,14 @@
     "build": "npm --workspace server run build && npm --workspace app run build",
     "db:migrate": "npm --workspace server run db:migrate",
     "db:seed": "npm --workspace server run db:seed",
-    "db:reset": "npm --workspace server run db:reset"
+    "db:reset": "npm --workspace server run db:reset",
+    "test": "npm run test:api",
+    "test:api": "vitest run --config vitest.config.mjs",
+    "test:ui": "playwright test"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "@playwright/test": "^1.60.0",
+    "concurrently": "^9.1.0",
+    "vitest": "^4.1.8"
   }
 }
