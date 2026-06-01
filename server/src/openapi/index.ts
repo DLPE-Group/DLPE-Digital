@@ -750,6 +750,35 @@ registry.registerPath({
 });
 
 // ===========================================================================
+// FLEET / PORTAL
+// ===========================================================================
+registry.registerPath({
+  method: 'get',
+  path: '/vehicles',
+  tags: ['Fleet'],
+  summary: 'List fleet vehicles (filter by status / q)',
+  security: secured,
+  request: { query: z.object({ status: z.string().optional(), q: z.string().optional() }) },
+  responses: responses(JsonArray),
+});
+registry.registerPath({
+  method: 'get',
+  path: '/vehicles/timeline',
+  tags: ['Fleet'],
+  summary: 'The vehicle lifecycle drill-down (with ordered events)',
+  security: secured,
+  responses: responses(Json),
+});
+registry.registerPath({
+  method: 'get',
+  path: '/portal',
+  tags: ['Fleet'],
+  summary: 'Customer portal payload (operator + vehicles + invoices + messages)',
+  security: secured,
+  responses: responses(Json),
+});
+
+// ===========================================================================
 // HEALTH (public)
 // ===========================================================================
 registry.registerPath({
