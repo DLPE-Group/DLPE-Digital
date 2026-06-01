@@ -4,14 +4,14 @@ import { useT } from './i18n.jsx';
 
 /* Side menu — primary navigation for the dashboard */
 
-export const SideMenu = ({ active, setActive, counts, onTrackSelect }) => {
+export const SideMenu = ({ active, setActive, counts, onTrackSelect, allowedTracks }) => {
   const { t } = useT();
   const tracks = [
     { id: 'sales',      label: t('track.sales'),      color: 'var(--track-sales)',    count: counts.sales },
     { id: 'operations', label: t('track.operations'), color: 'var(--track-ops)',      count: counts.operations },
     { id: 'workshop',   label: t('track.workshop'),   color: 'var(--track-workshop)', count: counts.workshop },
     { id: 'finance',    label: t('track.finance'),    color: 'var(--track-finance)',  count: counts.finance },
-  ];
+  ].filter((tr) => !allowedTracks || allowedTracks.includes(tr.id));
 
   const item = (id, icon, label, badge, badgeKind) => (
     <button key={id}
