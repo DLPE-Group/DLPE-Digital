@@ -11,6 +11,18 @@ export function trackKeyToEnum(track: string): Track {
   return e as Track;
 }
 
+export interface StageDef { id: string; label: string; sla: number; lock: string | null; cta: string }
+
+// Load the ordered stage set for a track from the DB (admin-editable), falling
+// back to the static shared STAGE_CONFIG if none persisted. This makes Stage
+// Config editor changes (labels / SLA / lock) actually drive runtime behavior.
+export async function loadStages(trackEnum: Track): Promise<StageDef[]> {
+  const rows = await prisma.stageConfig.findMany({ where: { track: trackEnum }, orderBy: { order: 'asc' } });
+  if (rows.length) return rows.map((r) => ({ id: r.stageId, label: r.label, sla: r.sla, lock: r.lock, cta: r.cta }));
+  const key = TRACK_KEY_FROM_ENUM[trackEnum] as TrackKey;
+  return ((STAGE_CONFIG[key] ?? []) as unknown) as StageDef[];
+}
+
 export async function listCards(track?: string, userId?: string): Promise<Card[]> {
   const where: Prisma.CardWhereInput = {};
   if (track) where.track = trackKeyToEnum(track);
@@ -24,11 +36,16 @@ export async function listCards(track?: string, userId?: string): Promise<Card[]
   ]);
   const autoEscalate = (pref?.prefs as { autoEscalate?: boolean } | null)?.autoEscalate ?? true;
 
+  // Preload DB stage config (admin-editable SLAs) for the tracks present.
+  const stagesByTrack: Partial<Record<Track, StageDef[]>> = {};
+  if (autoEscalate) {
+    for (const tr of [...new Set(cards.map((c) => c.track))]) stagesByTrack[tr] = await loadStages(tr);
+  }
+
   return cards.map((c0) => {
     const c = filterCard(c0, eff.effective); // strip/mask restricted fields
     if (autoEscalate) {
-      const trackKey = TRACK_KEY_FROM_ENUM[c.track] as TrackKey;
-      const sla = STAGE_CONFIG[trackKey]?.find((s) => s.id === c.stageId)?.sla ?? 0;
+      const sla = stagesByTrack[c.track]?.find((s) => s.id === c.stageId)?.sla ?? 0;
       if (sla > 0 && c.days > sla * 2 && c.status !== 'red') {
         return { ...c, status: 'red', escalated: true, daysLabel: `escalated · ${c.days}d in stage` } as Card;
       }
@@ -56,7 +73,7 @@ export async function moveStage(
   if (!card) throw new Error('Card not found');
 
   const trackKey = TRACK_KEY_FROM_ENUM[card.track] as TrackKey;
-  const stages = STAGE_CONFIG[trackKey] ?? [];
+  const stages = await loadStages(card.track);
   const stage = stages.find((s) => s.id === stageId);
   const stageName = stage?.label ?? stageId;
 
