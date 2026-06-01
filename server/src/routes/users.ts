@@ -116,6 +116,46 @@ usersRouter.post('/users/:id/scopes', async (req, res) => {
   }
 });
 
+// POST /admin/users/import — bulk-create users from CSV text.
+// Header row required: name,email,roleId[,scopeType,scopeLabel,status]
+usersRouter.post('/users/import', async (req, res) => {
+  const csv = typeof req.body?.csv === 'string' ? req.body.csv.trim() : '';
+  if (!csv) return res.status(400).json({ error: 'csv text required' });
+  const lines = csv.split(/\r?\n/).filter((l: string) => l.trim());
+  if (lines.length < 2) return res.status(400).json({ error: 'CSV needs a header row + at least one data row' });
+  const header = lines[0].split(',').map((h: string) => h.trim().toLowerCase());
+  const col = (cells: string[], name: string) => {
+    const i = header.indexOf(name);
+    return i === -1 ? undefined : cells[i]?.trim();
+  };
+  const created: string[] = [];
+  const errors: { row: number; error: string }[] = [];
+  for (let r = 1; r < lines.length; r++) {
+    const cells = lines[r].split(',');
+    const name = col(cells, 'name');
+    const email = col(cells, 'email');
+    const roleId = col(cells, 'roleid');
+    if (!name || !email || !roleId) { errors.push({ row: r + 1, error: 'name, email and roleId are required' }); continue; }
+    const id = 'u-' + email.split('@')[0].replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    try {
+      const passwordHash = await argon2.hash('demo1234');
+      await prisma.user.create({
+        data: {
+          id, name, email, passwordHash, roleId,
+          initials: name.split(/\s+/).map((s) => s[0]).join('').toUpperCase(),
+          scopeType: (col(cells, 'scopetype') as never) ?? 'company',
+          scopeLabel: col(cells, 'scopelabel') ?? null,
+          status: (col(cells, 'status') as never) ?? 'active',
+        },
+      });
+      created.push(email);
+    } catch (e) {
+      errors.push({ row: r + 1, error: (e as Error).message });
+    }
+  }
+  res.json({ created: created.length, createdEmails: created, errors });
+});
+
 usersRouter.delete('/users/:id/scopes/:scopeId', async (req, res) => {
   await prisma.userScope
     .delete({ where: { id: req.params.scopeId } })
