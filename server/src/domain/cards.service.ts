@@ -25,13 +25,35 @@ export async function moveStage(
   id: string,
   stageId: string,
   actor: { name: string; roleId: string },
+  userId?: string,
 ): Promise<Card> {
   const card = await prisma.card.findUnique({ where: { id } });
   if (!card) throw new Error('Card not found');
 
   const trackKey = TRACK_KEY_FROM_ENUM[card.track] as TrackKey;
-  const stage = STAGE_CONFIG[trackKey]?.find((s) => s.id === stageId);
+  const stages = STAGE_CONFIG[trackKey] ?? [];
+  const stage = stages.find((s) => s.id === stageId);
   const stageName = stage?.label ?? stageId;
+
+  // Stage-lock enforcement: when the acting user has "Enforce stage locks" on
+  // (the default), block a forward jump into a stage whose lock prerequisite
+  // hasn't been reached. Moving backward / one step forward stays allowed.
+  if (userId && stage?.lock) {
+    const pref = await prisma.userPreference.findUnique({ where: { userId } });
+    const enforce = (pref?.prefs as { enforceLocks?: boolean } | null)?.enforceLocks ?? true;
+    if (enforce) {
+      const orderOf = (sid: string) => stages.findIndex((s) => s.id === sid);
+      const lockOrder = orderOf(stage.lock);
+      const curOrder = orderOf(card.stageId);
+      const tgtOrder = orderOf(stageId);
+      if (lockOrder !== -1 && tgtOrder > curOrder && curOrder < lockOrder) {
+        const lockStage = stages.find((s) => s.id === stage.lock);
+        throw new Error(
+          `Stage locked — complete "${lockStage?.label ?? stage.lock}" first. Turn off "Enforce stage locks" in Settings to override.`,
+        );
+      }
+    }
+  }
 
   const updated = await prisma.card.update({
     where: { id },

@@ -227,16 +227,23 @@ const App = () => {
   const moveStage = (trackId, stages, setter) => (itemId, newStageId) => {
     const stage = stages.find(s => s.id === newStageId);
     if (!stage) return;
-    setter(prev => prev.map(it =>
-      it.id === itemId
-        ? { ...it, stageId: newStageId, stageName: stage.label, daysLabel: 'moved now', days: 0 }
-        : it
-    ));
+    let snapshot = null;
+    setter(prev => {
+      snapshot = prev; // capture for revert if the server rejects the move
+      return prev.map(it =>
+        it.id === itemId
+          ? { ...it, stageId: newStageId, stageName: stage.label, daysLabel: 'moved now', days: 0 }
+          : it);
+    });
     setFlashIds([itemId]);
     setTimeout(() => setFlashIds([]), 1500);
     api.put(`/cards/${itemId}/stage`, { stageId: newStageId })
       .then(card => setter(prev => prev.map(it => it.id === itemId ? { ...it, ...card } : it)))
-      .catch(() => {});
+      .catch(err => {
+        if (snapshot) setter(snapshot); // revert optimistic move
+        setToast({ title: 'Move blocked', lines: [err?.message || 'Could not move this card'] });
+        setTimeout(() => setToast(null), 4500);
+      });
   };
 
   // counts for side menu

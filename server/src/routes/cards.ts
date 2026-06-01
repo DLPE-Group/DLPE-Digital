@@ -29,9 +29,9 @@ cardsRouter.put('/:id/stage', async (req, res) => {
   const parsed = stageSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'stageId required' });
   try {
-    res.json(await moveStage(req.params.id, parsed.data.stageId, actor(req)));
+    res.json(await moveStage(req.params.id, parsed.data.stageId, actor(req), req.user?.id));
   } catch (e) {
-    res.status(404).json({ error: (e as Error).message });
+    res.status(400).json({ error: (e as Error).message });
   }
 });
 
