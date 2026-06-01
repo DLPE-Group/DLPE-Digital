@@ -12,7 +12,7 @@ function actor(req: { user?: { name: string; roleId: string } }) {
 cardsRouter.get('/', async (req, res) => {
   const track = typeof req.query.track === 'string' ? req.query.track : undefined;
   try {
-    res.json(await listCards(track));
+    res.json(await listCards(track, req.user?.id));
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }
