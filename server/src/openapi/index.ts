@@ -723,6 +723,31 @@ registry.registerPath({
   security: secured,
   responses: responses(Json),
 });
+const PrefsBody = z.object({
+  enforceLocks: z.boolean(),
+  peppol: z.boolean(),
+  emailNotif: z.boolean(),
+  slackNotif: z.boolean(),
+  dailyDigest: z.boolean(),
+  autoEscalate: z.boolean(),
+}).partial().openapi('PrefsBody');
+registry.registerPath({
+  method: 'get',
+  path: '/me/preferences',
+  tags: ['Me'],
+  summary: 'Current user’s settings toggles (defaults if never saved)',
+  security: secured,
+  responses: responses(PrefsBody),
+});
+registry.registerPath({
+  method: 'put',
+  path: '/me/preferences',
+  tags: ['Me'],
+  summary: 'Update the current user’s settings toggles',
+  security: secured,
+  request: { body: { content: jsonContent(PrefsBody) } },
+  responses: responses(PrefsBody),
+});
 
 // ===========================================================================
 // HEALTH (public)

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Icon } from './icons.jsx';
 import { StageConfigEditor, CrossTrackTriggerEditor } from './editors.jsx';
+import { api } from './api/client.js';
 
 /* ============================================================
    SETTINGS
@@ -10,7 +11,21 @@ export const SettingsView = () => {
   const [toggles, setToggles] = React.useState({
     enforceLocks: true, peppol: true, emailNotif: true, slackNotif: false, dailyDigest: true, autoEscalate: true,
   });
-  const flip = (k) => setToggles(t => ({ ...t, [k]: !t[k] }));
+
+  // Load this user's saved preferences (fallback to defaults on failure).
+  React.useEffect(() => {
+    let cancelled = false;
+    api.get('/me/preferences').then((p) => {
+      if (!cancelled && p && typeof p === 'object') setToggles(t => ({ ...t, ...p }));
+    }).catch(() => { /* keep defaults */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const flip = (k) => setToggles(t => {
+    const next = { ...t, [k]: !t[k] };
+    api.put('/me/preferences', { [k]: next[k] }).catch(e => console.error('Failed to save preference', e));
+    return next;
+  });
 
   return (
     <div className="viewWrap">
