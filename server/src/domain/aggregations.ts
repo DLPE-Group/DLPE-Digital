@@ -156,49 +156,84 @@ export const DEFAULT_CHARTS = [
   { id: 'd6', metricId: 'openByTrack', type: 'bar', title: 'Open items by track' },
 ];
 
-export function dashboardSnapshot() {
+// Dashboard snapshot — computed from live DB cards. Returns render-ready shapes
+// matching what app/src/dashboard.jsx chart components consume.
+// NOTE: wonThisWeek / ontime / followupsDue / newLeads are documented approximations
+// (no first-class source columns exist for them).
+export async function dashboardSnapshot() {
+  const cards = await prisma.card.findMany();
+  const byTrack = (t: string) => cards.filter((c) => c.track === t);
+  const sumValue = (arr: Card[]) => arr.reduce((a, x) => a + (x.value ?? 0), 0);
+
+  const sales = byTrack('SALES');
+  const ops = byTrack('OPERATIONS');
+  const workshop = byTrack('WORKSHOP');
+  const finance = byTrack('FINANCE');
+
+  const stageVal = (arr: Card[], id: string) =>
+    sumValue(arr.filter((x) => x.stageId === id));
+  const stageCount = (arr: Card[], id: string) =>
+    arr.filter((x) => x.stageId === id).length;
+
+  // Approximations
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const wonThisWeek = sumValue(
+    sales.filter((x) => x.stageId === 'won' && x.updatedAt >= weekAgo),
+  );
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const newLeads = cards.filter((x) => x.createdAt >= startOfToday).length;
+  const followupsDue = sales.filter((x) => x.status === 'amber' || x.status === 'red').length;
+  const onGreen = ops.filter((x) => x.status === 'green').length;
+  const ontimePct = ops.length ? Math.round((onGreen / ops.length) * 100) : 0;
+
+  // Finance receivables
+  const receivable = finance.filter((x) => x.type === 'INVOICE');
+  const current = sumValue(receivable.filter((x) => x.stageId === 'awaiting'));
+  const overdue = sumValue(receivable.filter((x) => x.stageId === 'overdue'));
+
   return {
     asOf: new Date().toISOString(),
     metrics: {
-      wonThisWeek: { value: 1240000, change: { dir: 'up', text: '+18% vs last week' } },
-      followupsDue: { value: 18, change: { dir: 'flat', text: 'incl. 6 overdue' } },
-      newLeads: { value: 12, change: { dir: 'up', text: '+3 vs yesterday' } },
-      pipeline: { value: 8620000, change: { dir: 'up', text: '+1.4% vs last month' } },
-      atRisk: { value: 2390000, change: { dir: 'down', text: '3 deals at risk' } },
+      pipeline: { value: sumValue(sales) },
+      atRisk: { value: sumValue(sales.filter((x) => x.status === 'red')) },
+      wonThisWeek: { value: wonThisWeek },
+      followupsDue: { value: followupsDue },
+      newLeads: { value: newLeads },
       ontime: {
-        pct: 87,
+        pct: ontimePct,
         segments: [
-          { label: 'On-time', value: 87, color: 'var(--status-green)' },
-          { label: 'Late', value: 13, color: 'var(--status-amber)' },
+          { label: 'On-time', value: ontimePct, color: 'var(--status-green)' },
+          { label: 'Late', value: 100 - ontimePct, color: 'var(--status-amber)' },
         ],
       },
       receivables: {
         segments: [
-          { label: 'Current', value: 185, color: 'var(--track-finance)' },
-          { label: '31d+ overdue', value: 94, color: 'var(--status-red)' },
+          { label: 'Current', value: current, color: 'var(--track-finance)' },
+          { label: '31d+ overdue', value: overdue, color: 'var(--status-red)' },
         ],
       },
       pipelineStage: {
         cats: [
-          { label: 'Meeting', value: 620000 },
-          { label: 'Offer', value: 1240000 },
-          { label: 'Contract', value: 6760000 },
+          { label: 'Meeting', value: stageVal(sales, 'meeting') },
+          { label: 'Offer', value: stageVal(sales, 'offer') },
+          { label: 'Contract', value: stageVal(sales, 'contract') },
         ],
       },
       openByTrack: {
         cats: [
-          { label: 'Sales', value: 5, color: 'var(--track-sales)' },
-          { label: 'Operations', value: 6, color: 'var(--track-ops)' },
-          { label: 'Workshop', value: 4, color: 'var(--track-workshop)' },
-          { label: 'Finance', value: 3, color: 'var(--track-finance)' },
+          { label: 'Sales', value: sales.length, color: 'var(--track-sales)' },
+          { label: 'Operations', value: ops.length, color: 'var(--track-ops)' },
+          { label: 'Workshop', value: workshop.length, color: 'var(--track-workshop)' },
+          { label: 'Finance', value: finance.length, color: 'var(--track-finance)' },
         ],
       },
       workorders: {
         cats: [
-          { label: 'Parts', value: 1 },
-          { label: 'In repair', value: 1 },
-          { label: 'Released', value: 1 },
-          { label: 'Invoice in', value: 1 },
+          { label: 'Parts', value: stageCount(workshop, 'parts') },
+          { label: 'In repair', value: stageCount(workshop, 'in_repair') },
+          { label: 'Released', value: stageCount(workshop, 'released') },
+          { label: 'Invoice in', value: stageCount(workshop, 'invoice_in') },
         ],
       },
     },
