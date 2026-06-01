@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../prisma.js';
 import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
+import { loadPipelineCards } from '../domain/cards.service.js';
 
 // In-app notifications, DERIVED from live DB state (no external delivery).
 // - red-status cards  → risk alerts
@@ -8,10 +9,11 @@ import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
 export const notificationsRouter: Router = Router();
 
 notificationsRouter.get('/notifications', async (_req, res) => {
-  const [redCards, criticals] = await Promise.all([
-    prisma.card.findMany({ where: { status: 'red' }, orderBy: { id: 'asc' } }),
+  const [allCards, criticals] = await Promise.all([
+    loadPipelineCards(),
     prisma.auditEntry.findMany({ where: { kind: 'critical' }, orderBy: { createdAt: 'desc' }, take: 8 }),
   ]);
+  const redCards = allCards.filter((c) => c.status === 'red');
 
   const items = [
     ...redCards.map((c) => ({
