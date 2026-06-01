@@ -14,15 +14,42 @@ const statusLabel = { active: 'Active', invited: 'Invited', disabled: 'Disabled'
 export const UserDetail = ({ user, onBack, onPreviewAs }) => {
   const [secondary, setSecondary] = React.useState(user.secondary);
   const [adding, setAdding] = React.useState(false);
-  const [summary, setSummary] = React.useState(user.summary);
+  const [summary] = React.useState(user.summary);
 
-  const addScope = (scope, role) => {
-    setSecondary(s => [...s, { scope, role }]);
-    setSummary(sum => ({
-      ...sum,
-      can: [...sum.can, `Read all Sales records in ${scope}`],
-    }));
+  // Load the real user's persisted secondary scopes (with server ids) on open.
+  React.useEffect(() => {
+    let cancelled = false;
+    api.get(`/admin/users/${user.id}`).then((u) => {
+      if (cancelled || !u || !Array.isArray(u.secondary)) return;
+      setSecondary(u.secondary.map((s) => ({
+        id: s.id,
+        scope: s.scopeLabel || s.scopeNode?.name || 'Scope',
+        role: s.roleLabel || s.role?.name || '—',
+      })));
+    }).catch(() => { /* keep seed-provided secondary */ });
+    return () => { cancelled = true; };
+  }, [user.id]);
+
+  const addScope = async (scope, role) => {
+    const roleId = (ROLES.find((r) => r.name === role) || {}).id || null;
+    let created;
+    try {
+      created = await api.post(`/admin/users/${user.id}/scopes`,
+        { scopeType: 'company', scopeLabel: scope, roleLabel: role, roleId });
+    } catch (e) {
+      console.error('Failed to add scope', e);
+      created = { id: 'tmp-' + Date.now() };
+    }
+    setSecondary((s) => [...s, { id: created.id, scope, role }]);
     setAdding(false);
+  };
+
+  const removeScope = async (i) => {
+    const row = secondary[i];
+    setSecondary((arr) => arr.filter((_, j) => j !== i));
+    if (row?.id && !String(row.id).startsWith('tmp-')) {
+      api.del(`/admin/users/${user.id}/scopes/${row.id}`).catch((e) => console.error('Failed to remove scope', e));
+    }
   };
 
   return (
@@ -80,7 +107,7 @@ export const UserDetail = ({ user, onBack, onPreviewAs }) => {
                   <div className="scopeRole">Role · <strong>{s.role}</strong></div>
                 </div>
               </div>
-              <button className="miniBtn" onClick={() => setSecondary(arr => arr.filter((_, j) => j !== i))}>Remove</button>
+              <button className="miniBtn" onClick={() => removeScope(i)}>Remove</button>
             </div>
           ))}
           {adding && (
