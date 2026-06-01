@@ -11,6 +11,31 @@ export function trackKeyToEnum(track: string): Track {
   return e as Track;
 }
 
+const ALL_TRACKS = ['sales', 'operations', 'workshop', 'finance'];
+
+// role.tracks holds human labels ("All tracks", "Sales", "Workshop (read)", …).
+// Parse them into the set of track keys the role may VIEW.
+export function allowedFromTracksText(tracksArr: string[]): string[] {
+  const out = new Set<string>();
+  for (const t of tracksArr) {
+    const s = String(t).toLowerCase();
+    if (s.startsWith('all')) { ALL_TRACKS.forEach((k) => out.add(k)); continue; }
+    for (const k of ALL_TRACKS) if (s.includes(k)) out.add(k);
+  }
+  return [...out];
+}
+
+// Union of track keys the user may view across primary + secondary roles.
+export async function userAllowedTracks(userId: string): Promise<string[]> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, include: { secondary: true } });
+  if (!user) return ALL_TRACKS;
+  const roleIds = Array.from(new Set([user.roleId, ...user.secondary.map((s) => s.roleId).filter((r): r is string => !!r)]));
+  const roles = await prisma.role.findMany({ where: { id: { in: roleIds } } });
+  const set = new Set<string>();
+  for (const r of roles) allowedFromTracksText(r.tracks).forEach((k) => set.add(k));
+  return [...set];
+}
+
 export interface StageDef { id: string; label: string; sla: number; lock: string | null; cta: string }
 
 // Load the ordered stage set for a track from the DB (admin-editable), falling
@@ -26,8 +51,12 @@ export async function loadStages(trackEnum: Track): Promise<StageDef[]> {
 export async function listCards(track?: string, userId?: string): Promise<Card[]> {
   const where: Prisma.CardWhereInput = {};
   if (track) where.track = trackKeyToEnum(track);
-  const cards = await prisma.card.findMany({ where, orderBy: { id: 'asc' } });
+  let cards = await prisma.card.findMany({ where, orderBy: { id: 'asc' } });
   if (!userId) return cards;
+
+  // Functional access: hide tracks the caller's role(s) cannot view.
+  const allowed = await userAllowedTracks(userId);
+  cards = cards.filter((c) => allowed.includes(TRACK_KEY_FROM_ENUM[c.track]));
 
   // Per-caller: field-level RBAC (always) + auto-escalate (if the pref is on).
   const [pref, eff] = await Promise.all([
