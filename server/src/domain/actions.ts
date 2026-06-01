@@ -3,6 +3,8 @@ import { prisma } from '../prisma.js';
 import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
 import { runTriggers } from './triggers.engine.js';
 import { writeAudit, type CascadeLine } from './audit.service.js';
+import { entityToCardDTO, type EntityRow } from './projection.js';
+import { cardPatchToEntityData } from './cards.service.js';
 
 export type ActionName =
   | 'sendFollowUp'
@@ -100,11 +102,16 @@ export async function runAction(
   if (cascadeCfg) {
     // Transactional: patch source + run triggers + write one audit entry w/ children.
     return prisma.$transaction(async (tx) => {
-      const source = await tx.card.findUnique({ where: { id: cardId } });
-      if (!source) throw new Error('Card not found');
+      const sourceRow = await tx.entity.findUnique({ where: { id: cardId } });
+      if (!sourceRow) throw new Error('Card not found');
+      const source = entityToCardDTO(sourceRow as unknown as EntityRow) as unknown as Card;
 
       const patch = PATCHES[action](source, state);
-      const card = await tx.card.update({ where: { id: cardId }, data: patch });
+      const updatedRow = await tx.entity.update({
+        where: { id: cardId },
+        data: cardPatchToEntityData(patch as Partial<Card>, (sourceRow.fields ?? {}) as Record<string, unknown>),
+      });
+      const card = entityToCardDTO(updatedRow as unknown as EntityRow) as unknown as Card;
 
       const whenTrack = TRACK_KEY_FROM_ENUM[source.track];
       const { createdCards, cascadeLines } = await runTriggers(tx, {
@@ -142,10 +149,15 @@ export async function runAction(
   }
 
   // Non-cascading action: patch + audit.
-  const source = await prisma.card.findUnique({ where: { id: cardId } });
-  if (!source) throw new Error('Card not found');
+  const sourceRow = await prisma.entity.findUnique({ where: { id: cardId } });
+  if (!sourceRow) throw new Error('Card not found');
+  const source = entityToCardDTO(sourceRow as unknown as EntityRow) as unknown as Card;
   const patch = PATCHES[action](source, state);
-  const card = await prisma.card.update({ where: { id: cardId }, data: patch });
+  const updatedRow = await prisma.entity.update({
+    where: { id: cardId },
+    data: cardPatchToEntityData(patch as Partial<Card>, (sourceRow.fields ?? {}) as Record<string, unknown>),
+  });
+  const card = entityToCardDTO(updatedRow as unknown as EntityRow) as unknown as Card;
 
   await writeAudit({
     actor: actor.name,
