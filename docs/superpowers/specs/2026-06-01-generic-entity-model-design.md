@@ -303,3 +303,23 @@ and projection functions (`server/src/domain/projection.ts`).
   `tenancy-rls-decision`. Architectural choice — review approach first.)
 - **1d** — physical partitioning of `Entity` by `entityTypeId`/`tenantId` (raw
   SQL migration), applied when volume warrants.
+
+---
+
+## Phase 1b status (implemented)
+
+`Entity` is now the **single source of truth** for pipeline + reference items.
+All live read/write paths operate on it, projecting to the legacy DTOs at the
+boundary, so the frontend is unchanged. `Card`/`Vehicle` tables are **dormant**
+(no longer read or written).
+
+Flipped: `cards.service` (list/get/move/patch), `actions` + `triggers` (writes +
+Brussels cascade), `audit.service` (revert), `aggregations` (computeTrack +
+dashboard), `search`, `notifications`, and `fleet` (`/vehicles`, `/portal`).
+Existing RBAC (`filterCard`/`CARD_FIELD_MAP`), scope (`visibleCompanyIds`), and
+auto-escalate logic are reused unchanged on projected DTOs. **48 API + 7 UI tests
+green; live smoke confirms reads serve from `Entity`.**
+
+**Still deferred:** per-EntityType field governance (replace `CARD_FIELD_MAP`),
+SQL `GROUP BY` aggregation, pagination → Phase 2. RLS → 1c. Partitioning → 1d.
+`Card`/`Vehicle` table drop → Phase 4 cleanup.
