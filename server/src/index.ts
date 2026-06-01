@@ -17,6 +17,7 @@ import { stageConfigRouter } from './routes/stageConfig.js';
 import { triggersRouter } from './routes/triggers.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { permissionsRouter } from './routes/permissions.js';
+import { recordsRouter } from './routes/records.js';
 
 const app = express();
 
@@ -42,6 +43,7 @@ app.use('/api/admin', usersRouter);
 app.use('/api/admin', fieldRulesRouter);
 app.use('/api/admin', stageConfigRouter);
 app.use('/api/admin', triggersRouter);
+app.use('/api/records', recordsRouter);
 app.use('/api/me', dashboardRouter);
 app.use('/api/me', permissionsRouter);
 

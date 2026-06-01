@@ -99,3 +99,34 @@ export interface FieldRuleShape {
 }
 
 export const DEFAULT_RULE: FieldRuleShape = { visible: true, editable: true, masked: false };
+
+/* Sample record values for the live preview pane + /records demo endpoint.
+   Ported from app/src/admin_data.js (SAMPLE_RECORDS). Static demo data. */
+export const SAMPLE_RECORDS: Record<string, Record<string, string>> = {
+  contract: {
+    customer_name: 'Rotterdam Logistics B.V.', customer_vat: 'NL8021.94.331.B01',
+    company_owner: 'Rotterdam Branch', contract_value: '€1,240,000', monthly_fee: '€18,400 / mo',
+    bank_account: 'NL91 ABNA 0417 1643 00', margin: '14.2%', sales_rep: 'Eva de Vries',
+    renewal_date: '14 Mar 2027', term: '48 months · full-service lease',
+    notes_internal: 'Price-sensitive; competitor quote on file.', notes_customer: 'Quarterly review scheduled.',
+  },
+  vehicle: {
+    plate: 'TRK-7702', vin: 'WMA06XZZ4PM••••12', model: 'MAN TGS 26.420', operator: 'Düsseldorf Bau B.V.',
+    lease_value: '€96,400', last_ws_cost: '€3,180', maint_cost: '€412 / mo', parts_margin: '22%',
+    service_due: 'in 12 days', odometer: '184,200 km', location: 'Düsseldorf workshop',
+  },
+  fleet_operator: {
+    name: 'Rotterdam Logistics B.V.', vat: 'NL8021.94.331.B01', contact: 'J. Bakker',
+    credit_limit: '€2,000,000', outstanding: '€184,200', lifetime_value: '€8.4M',
+    fleet_size: '47 vehicles', account_mgr: 'Eva de Vries',
+  },
+  invoice: {
+    number: 'ROT-2026-0481', counterparty: 'Amsterdam Cold Chain N.V.', amount: '€18,400',
+    vat_amount: '€3,864', bank_account: 'NL91 ABNA 0417 1643 00', payment_status: 'Awaiting payment',
+    due_date: '30 Jun 2026', peppol_id: '0190:NL8021943310000',
+  },
+  workshop_order: {
+    wo_number: 'WO-2026-118', vehicle: 'TRK-7702 · MAN TGS', labor_cost: '€1,640',
+    parts_cost: '€1,540', parts_margin: '22%', status: 'In repair · brakes', eta: '02 Jun 2026',
+  },
+};

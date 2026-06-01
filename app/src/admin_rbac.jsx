@@ -1,6 +1,37 @@
 import React from 'react';
 import { Icon } from './icons.jsx';
 import { ROLES, DATA_TYPES, FIELD_RULES, DEFAULT_RULE, SAMPLE_RECORDS, RBAC_VERSIONS, FIELD_CATEGORIES } from './admin_data.js';
+import { api } from './api/client.js';
+
+const SCOPE_QUERY = { any: 'ANY', nl: 'NL', be: 'BE', de: 'DE', rotterdam: 'ROTTERDAM' };
+
+/* Convert the server's flat FieldRule rows into the configurator's nested
+   roleId -> dtId -> fieldId -> {visible,editable,masked,note} diff map. */
+function rowsToRuleMap(rows) {
+  const map = {};
+  for (const r of rows || []) {
+    (map[r.roleId] ||= {});
+    (map[r.roleId][r.dataTypeId] ||= {});
+    map[r.roleId][r.dataTypeId][r.fieldId] = {
+      visible: r.visible, editable: r.editable, masked: r.masked,
+      ...(r.note ? { note: r.note } : {}),
+    };
+  }
+  return map;
+}
+
+/* Compute the diffs to persist for one role+dataType+scope from the nested map.
+   We send the full set of fields the role overrides on this data type. */
+function diffsForRole(rules, roleId, dtId, scopeEnum) {
+  const byDt = rules[roleId]?.[dtId] || {};
+  return Object.entries(byDt).map(([fieldId, r]) => ({
+    roleId, dataTypeId: dtId, fieldId, scope: scopeEnum,
+    visible: r.visible !== undefined ? r.visible : DEFAULT_RULE.visible,
+    editable: r.editable !== undefined ? r.editable : DEFAULT_RULE.editable,
+    masked: r.masked !== undefined ? r.masked : DEFAULT_RULE.masked,
+    note: r.note || null,
+  }));
+}
 
 /* ============================================================
    ROLES + FIELD-LEVEL RBAC CONFIGURATOR  (Spec §2, §3)
@@ -113,14 +144,59 @@ export const RbacConfigurator = ({ initialRole, onBack, onPreviewRole }) => {
   const [roleId, setRoleId] = React.useState(initialRole || 'sales-rep');
   const [dtId, setDtId] = React.useState('contract');
   const [scope, setScope] = React.useState('any');
-  const [version, setVersion] = React.useState(4);
   const [dirty, setDirty] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
 
-  // Local editable rules: roleId -> dtId -> fieldId -> rule (only stores diffs)
+  // Local editable rules: roleId -> dtId -> fieldId -> rule (only stores diffs).
+  // Seeded from the imported FIELD_RULES, then overlaid with what the server has.
   const [rules, setRules] = React.useState(() => JSON.parse(JSON.stringify(FIELD_RULES)));
+
+  // Version history loaded from the server (falls back to imported constants).
+  const [versions, setVersions] = React.useState(RBAC_VERSIONS);
+  const version = versions[0]?.v ?? 4;
+
+  // Server-enforced filtered record for the preview pane (source of truth).
+  const [serverRecord, setServerRecord] = React.useState(null);
 
   const role = ROLES.find(r => r.id === roleId);
   const dt = DATA_TYPES.find(d => d.id === dtId);
+
+  // Load this role's persisted rules from the server when the role changes.
+  React.useEffect(() => {
+    let cancelled = false;
+    api.get(`/admin/field-rules?role=${encodeURIComponent(roleId)}`)
+      .then(rows => {
+        if (cancelled) return;
+        const loaded = rowsToRuleMap(rows);
+        setRules(prev => {
+          const next = JSON.parse(JSON.stringify(prev));
+          // Replace this role's rules wholesale with the server's truth.
+          next[roleId] = loaded[roleId] || {};
+          return next;
+        });
+        setDirty(false);
+      })
+      .catch(() => { /* keep imported FIELD_RULES fallback */ });
+    return () => { cancelled = true; };
+  }, [roleId]);
+
+  // Load version history once on mount.
+  React.useEffect(() => {
+    api.get('/admin/rbac/versions')
+      .then(vs => { if (Array.isArray(vs) && vs.length) setVersions(vs); })
+      .catch(() => { /* keep imported RBAC_VERSIONS fallback */ });
+  }, []);
+
+  // Fetch the server-filtered record for the preview pane whenever the
+  // role/data-type changes or local edits are saved (server is source of truth).
+  const refreshPreview = React.useCallback(() => {
+    let cancelled = false;
+    api.get(`/records/${dtId}?role=${encodeURIComponent(roleId)}`)
+      .then(res => { if (!cancelled) setServerRecord(res.record); })
+      .catch(() => { if (!cancelled) setServerRecord(null); });
+    return () => { cancelled = true; };
+  }, [roleId, dtId]);
+  React.useEffect(() => refreshPreview(), [refreshPreview]);
 
   const getRule = (fid) => ({ ...DEFAULT_RULE, ...(rules[roleId]?.[dtId]?.[fid] || {}) });
   const modified = (fid) => !!rules[roleId]?.[dtId]?.[fid];
@@ -171,7 +247,26 @@ export const RbacConfigurator = ({ initialRole, onBack, onPreviewRole }) => {
     setDirty(true);
   };
 
-  const save = () => { setVersion(v => v + 1); setDirty(false); };
+  const save = async () => {
+    setSaving(true);
+    try {
+      const scopeEnum = SCOPE_QUERY[scope] || 'ANY';
+      const diffs = diffsForRole(rules, roleId, dtId, scopeEnum);
+      await api.put('/admin/field-rules', {
+        diffs,
+        actor: 'Console admin',
+        note: `Updated ${dt.label} rules for ${role?.name || roleId}`,
+      });
+      const vs = await api.get('/admin/rbac/versions');
+      if (Array.isArray(vs) && vs.length) setVersions(vs);
+      setDirty(false);
+      refreshPreview();
+    } catch {
+      // Optimistic local state is kept; leave dirty so the user can retry.
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const cats = FIELD_CATEGORIES.filter(c => dt.fields.some(f => f.cat === c));
   const sample = SAMPLE_RECORDS[dtId];
@@ -192,7 +287,7 @@ export const RbacConfigurator = ({ initialRole, onBack, onPreviewRole }) => {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {dirty && <span className="dirtyTag"><span className="d" /> Unsaved changes</span>}
           <button className="cta ghost" onClick={() => onPreviewRole(roleId)}><Icon name="eye" size={13} strokeWidth={2} /> Preview as user</button>
-          <button className="cta" onClick={save} disabled={!dirty}><Icon name="check" size={12} strokeWidth={2} /> Save &amp; deploy</button>
+          <button className="cta" onClick={save} disabled={!dirty || saving}><Icon name="check" size={12} strokeWidth={2} /> {saving ? 'Saving…' : 'Save & deploy'}</button>
         </div>
       </div>
 
@@ -237,7 +332,7 @@ export const RbacConfigurator = ({ initialRole, onBack, onPreviewRole }) => {
 
           <div className="versionBox">
             <div className="vbHead">Version history</div>
-            {RBAC_VERSIONS.map(v => (
+            {versions.map(v => (
               <div className="vbRow" key={v.v}>
                 <span className={`vbVer ${v.v === version ? 'cur' : ''}`}>v{v.v}</span>
                 <div>
@@ -286,9 +381,13 @@ export const RbacConfigurator = ({ initialRole, onBack, onPreviewRole }) => {
             </div>
             <div className="recordCard">
               {dt.fields.map(f => {
-                const rule = getRule(f.id);
-                const val = sample[f.id];
-                if (!rule.visible) {
+                // Server response is the source of truth; fall back to local
+                // effRule/maskValue for instant preview before it arrives.
+                const useServer = serverRecord != null;
+                const hidden = useServer
+                  ? (serverRecord.__hidden || []).includes(f.id)
+                  : !getRule(f.id).visible;
+                if (hidden) {
                   return (
                     <div className="recRow hidden" key={f.id}>
                       <div className="recK">{f.label}</div>
@@ -296,13 +395,24 @@ export const RbacConfigurator = ({ initialRole, onBack, onPreviewRole }) => {
                     </div>
                   );
                 }
+                const rule = getRule(f.id);
+                const readonly = useServer
+                  ? (serverRecord.__readonly || []).includes(f.id)
+                  : !rule.editable;
+                // The server has already masked the value; locally we mask on the fly.
+                const displayVal = useServer
+                  ? serverRecord[f.id]
+                  : (rule.masked ? maskValue(f.id, sample[f.id]) : sample[f.id]);
+                const masked = useServer
+                  ? displayVal !== sample[f.id]
+                  : rule.masked;
                 return (
                   <div className="recRow" key={f.id}>
                     <div className="recK">{f.label}</div>
                     <div className="recV">
-                      <span className={rule.masked ? 'maskedVal' : ''}>{rule.masked ? maskValue(f.id, val) : val}</span>
-                      {!rule.editable && <Icon name="lock" size={10} className="lockMini" />}
-                      {rule.masked && <span className="maskBadge">masked</span>}
+                      <span className={masked ? 'maskedVal' : ''}>{displayVal}</span>
+                      {readonly && <Icon name="lock" size={10} className="lockMini" />}
+                      {masked && <span className="maskBadge">masked</span>}
                     </div>
                   </div>
                 );
