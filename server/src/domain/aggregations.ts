@@ -1,8 +1,25 @@
 import { prisma } from '../prisma.js';
-import { trackKeyToEnum } from './cards.service.js';
+import { trackKeyToEnum, userAllowedTracks } from './cards.service.js';
+import { visibleCompanyIds } from '../rbac/scope.js';
 import { buildEffectiveForUser } from '../rbac/context.js';
 import { valueRestricted } from '../rbac/applyCardRules.js';
+import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
 import type { Card } from '@prisma/client';
+
+// Apply track-access (H3) + row-level scope (H4) to a card set for the caller.
+// Returns the scoped cards plus the caller's allowed track keys (null = all,
+// e.g. unauthenticated callers — no filtering).
+async function scopeCardsFor(
+  cards: Card[],
+  userId?: string,
+): Promise<{ cards: Card[]; allowed: string[] | null }> {
+  if (!userId) return { cards, allowed: null };
+  const allowed = await userAllowedTracks(userId);
+  let out = cards.filter((c) => allowed.includes(TRACK_KEY_FROM_ENUM[c.track]));
+  const visible = await visibleCompanyIds(userId);
+  if (visible) out = out.filter((c) => c.companyId != null && visible.has(c.companyId));
+  return { cards: out, allowed };
+}
 
 const MASK = '€XXX,XXX';
 // True if the caller may not see monetary contract values.
@@ -50,8 +67,11 @@ export interface TrackAggregate {
 // When the caller may not see contract values, money figures are masked.
 export async function computeTrack(track: string, userId?: string): Promise<TrackAggregate> {
   const trackEnum = trackKeyToEnum(track);
-  const items = await prisma.card.findMany({ where: { track: trackEnum } });
+  const raw = await prisma.card.findMany({ where: { track: trackEnum } });
   const key = track.toLowerCase();
+  // Track-access (H3) + scope (H4): if the caller can't view this track, the
+  // scoped set is empty and every metric computes to zero.
+  const { cards: items } = await scopeCardsFor(raw, userId);
   const restricted = await callerValueRestricted(userId);
   const agg = await computeTrackInner(items, key);
   if (!restricted) return agg;
@@ -189,7 +209,9 @@ export const DEFAULT_CHARTS = [
 // NOTE: wonThisWeek / ontime / followupsDue / newLeads are documented approximations
 // (no first-class source columns exist for them).
 export async function dashboardSnapshot(userId?: string) {
-  const cards = await prisma.card.findMany();
+  // Track-access (H3) + scope (H4): the snapshot reflects only what the caller
+  // may see, so the overview matches the side menu and the per-track lists.
+  const { cards, allowed } = await scopeCardsFor(await prisma.card.findMany(), userId);
   const restricted = await callerValueRestricted(userId);
   // money() nulls out monetary values for callers who can't see contract values.
   const money = (v: number) => (restricted ? null : v);
@@ -253,12 +275,13 @@ export async function dashboardSnapshot(userId?: string) {
         ],
       },
       openByTrack: {
+        // Only tracks the caller may view (null = all, for unauthenticated/admin-all).
         cats: [
-          { label: 'Sales', value: sales.length, color: 'var(--track-sales)' },
-          { label: 'Operations', value: ops.length, color: 'var(--track-ops)' },
-          { label: 'Workshop', value: workshop.length, color: 'var(--track-workshop)' },
-          { label: 'Finance', value: finance.length, color: 'var(--track-finance)' },
-        ],
+          { key: 'sales', label: 'Sales', value: sales.length, color: 'var(--track-sales)' },
+          { key: 'operations', label: 'Operations', value: ops.length, color: 'var(--track-ops)' },
+          { key: 'workshop', label: 'Workshop', value: workshop.length, color: 'var(--track-workshop)' },
+          { key: 'finance', label: 'Finance', value: finance.length, color: 'var(--track-finance)' },
+        ].filter((c) => !allowed || allowed.includes(c.key)),
       },
       workorders: {
         cats: [

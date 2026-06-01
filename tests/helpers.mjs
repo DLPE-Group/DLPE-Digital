@@ -19,8 +19,8 @@ export function token(sub = 'u-robert', email = 'r.mertens@group.eu', roleId = '
 export const ADMIN = () => token('u-robert', 'r.mertens@group.eu', 'group-admin');
 export const SALES_MGR = () => token('u-markus', 'm.weber@group.eu', 'sales-mgr');
 
-export async function req(method, path, { body, tok } = {}) {
-  const headers = { 'content-type': 'application/json' };
+export async function req(method, path, { body, tok, headers: extra } = {}) {
+  const headers = { 'content-type': 'application/json', ...(extra || {}) };
   if (tok) headers.authorization = `Bearer ${tok}`;
   const res = await fetch(API + path, {
     method,

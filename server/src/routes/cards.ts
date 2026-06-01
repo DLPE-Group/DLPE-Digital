@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { listCards, getCard, moveStage, patchCard } from '../domain/cards.service.js';
 import { runAction, type ActionName } from '../domain/actions.js';
+import { actingUserId } from '../auth/preview.js';
 
 export const cardsRouter: Router = Router();
 
@@ -12,14 +13,14 @@ function actor(req: { user?: { name: string; roleId: string } }) {
 cardsRouter.get('/', async (req, res) => {
   const track = typeof req.query.track === 'string' ? req.query.track : undefined;
   try {
-    res.json(await listCards(track, req.user?.id));
+    res.json(await listCards(track, actingUserId(req)));
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }
 });
 
 cardsRouter.get('/:id', async (req, res) => {
-  const card = await getCard(req.params.id, req.user?.id);
+  const card = await getCard(req.params.id, actingUserId(req));
   if (!card) return res.status(404).json({ error: 'Card not found' });
   res.json(card);
 });
