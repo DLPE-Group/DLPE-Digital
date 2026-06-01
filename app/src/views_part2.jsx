@@ -2,6 +2,7 @@ import React from 'react';
 import { Icon } from './icons.jsx';
 import { StageConfigEditor, CrossTrackTriggerEditor } from './editors.jsx';
 import { api } from './api/client.js';
+import { SimBadge } from './primitives.jsx';
 
 /* ============================================================
    SETTINGS
@@ -67,21 +68,21 @@ export const SettingsView = () => {
           </div>
           <div className="toggleRow">
             <div>
-              <div className="t">Email notifications</div>
+              <div className="t">Email notifications <SimBadge label="No delivery" title="Preference is saved, but no email backend is connected" /></div>
               <div className="d">Receive emails for items at red status on tracks you own.</div>
             </div>
             <div className={`toggle ${toggles.emailNotif ? 'on' : ''}`} onClick={() => flip('emailNotif')} />
           </div>
           <div className="toggleRow">
             <div>
-              <div className="t">Slack notifications</div>
+              <div className="t">Slack notifications <SimBadge label="No delivery" title="Preference is saved, but no Slack backend is connected" /></div>
               <div className="d">Post to <code>#fleet-ops-benelux</code> when cross-track cascades fire.</div>
             </div>
             <div className={`toggle ${toggles.slackNotif ? 'on' : ''}`} onClick={() => flip('slackNotif')} />
           </div>
           <div className="toggleRow">
             <div>
-              <div className="t">Daily morning digest</div>
+              <div className="t">Daily morning digest <SimBadge label="No delivery" title="Preference is saved, but no email scheduler is connected" /></div>
               <div className="d">A snapshot of red and amber items emailed at 07:30 your local time.</div>
             </div>
             <div className={`toggle ${toggles.dailyDigest ? 'on' : ''}`} onClick={() => flip('dailyDigest')} />

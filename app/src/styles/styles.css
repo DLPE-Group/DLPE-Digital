@@ -1487,3 +1487,21 @@ a {
   70% { box-shadow: 0 0 0 6px rgba(22,163,74,0); }
   100% { box-shadow: 0 0 0 0 rgba(22,163,74,0); }
 }
+
+/* Simulated-feature indicator (demo only — no external service connected). */
+.simBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary, #8a8f98);
+  background: color-mix(in srgb, var(--brand, #6366f1) 10%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--brand, #6366f1) 35%, transparent);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.simBadge svg { opacity: 0.85; }
