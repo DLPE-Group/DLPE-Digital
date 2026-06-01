@@ -1,0 +1,360 @@
+// Intelligence Layer — Phase 1 Prisma schema.
+// Unified Card table with a `track` discriminator; self-referential OrgNode tree;
+// JWT auth (User/Session/UserScope); RBAC FieldRule diffs; and 1:1 mock-shape models.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Track {
+  SALES
+  OPERATIONS
+  WORKSHOP
+  FINANCE
+}
+
+enum OrgKind {
+  GROUP
+  REGION
+  COUNTRY
+  COMPANY
+}
+
+enum ScopeType {
+  group
+  region
+  country
+  multi_company
+  company
+  self
+}
+
+enum UserStatus {
+  active
+  invited
+  disabled
+}
+
+enum SharingMode {
+  shared
+  private
+  group
+}
+
+enum RuleScope {
+  ANY
+  NL
+  BE
+  DE
+  ROTTERDAM
+}
+
+// ---------------- Org tree (group → region → country → company) ----------------
+model OrgNode {
+  id        String    @id
+  kind      OrgKind
+  name      String
+  code      String?
+  meta      Json?
+  settings  Json?
+  overrides Json?
+  parentId  String?
+  parent    OrgNode?  @relation("OrgChildren", fields: [parentId], references: [id])
+  children  OrgNode[] @relation("OrgChildren")
+
+  cards         Card[]
+  vehicles      Vehicle[]
+  fleetOps      FleetOperator[]
+  invoices      Invoice[]
+  usersPrimary  User[]          @relation("UserPrimaryScope")
+  userScopes    UserScope[]
+
+  @@index([parentId])
+}
+
+model CountryDefaults {
+  code       String @id // NL | BE | LU | DE
+  vat        String
+  currency   String
+  peppol     String
+  languages  String
+  fiscalYear String
+}
+
+// ---------------- Roles + users ----------------
+model Role {
+  id     String  @id
+  name   String
+  system Boolean @default(true)
+  tracks String[]
+  users  Int     @default(0)
+  edit   String
+  desc   String
+
+  usersWithRole User[]      @relation("UserRole")
+  scopes        UserScope[]
+  fieldRules    FieldRule[]
+}
+
+model User {
+  id           String     @id
+  name         String
+  email        String     @unique
+  initials     String?
+  passwordHash String
+  roleId       String
+  role         Role       @relation("UserRole", fields: [roleId], references: [id])
+  scopeType    ScopeType
+  scopeNodeId  String?
+  scopeNode    OrgNode?   @relation("UserPrimaryScope", fields: [scopeNodeId], references: [id])
+  scopeLabel   String?
+  status       UserStatus @default(active)
+  lastSeen     String?
+  secondary    UserScope[]
+  sessions     Session[]
+  reports      Report[]
+  dashboard    DashboardLayout?
+  createdAt    DateTime   @default(now())
+}
+
+// Secondary scopes for a user (each is a role/scope pair).
+model UserScope {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId      String?
+  role        Role?      @relation(fields: [roleId], references: [id])
+  scopeType   ScopeType  @default(company)
+  scopeNodeId String?
+  scopeNode   OrgNode?   @relation(fields: [scopeNodeId], references: [id])
+  scopeLabel  String?
+  roleLabel   String?
+
+  @@index([userId])
+}
+
+model Session {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+  revoked          Boolean  @default(false)
+
+  @@index([userId])
+}
+
+// ---------------- Unified card table ----------------
+model Card {
+  id           String   @id
+  companyId    String?
+  company      OrgNode? @relation(fields: [companyId], references: [id])
+  track        Track
+  type         String
+  customer     String
+  value        Int?
+  vehicle      String?
+  sub          String
+  stageId      String
+  stageName    String
+  days         Int      @default(0)
+  daysLabel    String?
+  owner        String
+  status       String // red | amber | green
+  cta          String
+  sources      String[]
+  awaitingSign Boolean  @default(false)
+  meta         Json?
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([companyId, track, stageId])
+}
+
+// ---------------- RBAC field rules (diffs from DEFAULT_RULE) ----------------
+model FieldRule {
+  roleId     String
+  role       Role      @relation(fields: [roleId], references: [id])
+  dataTypeId String
+  fieldId    String
+  scope      RuleScope @default(ANY)
+  visible    Boolean
+  editable   Boolean
+  masked     Boolean
+  note       String?
+
+  @@id([roleId, dataTypeId, fieldId, scope])
+}
+
+model RbacVersion {
+  v     Int    @id
+  when  String
+  actor String
+  note  String
+}
+
+// ---------------- Stage config + cross-track triggers ----------------
+model StageConfig {
+  id    String @id @default(cuid())
+  track Track
+  order Int
+  // stage definition
+  stageId String
+  label   String
+  sla     Int
+  lock    String?
+  cta     String
+
+  @@unique([track, stageId])
+  @@index([track, order])
+}
+
+model CrossTrigger {
+  id        String @id @default(cuid())
+  whenTrack String
+  whenStage String
+  thenTrack String
+  thenStage String
+  note      String
+
+  @@index([whenTrack, whenStage])
+}
+
+// ---------------- Domain mock-shape models ----------------
+model Vehicle {
+  id          String   @id @default(cuid())
+  plate       String   @unique
+  model       String?
+  vin         String?
+  operator    String?
+  status      String?
+  statusLabel String?
+  note        String?
+  companyId   String?
+  company     OrgNode? @relation(fields: [companyId], references: [id])
+  meta        Json?
+}
+
+model FleetOperator {
+  id        String   @id @default(cuid())
+  name      String
+  contact   String?
+  companyId String?
+  company   OrgNode? @relation(fields: [companyId], references: [id])
+  meta      Json?
+}
+
+model Invoice {
+  id        String   @id @default(cuid())
+  ref       String   @unique
+  value     Int?
+  due       String?
+  status    String?
+  companyId String?
+  company   OrgNode? @relation(fields: [companyId], references: [id])
+  meta      Json?
+}
+
+model VehicleTimeline {
+  id            String          @id @default(cuid())
+  customer      String
+  vehicle       String
+  contractValue Int?
+  account       String?
+  events        TimelineEvent[]
+}
+
+model TimelineEvent {
+  id         String          @id @default(cuid())
+  timelineId String
+  timeline   VehicleTimeline @relation(fields: [timelineId], references: [id], onDelete: Cascade)
+  order      Int
+  track      String
+  stage      String
+  detail     String?
+  date       String?
+  owner      String?
+  state      String?
+  docs       String[]
+
+  @@index([timelineId, order])
+}
+
+// ---------------- Integrations / audit / reports / dashboard ----------------
+model Integration {
+  id         String  @id
+  name       String
+  kind       String
+  direction  String
+  logo       String
+  status     String
+  lastSync   String?
+  throughput String?
+  latency    String?
+  desc       String?
+  nango      Boolean @default(false)
+  transforms Int     @default(0)
+  meta       Json?
+}
+
+model AuditEntry {
+  id        String          @id @default(cuid())
+  day       String?
+  time      String?
+  actor     String
+  actorRole String?
+  verb      String
+  target    String?
+  track     String
+  kind      String          @default("normal")
+  icon      String?
+  isSystem  Boolean         @default(false)
+  cascades  AuditCascade[]
+  createdAt DateTime        @default(now())
+  meta      Json?
+
+  @@index([track])
+}
+
+model AuditCascade {
+  id      String     @id @default(cuid())
+  auditId String
+  audit   AuditEntry @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  order   Int        @default(0)
+  track   String
+  text    String
+
+  @@index([auditId, order])
+}
+
+model Report {
+  id          String   @id @default(cuid())
+  title       String
+  spec        Json
+  prose       Json
+  when        String
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+model DashboardLayout {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  charts Json
+}
+
+model DataSharing {
+  id   String      @id @default(cuid())
+  type String      @unique
+  mode SharingMode
+  note String
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@dlpe/shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./stages": "./stages.ts",
+    "./dataTypes": "./dataTypes.ts",
+    "./types": "./types.ts"
+  }
+}

@@ -17,10 +17,24 @@ import { RolesView, RbacConfigurator } from './admin_rbac.jsx';
 import { ReportsView } from './reports.jsx';
 import {
   SALES_STAGES, OPS_STAGES, WORKSHOP_STAGES, FINANCE_STAGES,
-  SEED_SALES, SEED_OPS, SEED_WORKSHOP, SEED_FINANCE,
   VEHICLE_TIMELINE,
 } from './data.js';
 import { ADMIN_USERS, ROLES } from './admin_data.js';
+import { api } from './api/client.js';
+import { useAuth } from './api/auth.jsx';
+
+// Map a card to the server action that drives it — mirrors resolveFlow().
+const flowActionName = (item) => {
+  if (item.id === 's5' && item.stageId !== 'signed') return 'signContract';
+  if (item.id === 'f2') return 'sendDunning';
+  if (item.id === 'w4') return 'approvePeppol';
+  if (item.id === 'o3') return 'planWorkshopVisit';
+  if (item.id === 'o5' || item.stageId === 'pickup') return 'notifyPickup';
+  if (item.stageId === 'to_make') return 'generateInvoice';
+  return 'sendFollowUp';
+};
+
+const trackKey = (t) => String(t || '').toLowerCase();
 
 /* Main App — v1 with side menu, accordion tracks, action flows */
 
@@ -105,6 +119,7 @@ const StubPanel = ({ icon, title, body }) => (
 
 const App = () => {
   const { t } = useT();
+  const { me, logout } = useAuth();
   const [active, setActive] = React.useState('overview');
   const [timeline, setTimeline] = React.useState(null);
   const [previewUser, setPreviewUser] = React.useState(null);
@@ -119,66 +134,71 @@ const App = () => {
     sales: false, operations: false, workshop: false, finance: false,
   });
 
-  const [sales, setSales] = React.useState(SEED_SALES);
-  const [ops, setOps] = React.useState(SEED_OPS);
-  const [workshop, setWorkshop] = React.useState(SEED_WORKSHOP);
-  const [finance, setFinance] = React.useState(SEED_FINANCE);
+  const [sales, setSales] = React.useState([]);
+  const [ops, setOps] = React.useState([]);
+  const [workshop, setWorkshop] = React.useState([]);
+  const [finance, setFinance] = React.useState([]);
 
-  // Cross-track auto-trigger on sign cascade
-  const fireBrusselsCascade = () => {
-    setSales(prev => prev.map(s =>
-      s.id === 's5' ? { ...s, stageId: 'signed', stageName: 'Signed', status: 'green',
-                       daysLabel: 'signed now', cta: 'Open in CRM' } : s
-    ));
-    const newOps = {
-      id: 'o1', customer: 'Brussels Energy SA', vehicle: 'Fleet · 78 vehicles',
-      type: 'DELIVERY', sub: 'Auto-triggered from Sales · 5-year FSL',
-      stageId: 'ordered', stageName: 'Vehicle ordered',
-      days: 0, daysLabel: 'day 0 of 90', owner: 'Tom Janssens', status: 'green',
-      cta: 'Confirm with supplier', sources: ['API','Talend']
-    };
-    const newFin = {
-      id: 'f1', customer: 'Brussels Energy SA', value: 2460000, type: 'INVOICE',
-      sub: 'Master invoice · auto-triggered', stageId: 'to_make', stageName: 'To create',
-      days: 0, daysLabel: 'just now', owner: 'Ines Vandeput', status: 'green',
-      cta: 'Generate invoice', sources: ['API']
-    };
-    setOps(prev => prev.find(o => o.id === 'o1') ? prev : [newOps, ...prev]);
-    setFinance(prev => prev.find(f => f.id === 'f1') ? prev : [newFin, ...prev]);
-    setOpenTracks(o => ({ ...o, operations: true, finance: true }));
-    setFlashIds(['s5','o1','f1']);
-    setToast({
-      title: 'Brussels Energy SA — contract signed',
-      lines: [
-        '→ Operations: new "Vehicle ordered" · 78 vehicles',
-        '→ Finance: new "Invoice to create" · €2.46M',
-        '→ Customer portal updated',
-      ],
-    });
-    setTimeout(() => setFlashIds([]), 1800);
-    setTimeout(() => setToast(null), 6500);
+  const trackSetters = { sales: setSales, operations: setOps, workshop: setWorkshop, finance: setFinance };
+
+  // Load all four pipelines from the API on mount.
+  React.useEffect(() => {
+    let alive = true;
+    Promise.all([
+      api.get('/cards?track=sales'),
+      api.get('/cards?track=operations'),
+      api.get('/cards?track=workshop'),
+      api.get('/cards?track=finance'),
+    ]).then(([s, o, w, f]) => {
+      if (!alive) return;
+      setSales(s); setOps(o); setWorkshop(w); setFinance(f);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  // Apply / insert a card returned by the server into the right track.
+  const applyCard = (card) => {
+    const setter = trackSetters[trackKey(card.track)];
+    if (setter) setter(prev => prev.map(x => x.id === card.id ? { ...x, ...card } : x));
+  };
+  const addCard = (card) => {
+    const setter = trackSetters[trackKey(card.track)];
+    if (setter) setter(prev => prev.find(x => x.id === card.id)
+      ? prev.map(x => x.id === card.id ? { ...x, ...card } : x)
+      : [card, ...prev]);
   };
 
-  // Generic flow opener — resolves the flow from the item, runs it, applies the patch
+  // Generic flow opener — resolves the modal flow, then runs the server action
+  // on completion and applies the authoritative result (incl. any cascade).
   const openFlow = (item) => {
     const flow = resolveFlow(item);
     setActiveFlow({
       ...flow,
-      onComplete: (finalState) => {
-        const patch = flow.onPatch ? flow.onPatch(finalState, item) : null;
-        if (patch) {
-          // figure out which setter to use
-          const which =
-            sales.find(s => s.id === item.id) ? setSales :
-            ops.find(s => s.id === item.id) ? setOps :
-            workshop.find(s => s.id === item.id) ? setWorkshop :
-            finance.find(s => s.id === item.id) ? setFinance : null;
-          if (which) which(prev => prev.map(x => x.id === item.id ? { ...x, ...patch } : x));
-          setFlashIds([item.id]);
+      onComplete: async (finalState) => {
+        const action = flowActionName(item);
+        try {
+          const { card, createdCards = [], cascades = [] } =
+            await api.post(`/cards/${item.id}/actions/${action}`, { state: finalState });
+          if (card) applyCard(card);
+          createdCards.forEach(addCard);
+          const ids = [item.id, ...createdCards.map(c => c.id)];
+          setFlashIds(ids);
           setTimeout(() => setFlashIds([]), 1800);
-        }
-        if (flow.cascade === 'sign-brussels') {
-          fireBrusselsCascade();
+          if (createdCards.length) {
+            const opened = {};
+            createdCards.forEach(c => { opened[trackKey(c.track)] = true; });
+            setOpenTracks(o => ({ ...o, ...opened }));
+          }
+          if (cascades.length) {
+            setToast({
+              title: `${card?.customer || item.customer} — ${action === 'signContract' ? 'contract signed' : 'updated'}`,
+              lines: cascades.map(c => `→ ${c.track}: ${c.text}`),
+            });
+            setTimeout(() => setToast(null), 6500);
+          }
+        } catch (e) {
+          setToast({ title: 'Action failed', lines: [e.message] });
+          setTimeout(() => setToast(null), 4000);
         }
       }
     });
@@ -195,7 +215,7 @@ const App = () => {
     return next;
   });
 
-  // Move an item to a new stage (board drag-drop). Updates stageId + stageName.
+  // Move an item to a new stage (board drag-drop). Optimistic, then persisted.
   const moveStage = (trackId, stages, setter) => (itemId, newStageId) => {
     const stage = stages.find(s => s.id === newStageId);
     if (!stage) return;
@@ -206,6 +226,9 @@ const App = () => {
     ));
     setFlashIds([itemId]);
     setTimeout(() => setFlashIds([]), 1500);
+    api.put(`/cards/${itemId}/stage`, { stageId: newStageId })
+      .then(card => setter(prev => prev.map(it => it.id === itemId ? { ...it, ...card } : it)))
+      .catch(() => {});
   };
 
   // counts for side menu
@@ -268,7 +291,7 @@ const App = () => {
       <>
         <div className="contextBar">
           <div>
-            <h1>{t('greet.morning', { name: 'Markus' })}</h1>
+            <h1>{t('greet.morning', { name: (me?.name || 'Markus').split(' ')[0] })}</h1>
             <div className="pageSub">{t('greet.itemsNeed', { n: counts.urgent, items: counts.urgent === 1 ? t('track.item') : t('track.items') })}</div>
           </div>
           <div className="right">
@@ -377,7 +400,8 @@ const App = () => {
               <span className="notifDot"></span>
             </button>
             <button className="iconBtn" title="Help"><Icon name="document" size={16} /></button>
-            <Avatar name="Markus Weber" size="" />
+            <button className="iconBtn" title="Sign out" onClick={logout}><Icon name="close" size={16} /></button>
+            <Avatar name={me?.name || 'Markus Weber'} size="" />
           </div>
         </header>
 

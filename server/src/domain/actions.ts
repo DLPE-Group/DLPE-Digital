@@ -1,0 +1,178 @@
+import type { Card, Prisma } from '@prisma/client';
+import { prisma } from '../prisma.js';
+import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
+import { runTriggers } from './triggers.engine.js';
+import { writeAudit, type CascadeLine } from './audit.service.js';
+
+export type ActionName =
+  | 'sendFollowUp'
+  | 'signContract'
+  | 'planWorkshopVisit'
+  | 'generateInvoice'
+  | 'sendDunning'
+  | 'approvePeppol'
+  | 'notifyPickup';
+
+export interface RunActionResult {
+  card: Card;
+  cascades: CascadeLine[];
+  createdCards: Card[];
+}
+
+type PatchFn = (card: Card, state: Record<string, unknown>) => Prisma.CardUpdateInput;
+
+// onPatch ports from app/src/action_flows.jsx — one per flow.
+const PATCHES: Record<ActionName, PatchFn> = {
+  sendFollowUp: () => ({ status: 'amber', daysLabel: 'just now', days: 0 }),
+  signContract: () => ({
+    stageId: 'signed',
+    stageName: 'Signed',
+    status: 'green',
+    daysLabel: 'signed now',
+    cta: 'Open in CRM',
+    awaitingSign: false,
+  }),
+  planWorkshopVisit: () => ({
+    stageId: 'replacement',
+    stageName: 'Contact fleet operator with date',
+    status: 'green',
+    daysLabel: 'scheduled now',
+  }),
+  generateInvoice: () => ({
+    stageId: 'awaiting',
+    stageName: 'Awaiting payment',
+    status: 'green',
+    daysLabel: 'sent now',
+    cta: 'View invoice',
+  }),
+  sendDunning: (_card, state) =>
+    state.level === 'collections'
+      ? {
+          stageId: 'paid',
+          stageName: 'In collections',
+          status: 'amber',
+          daysLabel: 'handed off',
+          cta: 'View collections file',
+        }
+      : { daysLabel: 'notice sent now', cta: 'Awaiting response' },
+  approvePeppol: () => ({
+    stageId: 'invoiced',
+    stageName: 'Invoice approved',
+    status: 'green',
+    daysLabel: 'approved now',
+    cta: 'View in Finance',
+  }),
+  notifyPickup: () => ({
+    stageName: 'Awaiting pickup confirmation',
+    daysLabel: 'notified now',
+    cta: 'Mark as collected',
+  }),
+};
+
+// resolveFlow port: decide which action a card maps to by default (for validation).
+export function resolveAction(card: Card): ActionName {
+  if (card.id === 's5' && card.stageId !== 'signed') return 'signContract';
+  if (card.id === 'f2') return 'sendDunning';
+  if (card.id === 'w4') return 'approvePeppol';
+  if (card.id === 'o3') return 'planWorkshopVisit';
+  if (card.id === 'o5' || card.stageId === 'pickup') return 'notifyPickup';
+  if (card.type === 'INVOICE' && card.stageId === 'to_make') return 'generateInvoice';
+  if (card.stageId === 'to_make') return 'generateInvoice';
+  return 'sendFollowUp';
+}
+
+// Actions whose patch fires a cross-track cascade via the trigger engine.
+const CASCADING: Partial<Record<ActionName, { whenStageName: string }>> = {
+  signContract: { whenStageName: 'Contract signed' },
+  approvePeppol: { whenStageName: 'PEPPOL invoice received' },
+};
+
+export async function runAction(
+  cardId: string,
+  action: ActionName,
+  state: Record<string, unknown>,
+  actor: { name: string; roleId: string },
+): Promise<RunActionResult> {
+  if (!PATCHES[action]) throw new Error(`Unknown action: ${action}`);
+
+  const cascadeCfg = CASCADING[action];
+
+  if (cascadeCfg) {
+    // Transactional: patch source + run triggers + write one audit entry w/ children.
+    return prisma.$transaction(async (tx) => {
+      const source = await tx.card.findUnique({ where: { id: cardId } });
+      if (!source) throw new Error('Card not found');
+
+      const patch = PATCHES[action](source, state);
+      const card = await tx.card.update({ where: { id: cardId }, data: patch });
+
+      const whenTrack = TRACK_KEY_FROM_ENUM[source.track];
+      const { createdCards, cascadeLines } = await runTriggers(tx, {
+        whenTrack,
+        whenStageName: cascadeCfg.whenStageName,
+        sourceCard: card,
+        actor,
+      });
+
+      // The Brussels sign cascade also touches the customer portal (3rd line).
+      const cascades: CascadeLine[] = [...cascadeLines];
+      if (action === 'signContract') {
+        cascades.push({ track: 'sales', text: `Customer portal updated · order confirmed` });
+      }
+
+      await writeAudit(
+        {
+          actor: actor.name,
+          actorRole: actor.roleId,
+          verb: action === 'signContract' ? 'marked contract signed' : 'approved PEPPOL invoice',
+          target:
+            action === 'signContract'
+              ? `${card.customer} · ${card.value ? '€' + (card.value / 1e6).toFixed(2) + 'M' : ''} renewal`.trim()
+              : `${card.customer} · ${card.vehicle ?? ''}`.trim(),
+          track: whenTrack,
+          kind: 'critical',
+          icon: 'bolt',
+          cascades,
+        },
+        tx,
+      );
+
+      return { card, cascades, createdCards };
+    });
+  }
+
+  // Non-cascading action: patch + audit.
+  const source = await prisma.card.findUnique({ where: { id: cardId } });
+  if (!source) throw new Error('Card not found');
+  const patch = PATCHES[action](source, state);
+  const card = await prisma.card.update({ where: { id: cardId }, data: patch });
+
+  await writeAudit({
+    actor: actor.name,
+    actorRole: actor.roleId,
+    verb: actionVerb(action),
+    target: `${card.customer}${card.vehicle ? ' · ' + card.vehicle : ''}`,
+    track: TRACK_KEY_FROM_ENUM[card.track],
+    kind: 'normal',
+    icon: 'mail',
+  });
+
+  return { card, cascades: [], createdCards: [] };
+}
+
+function actionVerb(action: ActionName): string {
+  switch (action) {
+    case 'sendFollowUp':
+      return 'sent follow-up email';
+    case 'planWorkshopVisit':
+      return 'scheduled workshop visit';
+    case 'generateInvoice':
+      return 'generated invoice';
+    case 'sendDunning':
+      return 'sent dunning notice';
+    case 'notifyPickup':
+      return 'notified fleet operator';
+    default:
+      return 'ran action';
+  }
+}
