@@ -164,6 +164,45 @@ const NotificationsBell = () => {
   );
 };
 
+// Global search over cards + vehicles via /search.
+const GlobalSearch = ({ onPick }) => {
+  const [q, setQ] = React.useState('');
+  const [results, setResults] = React.useState([]);
+  const [open, setOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (q.trim().length < 2) { setResults([]); return; }
+    const tid = setTimeout(() => {
+      api.get('/search?q=' + encodeURIComponent(q.trim()))
+        .then(d => { setResults(d.results || []); setOpen(true); })
+        .catch(() => {});
+    }, 250);
+    return () => clearTimeout(tid);
+  }, [q]);
+  return (
+    <div className="searchWrap" style={{ position: 'relative' }}>
+      <Icon name="search" size={15} />
+      <input placeholder="Search vehicles, customers, invoices…" value={q}
+             onChange={e => setQ(e.target.value)} onFocus={() => results.length && setOpen(true)} />
+      <span className="searchKbd">⌘K</span>
+      {open && results.length > 0 && (
+        <>
+          <div className="notifBackdrop" onClick={() => setOpen(false)} />
+          <div className="searchResults">
+            {results.map(r => (
+              <button key={r.type + r.id} className="searchResult"
+                      onClick={() => { onPick(r); setOpen(false); setQ(''); }}>
+                <span className={`srType ${r.type}`}>{r.type}</span>
+                <span className="srMain">{r.label}</span>
+                <span className="srSub">{r.sub}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 const App = () => {
   const { t } = useT();
   const { me, logout } = useAuth();
@@ -449,11 +488,11 @@ const App = () => {
           </div>
         )}
         <header className="appHeader">
-          <div className="searchWrap">
-            <Icon name="search" size={15} />
-            <input placeholder="Search vehicles, customers, invoices…" />
-            <span className="searchKbd">⌘K</span>
-          </div>
+          <GlobalSearch onPick={(r) => {
+            if (r.type === 'vehicle') { openTimeline(); return; }
+            setActive('overview');
+            if (r.track) setOpenTracks(prev => ({ ...prev, [r.track]: true }));
+          }} />
           <div className="headerRight">
             <ThemeSwitcher />
             <LanguageSwitcher />

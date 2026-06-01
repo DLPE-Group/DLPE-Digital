@@ -1533,3 +1533,19 @@ a {
 .notifX { flex: 0 0 auto; background: none; border: none; cursor: pointer;
   color: var(--text-tertiary, #8a8f98); padding: 2px; border-radius: 4px; }
 .notifX:hover { background: var(--bg-sunken, #ececef); }
+
+/* Global search results dropdown */
+.searchResults {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 41;
+  background: var(--bg-surface, #fff); border: 1px solid var(--border, #e3e5e8);
+  border-radius: 10px; box-shadow: 0 12px 40px rgba(0,0,0,0.18); padding: 6px; max-height: 60vh; overflow: auto;
+}
+.searchResult { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer; padding: 8px 10px; border-radius: 8px; }
+.searchResult:hover { background: var(--bg-muted, #f5f6f8); }
+.srType { flex: 0 0 auto; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 2px 6px; border-radius: 999px; background: var(--bg-sunken, #ececef); color: var(--text-tertiary, #8a8f98); }
+.srType.card { color: var(--track-sales, #6366f1); }
+.srType.vehicle { color: var(--track-workshop, #b45309); }
+.srMain { font-size: 13px; font-weight: 600; }
+.srSub { font-size: 11.5px; color: var(--text-tertiary, #8a8f98); margin-left: auto; }
