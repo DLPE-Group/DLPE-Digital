@@ -96,11 +96,12 @@ export const StageConfigEditor = () => {
   const [dragIdx, setDragIdx] = React.useState(null);
   const [overIdx, setOverIdx] = React.useState(null);
 
-  // Load persisted stage config from the API, per track (fallback to seed on failure).
-  React.useEffect(() => {
-    let cancelled = false;
-    api.get('/admin/stage-config').then((rows) => {
-      if (cancelled || !Array.isArray(rows) || rows.length === 0) return;
+  // Load persisted stage config from the API (fallback to seed on failure).
+  // Extracted so "Discard" can re-fetch the server state instead of only
+  // clearing the dirty flag.
+  const loadConfig = React.useCallback(() => {
+    return api.get('/admin/stage-config').then((rows) => {
+      if (!Array.isArray(rows) || rows.length === 0) return;
       const byTrack = {};
       rows.forEach((r) => {
         const k = String(r.track || '').toLowerCase();
@@ -114,9 +115,12 @@ export const StageConfigEditor = () => {
         TRACK_KEYS.forEach((k) => { if (byTrack[k]) next[k] = byTrack[k]; });
         return next;
       });
-    }).catch(() => { /* keep seed fallback */ });
-    return () => { cancelled = true; };
+      setDirty(false);
+      setSaved(false);
+    }).catch(() => { /* keep current/seed state */ });
   }, []);
+
+  React.useEffect(() => { loadConfig(); }, [loadConfig]);
 
   const stages = config[trackTab];
   const setStages = (next) => {
@@ -183,7 +187,7 @@ export const StageConfigEditor = () => {
             {dirty && <><span className="dirtyDot" /> Unsaved changes</>}
             {saved && !dirty && <span style={{ color: 'var(--ok, #2e7d32)' }}>Saved</span>}
             <button className="cta ghost" disabled={!dirty || saving}
-                    onClick={() => setDirty(false)}>Discard</button>
+                    onClick={() => loadConfig()}>Discard</button>
             <button className="cta" disabled={!dirty || saving}
                     onClick={saveConfig}>
               <Icon name="check" size={12} strokeWidth={2.5} /> {saving ? 'Saving…' : 'Save config'}
