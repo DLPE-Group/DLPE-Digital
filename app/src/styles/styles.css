@@ -1505,3 +1505,31 @@ a {
   vertical-align: middle;
 }
 .simBadge svg { opacity: 0.85; }
+
+/* Notifications bell popover */
+.notifWrap { position: relative; display: inline-flex; }
+.notifBackdrop { position: fixed; inset: 0; z-index: 40; }
+.notifPopover {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 41;
+  width: 320px; max-height: 60vh; overflow: auto;
+  background: var(--bg-surface, #fff); color: var(--text-primary, #1a1a1a);
+  border: 1px solid var(--border, #e3e5e8); border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.18); padding: 6px;
+}
+.notifHead { display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 10px; font-size: 12px; font-weight: 600; color: var(--text-tertiary, #8a8f98);
+  text-transform: uppercase; letter-spacing: 0.04em; }
+.notifCount { background: var(--brand, #6366f1); color: #fff; border-radius: 999px;
+  padding: 1px 7px; font-size: 11px; }
+.notifEmpty { padding: 18px 10px; font-size: 13px; color: var(--text-tertiary, #8a8f98); text-align: center; }
+.notifItem { display: flex; gap: 9px; align-items: flex-start; padding: 9px 10px;
+  border-radius: 8px; }
+.notifItem:hover { background: var(--bg-muted, #f5f6f8); }
+.notifItem.risk .notifIcon { color: var(--status-red, #d64545); }
+.notifIcon { flex: 0 0 auto; margin-top: 1px; }
+.notifText { flex: 1; min-width: 0; }
+.notifTitle { font-size: 13px; font-weight: 600; }
+.notifSub { font-size: 11.5px; color: var(--text-tertiary, #8a8f98); }
+.notifX { flex: 0 0 auto; background: none; border: none; cursor: pointer;
+  color: var(--text-tertiary, #8a8f98); padding: 2px; border-radius: 4px; }
+.notifX:hover { background: var(--bg-sunken, #ececef); }

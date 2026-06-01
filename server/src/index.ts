@@ -25,6 +25,7 @@ import { dashboardRouter } from './routes/dashboard.js';
 import { permissionsRouter } from './routes/permissions.js';
 import { preferencesRouter } from './routes/preferences.js';
 import { fleetRouter } from './routes/fleet.js';
+import { notificationsRouter } from './routes/notifications.js';
 import { recordsRouter } from './routes/records.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -101,6 +102,7 @@ app.use('/api/admin', fieldRulesRouter);
 app.use('/api/admin', stageConfigRouter);
 app.use('/api/admin', triggersRouter);
 app.use('/api', fleetRouter);
+app.use('/api', notificationsRouter);
 app.use('/api/records', recordsRouter);
 app.use('/api/me', dashboardRouter);
 app.use('/api/me', permissionsRouter);
