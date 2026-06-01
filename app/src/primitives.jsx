@@ -10,6 +10,14 @@ export const Avatar = ({ name, size = 'sm', muted = false }) => (
   </span>
 );
 
+/* Marks a feature whose external integration is simulated (no real
+   Nango/email/Slack/source-system is wired). Purely a demo indicator. */
+export const SimBadge = ({ label = 'Simulated', title = 'Demo only — no external service is connected', size = 11 }) => (
+  <span className="simBadge" title={title}>
+    <Icon name="sparkles" size={size} /> {label}
+  </span>
+);
+
 export const SourceBadges = ({ sources }) => (
   <span className="sourceIcons">
     {sources.map(s => (
