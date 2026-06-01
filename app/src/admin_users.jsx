@@ -1,6 +1,7 @@
 import React from 'react';
 import { Icon } from './icons.jsx';
 import { GROUP_TREE, ROLES, FIELD_RULES, DATA_TYPES, ADMIN_USERS, SCOPE_TYPE_LABEL, DEFAULT_RULE } from './admin_data.js';
+import { api } from './api/client.js';
 
 /* ============================================================
    USERS — list + detail with scopes, roles and a live
@@ -178,6 +179,32 @@ function deriveSummary(roleId, scopeLabel) {
   return { can, cannot };
 }
 
+/* Map a server user row (with included role/scope rows) into the UI shape
+   the views render: string role name, secondary [{scope,role}], summary, lastSeen. */
+function adaptUser(u) {
+  const roleId = u.roleId || (u.role && u.role.id) || 'sales-rep';
+  const roleName = (u.role && u.role.name) || ROLES.find(r => r.id === roleId)?.name || roleId;
+  const scopeLabel = u.scopeLabel || (u.scopeNode && u.scopeNode.name) || '—';
+  const secondary = (u.secondary || []).map(s => ({
+    scope: s.scopeLabel || (s.scopeNode && s.scopeNode.name) || '—',
+    role: s.roleLabel || (s.role && s.role.name) || '',
+    scopeType: s.scopeType || 'company',
+  }));
+  return {
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    initials: u.initials || (u.name || '').split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0]).join('').toUpperCase(),
+    scopeLabel,
+    scopeType: u.scopeType || 'company',
+    role: roleName,
+    lastSeen: u.lastSeen || (u.status === 'invited' ? 'Never · invite pending' : 'Recently'),
+    status: u.status || 'active',
+    secondary,
+    summary: u.summary || deriveSummary(roleId, scopeLabel),
+  };
+}
+
 const ScopeEditor = ({ scopeType, setScopeType, target, setTarget, roleId, setRoleId, compact }) => {
   const targets = SCOPE_TARGETS[scopeType] || [];
   const multi = scopeType === 'multi_company';
@@ -254,7 +281,8 @@ export const CreateUserPanel = ({ onClose, onCreate }) => {
     const initials = name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0]).join('').toUpperCase();
     onCreate({
       id: 'u-' + Date.now(), name: name.trim(), email: email.trim(), initials,
-      scopeLabel, scopeType, role: role.name,
+      scopeLabel, scopeType, role: role.name, roleId,
+      password: method === 'password' ? pw.trim() : undefined,
       lastSeen: method === 'email' ? 'Never · invite sent just now' : 'Never · created just now',
       status: method === 'email' ? 'invited' : 'active',
       secondary, summary,
@@ -368,14 +396,42 @@ export const UsersView = ({ onPreviewAs }) => {
   const [creating, setCreating] = React.useState(false);
   const [flashId, setFlashId] = React.useState(null);
 
+  // Load users from the API (fallback to seed import on failure).
+  React.useEffect(() => {
+    let cancelled = false;
+    api.get('/admin/users').then((rows) => {
+      if (cancelled || !Array.isArray(rows) || rows.length === 0) return;
+      setUsers(rows.map(adaptUser));
+    }).catch(() => { /* keep ADMIN_USERS fallback */ });
+    return () => { cancelled = true; };
+  }, []);
+
   if (openUser) {
     return <UserDetail user={openUser} onBack={() => setOpenUser(null)} onPreviewAs={onPreviewAs} />;
   }
 
-  const handleCreate = (u) => {
-    setUsers(prev => [u, ...prev]);
+  const handleCreate = async (u) => {
     setCreating(false);
-    setFlashId(u.id);
+    try {
+      const created = await api.post('/admin/users', {
+        name: u.name,
+        email: u.email,
+        initials: u.initials,
+        password: u.password,
+        roleId: u.roleId,
+        scopeType: u.scopeType,
+        scopeLabel: u.scopeLabel,
+        status: u.status,
+      });
+      const adapted = { ...adaptUser(created), secondary: u.secondary, summary: u.summary, lastSeen: u.lastSeen };
+      setUsers(prev => [adapted, ...prev.filter(p => p.id !== adapted.id)]);
+      setFlashId(adapted.id);
+    } catch (e) {
+      console.error('Failed to create user', e);
+      // optimistic local insert so the UI still reflects the new user
+      setUsers(prev => [u, ...prev]);
+      setFlashId(u.id);
+    }
     setTimeout(() => setFlashId(null), 2600);
   };
 

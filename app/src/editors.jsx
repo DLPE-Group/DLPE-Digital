@@ -2,6 +2,7 @@ import React from 'react';
 import { Icon } from './icons.jsx';
 import { useT } from './i18n.jsx';
 import { TrackTag } from './primitives.jsx';
+import { api } from './api/client.js';
 
 /* ============================================================
    StageConfigEditor — drag-reorder, rename, edit SLA + lock,
@@ -75,25 +76,73 @@ const uid = () => 'st' + (++_uid);
 
 /* ---------------- Stage config editor ---------------- */
 
+// Build the local uid-tagged config shape from seed fallback.
+const seedConfig = () => {
+  const c = {};
+  TRACK_KEYS.forEach(k => {
+    c[k] = STAGE_CONFIG[k].map(s => ({ ...s, uid: uid() }));
+  });
+  return c;
+};
+
 export const StageConfigEditor = () => {
   const { t } = useT();
   const [trackTab, setTrackTab] = React.useState('sales');
   // deep clone seed config into editable state, give every stage a stable uid
-  const [config, setConfig] = React.useState(() => {
-    const c = {};
-    TRACK_KEYS.forEach(k => {
-      c[k] = STAGE_CONFIG[k].map(s => ({ ...s, uid: uid() }));
-    });
-    return c;
-  });
+  const [config, setConfig] = React.useState(seedConfig);
   const [dirty, setDirty] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [saved, setSaved] = React.useState(false);
   const [dragIdx, setDragIdx] = React.useState(null);
   const [overIdx, setOverIdx] = React.useState(null);
+
+  // Load persisted stage config from the API, per track (fallback to seed on failure).
+  React.useEffect(() => {
+    let cancelled = false;
+    api.get('/admin/stage-config').then((rows) => {
+      if (cancelled || !Array.isArray(rows) || rows.length === 0) return;
+      const byTrack = {};
+      rows.forEach((r) => {
+        const k = String(r.track || '').toLowerCase();
+        if (!TRACK_KEYS.includes(k)) return;
+        (byTrack[k] = byTrack[k] || []).push({
+          uid: uid(), id: r.stageId, label: r.label, sla: r.sla, lock: r.lock ?? null, cta: r.cta ?? '',
+        });
+      });
+      setConfig((prev) => {
+        const next = { ...prev };
+        TRACK_KEYS.forEach((k) => { if (byTrack[k]) next[k] = byTrack[k]; });
+        return next;
+      });
+    }).catch(() => { /* keep seed fallback */ });
+    return () => { cancelled = true; };
+  }, []);
 
   const stages = config[trackTab];
   const setStages = (next) => {
     setConfig(c => ({ ...c, [trackTab]: typeof next === 'function' ? next(c[trackTab]) : next }));
     setDirty(true);
+    setSaved(false);
+  };
+
+  const saveConfig = async () => {
+    setSaving(true);
+    try {
+      const payload = {
+        stages: config[trackTab].map((s) => ({
+          stageId: s.id, label: s.label, sla: s.sla ?? 0, lock: s.lock ?? null, cta: s.cta ?? '',
+        })),
+      };
+      await api.put('/admin/stage-config/' + trackTab, payload);
+      setDirty(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1800);
+    } catch (e) {
+      // leave dirty so the user can retry
+      console.error('Failed to save stage config', e);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const update = (uid, patch) => setStages(prev => prev.map(s => s.uid === uid ? { ...s, ...patch } : s));
@@ -132,11 +181,12 @@ export const StageConfigEditor = () => {
           </div>
           <div className="editorSaveBar">
             {dirty && <><span className="dirtyDot" /> Unsaved changes</>}
-            <button className="cta ghost" disabled={!dirty}
+            {saved && !dirty && <span style={{ color: 'var(--ok, #2e7d32)' }}>Saved</span>}
+            <button className="cta ghost" disabled={!dirty || saving}
                     onClick={() => setDirty(false)}>Discard</button>
-            <button className="cta" disabled={!dirty}
-                    onClick={() => setDirty(false)}>
-              <Icon name="check" size={12} strokeWidth={2.5} /> Save config
+            <button className="cta" disabled={!dirty || saving}
+                    onClick={saveConfig}>
+              <Icon name="check" size={12} strokeWidth={2.5} /> {saving ? 'Saving…' : 'Save config'}
             </button>
           </div>
         </div>
@@ -205,27 +255,49 @@ export const CrossTrackTriggerEditor = () => {
   const [thenTrack, setThenTrack] = React.useState('operations');
   const [thenStage, setThenStage] = React.useState('');
 
+  // Load persisted triggers from the API (fallback to seed on failure).
+  React.useEffect(() => {
+    let cancelled = false;
+    api.get('/admin/triggers').then((rows) => {
+      if (cancelled || !Array.isArray(rows)) return;
+      setTriggers(rows.map((r) => ({ ...r, uid: r.id })));
+    }).catch(() => { /* keep seed fallback */ });
+    return () => { cancelled = true; };
+  }, []);
+
   const stagesOf = (k) => STAGE_CONFIG[k] || [];
 
   const canAdd = whenStage && thenStage && whenTrack !== thenTrack;
 
-  const addTrigger = () => {
+  const addTrigger = async () => {
     if (!canAdd) return;
     const ws = stagesOf(whenTrack).find(s => s.id === whenStage);
     const ts = stagesOf(thenTrack).find(s => s.id === thenStage);
-    const newUid = 'tg' + Date.now();
-    setTriggers(prev => [...prev, {
-      uid: newUid,
+    const payload = {
       whenTrack, whenStage: ws.label,
       thenTrack, thenStage: ts.label,
       note: 'Creates a new card · auto-assigned to track owner',
-    }]);
-    setFlashUid(newUid);
-    setTimeout(() => setFlashUid(null), 1500);
-    setWhenStage(''); setThenStage('');
+    };
+    try {
+      const row = await api.post('/admin/triggers', payload);
+      const newUid = row.id ?? ('tg' + Date.now());
+      setTriggers(prev => [...prev, { ...row, uid: newUid }]);
+      setFlashUid(newUid);
+      setTimeout(() => setFlashUid(null), 1500);
+      setWhenStage(''); setThenStage('');
+    } catch (e) {
+      console.error('Failed to add trigger', e);
+    }
   };
 
-  const removeTrigger = (uid) => setTriggers(prev => prev.filter(t => t.uid !== uid));
+  const removeTrigger = async (uid) => {
+    const row = triggers.find(t => t.uid === uid);
+    setTriggers(prev => prev.filter(t => t.uid !== uid));
+    if (row && row.id) {
+      try { await api.del('/admin/triggers/' + row.id); }
+      catch (e) { console.error('Failed to delete trigger', e); }
+    }
+  };
 
   return (
     <div className="settingsSection">

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Icon } from './icons.jsx';
+import { api } from './api/client.js';
 
 /* ============================================================
    Pipeline dashboard — the landing surface of the reporting area.
@@ -268,7 +269,6 @@ const ChartBuilder = ({ live, onAdd, onClose }) => {
 };
 
 /* ---- Dashboard tab ---- */
-const DASH_KEY = 'dlpe_dashboard_v1';
 export const DEFAULT_CHARTS = [
   { id: 'd1', metricId: 'pipeline', type: 'stat', title: 'Open pipeline' },
   { id: 'd2', metricId: 'atRisk', type: 'stat', title: 'At-risk pipeline' },
@@ -281,12 +281,23 @@ export const DEFAULT_CHARTS = [
 export const DashboardTab = () => {
   const { data } = useLiveData();
   const asOf = React.useMemo(() => new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }), []);
-  const [charts, setCharts] = React.useState(() => {
-    try { const s = JSON.parse(localStorage.getItem(DASH_KEY)); if (Array.isArray(s)) return s; } catch (e) {}
-    return DEFAULT_CHARTS;
-  });
+  const [charts, setCharts] = React.useState(DEFAULT_CHARTS);
   const [building, setBuilding] = React.useState(false);
-  const persist = (next) => { setCharts(next); try { localStorage.setItem(DASH_KEY, JSON.stringify(next)); } catch (e) {} };
+
+  // Load this user's saved layout from the API (fallback to DEFAULT_CHARTS).
+  React.useEffect(() => {
+    let cancelled = false;
+    api.get('/me/dashboard').then((res) => {
+      if (cancelled || !res || !Array.isArray(res.charts)) return;
+      setCharts(res.charts);
+    }).catch(() => { /* keep DEFAULT_CHARTS fallback */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const persist = (next) => {
+    setCharts(next);
+    api.put('/me/dashboard', { charts: next }).catch(e => console.error('Failed to save dashboard', e));
+  };
 
   return (
     <div className="dbWrap">

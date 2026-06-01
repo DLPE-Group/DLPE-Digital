@@ -1,6 +1,18 @@
 import React from 'react';
 import { Icon } from './icons.jsx';
 import { GROUP_TREE, COUNTRY_DEFAULTS, DATA_SHARING, ADMIN_USERS } from './admin_data.js';
+import { api } from './api/client.js';
+
+/* Normalize a server OrgNode tree (uppercase enum kind) to the lowercase
+   shape the UI expects, recursively. */
+function normalizeTree(node) {
+  if (!node) return node;
+  return {
+    ...node,
+    kind: String(node.kind || '').toLowerCase(),
+    children: (node.children || []).map(normalizeTree),
+  };
+}
 
 /* ============================================================
    GROUP STRUCTURE — multi-company / multi-country tree with
@@ -153,9 +165,25 @@ export const GroupStructureView = () => {
   const [expanded, setExpanded] = React.useState({});
   const [query, setQuery] = React.useState('');
   const [addUnder, setAddUnder] = React.useState(null);
+  const [sharingRows, setSharingRows] = React.useState(DATA_SHARING);
   const [sharing, setSharing] = React.useState(
     Object.fromEntries(DATA_SHARING.map(d => [d.type, d.mode]))
   );
+
+  // Load the org tree + data-sharing from the API (fallback to seed on failure).
+  React.useEffect(() => {
+    let cancelled = false;
+    api.get('/admin/structure').then((root) => {
+      if (cancelled || !root) return;
+      setTree(normalizeTree(root));
+    }).catch(() => { /* keep GROUP_TREE fallback */ });
+    api.get('/admin/data-sharing').then((rows) => {
+      if (cancelled || !Array.isArray(rows) || rows.length === 0) return;
+      setSharingRows(rows);
+      setSharing(Object.fromEntries(rows.map(d => [d.type, d.mode])));
+    }).catch(() => { /* keep DATA_SHARING fallback */ });
+    return () => { cancelled = true; };
+  }, []);
 
   const toggle = (id) => setExpanded(e => ({ ...e, [id]: e[id] === false ? true : false }));
   const path = findPath(tree, selectedId) || [tree];
@@ -169,18 +197,40 @@ export const GroupStructureView = () => {
     return { countries, companies, regions };
   }, [tree]);
 
-  const addCompany = (name) => {
+  const addCompany = async (name) => {
     const country = addUnder;
     const code = country.code + '-' + name.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase();
-    const newCmp = { id: 'cmp-' + Date.now(), kind: 'company', name, code,
+    const payload = {
+      name, code,
       meta: { entity: 'New entity · pending registration', address: '—' },
-      overrides: { invoiceSeq: code + '-2026-####' } };
+      overrides: { invoiceSeq: code + '-2026-####' },
+    };
+    let created = null;
+    try {
+      const row = await api.post('/admin/structure/' + country.id + '/companies', payload);
+      created = { ...row, kind: String(row.kind || 'company').toLowerCase(), children: [] };
+    } catch (e) {
+      // optimistic local insert on failure so the UI still reflects the add
+      console.error('Failed to add company', e);
+      created = { id: 'cmp-' + Date.now(), kind: 'company', name, code,
+        meta: payload.meta, overrides: payload.overrides, children: [] };
+    }
     const clone = JSON.parse(JSON.stringify(tree));
     const p = findPath(clone, country.id);
-    p[p.length - 1].children = [...(p[p.length - 1].children || []), newCmp];
+    p[p.length - 1].children = [...(p[p.length - 1].children || []), created];
     setTree(clone);
     setAddUnder(null);
-    setSelectedId(newCmp.id);
+    setSelectedId(created.id);
+  };
+
+  // Persist a data-sharing mode change via PUT (most-restrictive set of rows).
+  const setSharingMode = (type, mode) => {
+    setSharing(prev => {
+      const next = { ...prev, [type]: mode };
+      const rows = sharingRows.map(d => ({ type: d.type, mode: next[d.type] ?? d.mode, note: d.note || '' }));
+      api.put('/admin/data-sharing', { rows }).catch(e => console.error('Failed to save data-sharing', e));
+      return next;
+    });
   };
 
   const r = (key) => resolveSetting(path, key);
@@ -271,7 +321,7 @@ export const GroupStructureView = () => {
               <div className="setGroupHead">Data sharing
                 <span className="setGroupHint">defaults for {node.name}’s companies · most-restrictive wins at runtime</span>
               </div>
-              {DATA_SHARING.map(d => (
+              {sharingRows.map(d => (
                 <div className="shareRow" key={d.type}>
                   <div className="shareMain">
                     <div className="shareType">{d.type}</div>
@@ -286,7 +336,7 @@ export const GroupStructureView = () => {
                       if (m !== 'group' && d.mode === 'group') return null;
                       return (
                         <button key={m} className={`segBtn ${on ? 'on' : ''}`} disabled={disabled}
-                                onClick={() => !disabled && setSharing(s => ({ ...s, [d.type]: m }))}>
+                                onClick={() => !disabled && setSharingMode(d.type, m)}>
                           {labels[m]}
                         </button>
                       );

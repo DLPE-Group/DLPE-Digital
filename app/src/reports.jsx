@@ -3,6 +3,7 @@ import { Icon } from './icons.jsx';
 import { useT } from './i18n.jsx';
 import { DashboardTab } from './dashboard.jsx';
 import { SEED_SALES, SEED_OPS, SEED_WORKSHOP, SEED_FINANCE } from './data.js';
+import { api } from './api/client.js';
 
 /* ============================================================
    AI Reporting area.
@@ -154,33 +155,8 @@ const scriptedProse = (scope) => {
   return { headline, tracks };
 };
 
-const parseProseJSON = (text) => {
-  if (!text) return null;
-  let s = String(text).trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
-  const a = s.indexOf('{'), b = s.lastIndexOf('}');
-  if (a === -1 || b === -1) return null;
-  try { return JSON.parse(s.slice(a, b + 1)); } catch (e) { return null; }
-};
-
-const generateProse = async (spec) => {
-  const data = {}; spec.scope.forEach(t => data[t] = computeTrack(t).metrics);
-  const prompt = `You are the analyst of an "Intelligence Layer" fleet-operations console for DLPE-Group.
-Write a ${spec.format} report titled "${spec.title}" covering ${spec.period.toLowerCase()}.
-The user's request: "${spec.prompt || spec.title}".
-Use ONLY these computed figures (do not invent numbers):
-${JSON.stringify(data)}
-Reply with ONLY a JSON object, no markdown:
-{"headline":"2-3 sentence executive summary","tracks":{${spec.scope.map(t => `"${t}":"1-2 sentence analysis"`).join(',')}}}
-Keep it crisp and specific to the figures. ${spec.format === 'Board summary' ? 'Frame for a board: lead with risk and money.' : ''}`;
-  try {
-    if (window.claude && window.claude.complete) {
-      const text = await window.claude.complete({ messages: [{ role: 'user', content: prompt }] });
-      const parsed = parseProseJSON(text);
-      if (parsed && parsed.headline && parsed.tracks) return parsed;
-    }
-  } catch (e) { /* fall through */ }
-  return scriptedProse(spec.scope);
-};
+/* Report prose is generated server-side (Anthropic + scripted fallback) via
+   POST /api/reports — see runGenerate. scriptedProse stays for the seed fallback. */
 
 /* ---- Charts ---- */
 const BarChart = ({ bars, color }) => {
@@ -344,7 +320,6 @@ const ReportBuilder = ({ draft, setDraft, onGenerate, busy }) => {
 };
 
 /* ---- Main view ---- */
-const REPORTS_KEY = 'dlpe_reports_v1';
 const makeSeedReports = () => ([
   { id: 'seed-1', spec: { title: 'Weekly fleet summary', prompt: 'Weekly fleet summary', period: 'This week', format: 'Executive brief', scope: ['sales', 'operations', 'workshop', 'finance'] },
     when: 'May 26 · 08:40', prose: scriptedProse(['sales', 'operations', 'workshop', 'finance']) },
@@ -355,15 +330,20 @@ const makeSeedReports = () => ([
 export const ReportsView = () => {
   const { t } = useT();
   const [tab, setTab] = React.useState('dashboard'); // dashboard | create | library
-  const [reports, setReports] = React.useState(() => {
-    try { const s = JSON.parse(localStorage.getItem(REPORTS_KEY)); if (Array.isArray(s) && s.length) return s; } catch (e) {}
-    return makeSeedReports();
-  });
+  const [reports, setReports] = React.useState(makeSeedReports);
   const [open, setOpen] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
   const [draft, setDraft] = React.useState(null);
 
-  const persist = (next) => { setReports(next); try { localStorage.setItem(REPORTS_KEY, JSON.stringify(next)); } catch (e) {} };
+  // Load the report library from the API (fallback to seed on failure).
+  React.useEffect(() => {
+    let cancelled = false;
+    api.get('/reports').then((rows) => {
+      if (cancelled || !Array.isArray(rows)) return;
+      setReports(rows);
+    }).catch(() => { /* keep seed fallback */ });
+    return () => { cancelled = true; };
+  }, []);
 
   const startFromPrompt = (prompt) => {
     setDraft({ prompt, title: prompt, period: 'This week', format: 'Executive brief', scope: [...ALL_TRACKS] });
@@ -373,15 +353,26 @@ export const ReportsView = () => {
     runGenerate(spec);
   };
 
+  // Server computes aggregates + AI prose (Anthropic or scripted fallback) and persists.
   const runGenerate = async (spec) => {
     setBusy(true);
-    const prose = await generateProse(spec);
-    const report = { id: 'r-' + Date.now(), spec, prose,
-      when: new Date().toLocaleString('en-GB', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) };
-    persist([report, ...reports]);
-    setBusy(false);
-    setDraft(null);
-    setOpen(report);
+    try {
+      const report = await api.post('/reports', spec);
+      setReports(prev => [report, ...prev.filter(r => r.id !== report.id)]);
+      setOpen(report);
+    } catch (e) {
+      console.error('Failed to generate report', e);
+    } finally {
+      setBusy(false);
+      setDraft(null);
+    }
+  };
+
+  const deleteReport = async (id, e) => {
+    if (e) e.stopPropagation();
+    setReports(prev => prev.filter(r => r.id !== id));
+    try { await api.del('/reports/' + id); }
+    catch (err) { console.error('Failed to delete report', err); }
   };
 
   if (open) return <ReportDoc report={open} onBack={() => { setOpen(null); setTab('library'); }} />;
@@ -448,6 +439,11 @@ export const ReportsView = () => {
                 <div className="repCardTop">
                   <span className="repBadge sm"><Icon name="sparkles" size={10} strokeWidth={1.8} /> AI</span>
                   <span className="repCardWhen">{r.when}</span>
+                  <span className="repCardDel" role="button" tabIndex={0} title="Delete report"
+                        onClick={(e) => deleteReport(r.id, e)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') deleteReport(r.id, e); }}>
+                    <Icon name="close" size={12} strokeWidth={2} />
+                  </span>
                 </div>
                 <div className="repCardTitle">{r.spec.title}</div>
                 <div className="repCardMeta">{r.spec.period} · {r.spec.format}</div>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Icon } from './icons.jsx';
 import { TrackTag } from './primitives.jsx';
+import { api } from './api/client.js';
 import { NangoConnect } from './nango_connect.jsx';
 import { AiMappingFlow } from './ai_mapping.jsx';
 
@@ -247,11 +248,45 @@ const AUDIT = [
 export const AuditView = () => {
   const [filter, setFilter] = React.useState('all');
   const [openId, setOpenId] = React.useState(null);
+  const [entries, setEntries] = React.useState(AUDIT);
+  const [reverting, setReverting] = React.useState(null);
+  const [toast, setToast] = React.useState(null);
 
-  const filtered = filter === 'all' ? AUDIT
-    : filter === 'cascades' ? AUDIT.filter(a => a.cascades && a.cascades.length)
-    : filter === 'system' ? AUDIT.filter(a => a.isSystem)
-    : AUDIT.filter(a => a.track === filter);
+  // Load the audit log from the API (fallback to the seed constant).
+  const load = React.useCallback(() => {
+    api.get('/audit').then((rows) => {
+      if (Array.isArray(rows)) setEntries(rows);
+    }).catch(() => { /* keep AUDIT fallback */ });
+  }, []);
+  React.useEffect(() => { load(); }, [load]);
+
+  const showToast = (title, lines) => {
+    setToast({ title, lines });
+    setTimeout(() => setToast(null), 5000);
+  };
+
+  const revert = async (id, e) => {
+    if (e) e.stopPropagation();
+    setReverting(id);
+    try {
+      const res = await api.post('/audit/' + id + '/revert', {});
+      const removed = (res.removedCardIds || []).join(', ');
+      showToast('Reverted', [
+        res.restoredCardId ? `Restored card ${res.restoredCardId}` : 'Source card restored',
+        removed ? `Removed ${removed}` : 'No downstream cards removed',
+      ]);
+      load();
+    } catch (err) {
+      showToast('Revert failed', [err.message || 'Could not revert this entry']);
+    } finally {
+      setReverting(null);
+    }
+  };
+
+  const filtered = filter === 'all' ? entries
+    : filter === 'cascades' ? entries.filter(a => a.cascades && a.cascades.length)
+    : filter === 'system' ? entries.filter(a => a.isSystem)
+    : entries.filter(a => a.track === filter);
 
   const days = [...new Set(filtered.map(a => a.day))];
 
@@ -332,13 +367,30 @@ export const AuditView = () => {
                       {openId === a.id ? 'Hide' : 'Details'}
                     </button>
                   )}
-                  {!a.isSystem && <button className="miniBtn" onClick={e => e.stopPropagation()}>Revert</button>}
+                  {!a.isSystem && (
+                    <button className="miniBtn" disabled={reverting === a.id}
+                            onClick={(e) => revert(a.id, e)}>
+                      {reverting === a.id ? 'Reverting…' : 'Revert'}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         );
       })}
+
+      {toast && (
+        <div className="toast">
+          <span className="toastDot" />
+          <div>
+            <div style={{ fontWeight: 500, marginBottom: 4 }}>{toast.title}</div>
+            {toast.lines.map((l, i) => (
+              <div key={i} style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{l}</div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

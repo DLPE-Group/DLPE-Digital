@@ -52,6 +52,12 @@ export async function moveStage(
     track: trackKey,
     kind: 'normal',
     icon: 'arrow',
+    meta: {
+      cardId: card.id,
+      prevStageId: card.stageId,
+      prevStageName: card.stageName,
+      prevCta: card.cta,
+    },
   });
 
   return updated;
