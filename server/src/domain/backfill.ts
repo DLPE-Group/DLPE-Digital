@@ -93,58 +93,57 @@ export async function backfillEntities(prisma: PrismaClient): Promise<void> {
   }
   void FIELD_CATEGORIES; // categories are sourced from DATA_TYPES.fields[].cat
 
-  // 4) Entities from Cards
+  // 4) Entities from Cards. Convergent: re-running refreshes the mutable
+  // envelope so entities track the source rows (id/createdAt/createdById are
+  // immutable and only set on create).
   const tenantFor = await loadTenantResolver(prisma);
   const cards = await prisma.card.findMany();
   for (const c of cards) {
     const trackKey = c.track.toLowerCase();
     const typeKey = PIPELINE_TYPE[trackKey]?.key;
     if (!typeKey) continue;
+    const data = {
+      tenantId: tenantFor(c.companyId),
+      entityTypeId: typeIdByKey[typeKey],
+      companyId: c.companyId,
+      title: c.customer,
+      value: c.value,
+      owner: c.owner,
+      status: c.status,
+      sub: c.sub,
+      sources: c.sources,
+      fields: { type: c.type, vehicle: c.vehicle, meta: c.meta },
+      trackId: trackKey,
+      stageId: c.stageId,
+      stageName: c.stageName,
+      days: c.days,
+      daysLabel: c.daysLabel,
+      cta: c.cta,
+      awaitingSign: c.awaitingSign,
+    };
     await prisma.entity.upsert({
       where: { id: c.id },
-      update: {},
-      create: {
-        id: c.id,
-        tenantId: tenantFor(c.companyId),
-        entityTypeId: typeIdByKey[typeKey],
-        companyId: c.companyId,
-        title: c.customer,
-        value: c.value,
-        owner: c.owner,
-        status: c.status,
-        sub: c.sub,
-        sources: c.sources,
-        fields: { type: c.type, vehicle: c.vehicle, meta: c.meta },
-        trackId: trackKey,
-        stageId: c.stageId,
-        stageName: c.stageName,
-        days: c.days,
-        daysLabel: c.daysLabel,
-        cta: c.cta,
-        awaitingSign: c.awaitingSign,
-        createdById: c.createdById,
-        createdAt: c.createdAt,
-        updatedAt: c.updatedAt,
-      },
+      update: data,
+      create: { id: c.id, ...data, createdById: c.createdById, createdAt: c.createdAt, updatedAt: c.updatedAt },
     });
   }
 
-  // 5) Entities from Vehicles (reference)
+  // 5) Entities from Vehicles (reference). Convergent like the cards above.
   const vehicles = await prisma.vehicle.findMany();
   for (const v of vehicles) {
+    const data = {
+      tenantId: tenantFor(v.companyId),
+      entityTypeId: typeIdByKey['vehicle'],
+      companyId: v.companyId,
+      title: v.plate,
+      status: v.status,
+      sources: [],
+      fields: { plate: v.plate, model: v.model, vin: v.vin, operator: v.operator, statusLabel: v.statusLabel, note: v.note, meta: v.meta },
+    };
     await prisma.entity.upsert({
       where: { id: v.id },
-      update: {},
-      create: {
-        id: v.id,
-        tenantId: tenantFor(v.companyId),
-        entityTypeId: typeIdByKey['vehicle'],
-        companyId: v.companyId,
-        title: v.plate,
-        status: v.status,
-        sources: [],
-        fields: { plate: v.plate, model: v.model, vin: v.vin, operator: v.operator, statusLabel: v.statusLabel, note: v.note, meta: v.meta },
-      },
+      update: data,
+      create: { id: v.id, ...data },
     });
   }
 }
