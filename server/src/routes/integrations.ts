@@ -61,6 +61,16 @@ integrationsRouter.patch('/:id', async (req, res) => {
   }
 });
 
+// GET /integrations/:id/logs — recent activity for this integration. Derived
+// from system audit entries (real events flowing through the DataSource).
+integrationsRouter.get('/:id/logs', async (req, res) => {
+  const it = await prisma.integration.findUnique({ where: { id: req.params.id } });
+  if (!it) return res.status(404).json({ error: 'Integration not found' });
+  const sys = await prisma.auditEntry.findMany({ where: { isSystem: true }, orderBy: { createdAt: 'desc' }, take: 12 });
+  const lines = sys.map((a) => ({ when: `${a.day} · ${a.time}`, text: `${a.verb} — ${a.target}` }));
+  res.json({ integration: { id: it.id, name: it.name, status: it.status, lastSync: it.lastSync }, lines });
+});
+
 // POST /integrations/:id/test — "test connection": marks healthy + bumps lastSync.
 integrationsRouter.post('/:id/test', async (req, res) => {
   const existing = await prisma.integration.findUnique({ where: { id: req.params.id } });
