@@ -194,10 +194,13 @@ model FieldRule {
 }
 
 model RbacVersion {
-  v     Int    @id
-  when  String
-  actor String
-  note  String
+  v        Int    @id
+  when     String
+  actor    String
+  note     String
+  // Full snapshot of the effective FieldRule set at save time — enables
+  // transactional "revert to version".
+  snapshot Json?
 }
 
 // ---------------- Stage config + cross-track triggers ----------------

@@ -500,6 +500,40 @@ registry.registerPath({
   security: secured,
   responses: responses(JsonArray),
 });
+registry.registerPath({
+  method: 'post',
+  path: '/admin/roles',
+  tags: ['Admin · Roles'],
+  summary: 'Create a new (custom) role',
+  security: secured,
+  request: {
+    body: {
+      content: jsonContent(
+        z.object({
+          id: z.string().optional(),
+          name: z.string(),
+          desc: z.string().optional(),
+          tracks: z.array(z.string()).optional(),
+          edit: z.string().optional(),
+          system: z.boolean().optional(),
+        }).openapi('RoleCreateBody'),
+      ),
+    },
+  },
+  responses: responses(Json),
+});
+registry.registerPath({
+  method: 'post',
+  path: '/admin/roles/{id}/clone',
+  tags: ['Admin · Roles'],
+  summary: 'Clone a role and all its field rules',
+  security: secured,
+  request: {
+    params: idParam,
+    body: { content: jsonContent(z.object({ id: z.string().optional(), name: z.string().optional() }).openapi('RoleCloneBody')) },
+  },
+  responses: responses(Json),
+});
 
 // ===========================================================================
 // ADMIN · USERS
@@ -592,6 +626,18 @@ registry.registerPath({
   summary: 'List RBAC rule versions',
   security: secured,
   responses: responses(JsonArray),
+});
+registry.registerPath({
+  method: 'post',
+  path: '/admin/rbac/versions/{v}/revert',
+  tags: ['Admin · Field Rules'],
+  summary: 'Transactionally revert the field-rule set to a stored version',
+  security: secured,
+  request: {
+    params: z.object({ v: z.string() }),
+    body: { content: jsonContent(z.object({ actor: z.string().optional() }).openapi('RevertBody')) },
+  },
+  responses: responses(Json),
 });
 
 // ===========================================================================
