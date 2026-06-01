@@ -12,5 +12,5 @@ aggregationsRouter.get('/track/:track', async (req, res) => {
 });
 
 aggregationsRouter.get('/dashboard', async (_req, res) => {
-  res.json(dashboardSnapshot());
+  res.json(await dashboardSnapshot());
 });
