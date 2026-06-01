@@ -10,6 +10,7 @@ loadDotenv({ path: resolve(__dirname, '../../.env') });
 loadDotenv({ path: resolve(__dirname, '../.env') });
 
 const schema = z.object({
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(1),
   JWT_REFRESH_SECRET: z.string().min(1),
@@ -18,6 +19,16 @@ const schema = z.object({
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-6'),
   PORT: z.coerce.number().default(4000),
   VITE_API_URL: z.string().default('/api'),
+  // Comma-separated allowlist of origins for CORS in production
+  // (e.g. "https://console.example.com,https://admin.example.com").
+  // Empty in production => no cross-origin requests are reflected (same-origin only).
+  CORS_ORIGIN: z.string().optional().default(''),
+  // Absolute path to the built frontend (app/dist) served from the API.
+  // Empty => fall back to the app dist resolved relative to this file.
+  STATIC_DIR: z.string().optional().default(''),
+  // Force static SPA serving even outside NODE_ENV=production
+  // (accepts "1"/"true"). In production static serving is on by default.
+  SERVE_STATIC: z.string().optional().default(''),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -28,3 +39,11 @@ if (!parsed.success) {
 
 export const env = parsed.data;
 export type Env = typeof env;
+
+export const isProd = env.NODE_ENV === 'production';
+export const serveStatic = isProd || env.SERVE_STATIC === '1' || env.SERVE_STATIC === 'true';
+
+/** Origins allowlist parsed from CORS_ORIGIN (comma-separated). */
+export const corsOrigins = env.CORS_ORIGIN.split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);

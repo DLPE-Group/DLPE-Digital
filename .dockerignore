@@ -1,0 +1,17 @@
+node_modules
+**/node_modules
+dist
+**/dist
+.git
+.gitignore
+*.log
+.env
+.env.*
+!.env.example
+chats
+project
+docs
+**/*.md
+.vscode
+.idea
+.DS_Store
