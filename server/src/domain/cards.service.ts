@@ -111,6 +111,29 @@ export async function getCard(id: string, userId?: string): Promise<Card | null>
   return filterCard(card, effective);
 }
 
+// Translate a legacy Card-field patch into an Entity update (envelope columns +
+// merged fields JSON). type/vehicle/meta live in fields; the rest are columns.
+export function cardPatchToEntityData(
+  patch: Partial<Card>,
+  existingFields: Record<string, unknown> | null | undefined,
+): Prisma.EntityUpdateInput {
+  const data: Record<string, unknown> = {};
+  const fields: Record<string, unknown> = { ...(existingFields ?? {}) };
+  let touchedFields = false;
+  const colMap: Record<string, string> = {
+    customer: 'title', value: 'value', owner: 'owner', status: 'status', sub: 'sub',
+    sources: 'sources', stageId: 'stageId', stageName: 'stageName', days: 'days',
+    daysLabel: 'daysLabel', cta: 'cta', awaitingSign: 'awaitingSign',
+  };
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) continue;
+    if (k in colMap) data[colMap[k]] = v;
+    else if (k === 'type' || k === 'vehicle' || k === 'meta') { fields[k] = v; touchedFields = true; }
+  }
+  if (touchedFields) data.fields = fields;
+  return data as Prisma.EntityUpdateInput;
+}
+
 // Server twin of the frontend `moveStage`: set stageName from StageConfig,
 // reset days=0 / daysLabel='moved now', and write an audit entry.
 export async function moveStage(
@@ -119,8 +142,9 @@ export async function moveStage(
   actor: { name: string; roleId: string },
   userId?: string,
 ): Promise<Card> {
-  const card = await prisma.card.findUnique({ where: { id } });
-  if (!card) throw new Error('Card not found');
+  const row = await prisma.entity.findUnique({ where: { id } });
+  if (!row) throw new Error('Card not found');
+  const card = entityToCardDTO(row as unknown as EntityRow) as unknown as Card;
 
   const trackKey = TRACK_KEY_FROM_ENUM[card.track] as TrackKey;
   const stages = await loadStages(card.track);
@@ -147,7 +171,7 @@ export async function moveStage(
     }
   }
 
-  const updated = await prisma.card.update({
+  const updatedRow = await prisma.entity.update({
     where: { id },
     data: {
       stageId,
@@ -157,6 +181,7 @@ export async function moveStage(
       cta: stage?.cta ?? card.cta,
     },
   });
+  const updated = entityToCardDTO(updatedRow as unknown as EntityRow) as unknown as Card;
 
   await writeAudit({
     actor: actor.name,
@@ -178,14 +203,9 @@ export async function moveStage(
 }
 
 export async function patchCard(id: string, patch: Partial<Card>): Promise<Card> {
-  // Only allow mutating known mutable columns.
-  const data: Prisma.CardUpdateInput = {};
-  const allowed: (keyof Card)[] = [
-    'type', 'customer', 'value', 'vehicle', 'sub', 'stageId', 'stageName',
-    'days', 'daysLabel', 'owner', 'status', 'cta', 'sources', 'awaitingSign', 'meta',
-  ];
-  for (const key of allowed) {
-    if (patch[key] !== undefined) (data as Record<string, unknown>)[key] = patch[key];
-  }
-  return prisma.card.update({ where: { id }, data });
+  const row = await prisma.entity.findUnique({ where: { id } });
+  if (!row) throw new Error('Card not found');
+  const data = cardPatchToEntityData(patch, (row.fields ?? {}) as Record<string, unknown>);
+  const updated = await prisma.entity.update({ where: { id }, data });
+  return entityToCardDTO(updated as unknown as EntityRow) as unknown as Card;
 }
