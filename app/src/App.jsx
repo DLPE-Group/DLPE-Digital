@@ -122,6 +122,14 @@ const App = () => {
   const { me, logout } = useAuth();
   const [active, setActive] = React.useState('overview');
   const [timeline, setTimeline] = React.useState(null);
+  const [vehTimeline, setVehTimeline] = React.useState(null);
+  // Load the real vehicle lifecycle timeline from the API (fallback to seed).
+  React.useEffect(() => {
+    api.get('/vehicles/timeline')
+      .then((t) => { if (t && Array.isArray(t.events)) setVehTimeline(t); })
+      .catch(() => { /* keep VEHICLE_TIMELINE fallback */ });
+  }, []);
+  const openTimeline = () => setTimeline(vehTimeline || VEHICLE_TIMELINE);
   const [previewUser, setPreviewUser] = React.useState(null);
   const [rbacRole, setRbacRole] = React.useState(null);
   const [toast, setToast] = React.useState(null);
@@ -267,7 +275,7 @@ const App = () => {
   const renderMain = () => {
     if (active === 'portal') return <CustomerPortal />;
     if (active === 'timeline' || active === 'vehicles') {
-      return <VehiclesView onOpenTimeline={() => setTimeline(VEHICLE_TIMELINE)} />;
+      return <VehiclesView onOpenTimeline={openTimeline} />;
     }
     if (active === 'integrations') return <IntegrationsView />;
     if (active === 'structure') return <GroupStructureView />;
@@ -323,7 +331,7 @@ const App = () => {
           <Track trackId="sales" title={t('track.sales')} owner="Eva de Vries"
                  stages={SALES_STAGES} items={sales}
                  isOpen={true} onToggle={() => toggleTrack('sales')}
-                 onOpenTimeline={() => setTimeline(VEHICLE_TIMELINE)}
+                 onOpenTimeline={openTimeline}
                  onAct={openFlow} onMoveStage={moveStage('sales', SALES_STAGES, setSales)}
                  flashIds={flashIds} />
         )}
@@ -332,7 +340,7 @@ const App = () => {
           <Track trackId="operations" title={t('track.operations')} owner="Tom Janssens"
                  stages={OPS_STAGES} items={ops}
                  isOpen={true} onToggle={() => toggleTrack('operations')}
-                 onOpenTimeline={() => setTimeline(VEHICLE_TIMELINE)}
+                 onOpenTimeline={openTimeline}
                  onAct={openFlow} onMoveStage={moveStage('operations', OPS_STAGES, setOps)}
                  flashIds={flashIds} />
         )}
@@ -341,7 +349,7 @@ const App = () => {
           <Track trackId="workshop" title={t('track.workshop')} owner="Lars Pieters"
                  stages={WORKSHOP_STAGES} items={workshop}
                  isOpen={true} onToggle={() => toggleTrack('workshop')}
-                 onOpenTimeline={() => setTimeline(VEHICLE_TIMELINE)}
+                 onOpenTimeline={openTimeline}
                  onAct={openFlow} onMoveStage={moveStage('workshop', WORKSHOP_STAGES, setWorkshop)}
                  flashIds={flashIds} />
         )}
@@ -350,7 +358,7 @@ const App = () => {
           <Track trackId="finance" title={t('track.finance')} owner="Ines Vandeput"
                  stages={FINANCE_STAGES} items={finance}
                  isOpen={true} onToggle={() => toggleTrack('finance')}
-                 onOpenTimeline={() => setTimeline(VEHICLE_TIMELINE)}
+                 onOpenTimeline={openTimeline}
                  onAct={openFlow} onMoveStage={moveStage('finance', FINANCE_STAGES, setFinance)}
                  flashIds={flashIds} />
         )}
