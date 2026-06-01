@@ -66,7 +66,7 @@ const INTEGRATIONS = [
     desc: 'Fallback for systems without API access. Used for legacy CRM exports and one-off data loads.' },
 ];
 
-const IntegrationCard = ({ it }) => (
+const IntegrationCard = ({ it, onTest, onLogs, onConfig, busy }) => (
   <div className={`integrationCard ${it.nango ? 'viaNango' : ''}`}>
     <div className="integrationLogo" style={it.logoColor ? { background: it.logoColor, color: '#fff' } : undefined}>{it.logo}</div>
     <div className="integrationMain">
@@ -85,9 +85,9 @@ const IntegrationCard = ({ it }) => (
     </div>
     <div className="integrationActions">
       <span className={`intStatus ${it.status}`}><span className="d" />{it.status}</span>
-      <button className="miniBtn"><Icon name="refresh" size={11} /> Test</button>
-      <button className="miniBtn"><Icon name="document" size={11} /> Logs</button>
-      <button className="miniBtn"><Icon name="settings" size={11} /> Config</button>
+      <button className="miniBtn" disabled={busy || !onTest} onClick={() => onTest && onTest(it)}><Icon name="refresh" size={11} /> Test</button>
+      <button className="miniBtn" disabled={!onLogs} onClick={() => onLogs && onLogs(it)}><Icon name="document" size={11} /> Logs</button>
+      <button className="miniBtn" disabled={busy || !onConfig} onClick={() => onConfig && onConfig(it)}><Icon name="settings" size={11} /> Config</button>
     </div>
   </div>
 );
@@ -101,8 +101,38 @@ const CATEGORY_DIRECTION = {
 
 export const IntegrationsView = () => {
   const [added, setAdded] = React.useState([]);   // connected via Nango this session
+  const [live, setLive] = React.useState(null);   // real rows from the API
   const [nangoOpen, setNangoOpen] = React.useState(false);
   const [mapping, setMapping] = React.useState(null); // provider being AI-mapped
+  const [busyId, setBusyId] = React.useState(null);
+  const [logs, setLogs] = React.useState(null);    // { integration, lines }
+
+  // Load real integrations from the API (fallback to the seed constant).
+  const loadIntegrations = React.useCallback(() => {
+    return api.get('/integrations').then((rows) => { if (Array.isArray(rows) && rows.length) setLive(rows); }).catch(() => {});
+  }, []);
+  React.useEffect(() => { loadIntegrations(); }, [loadIntegrations]);
+
+  const patchRow = (id, patch) => setLive((prev) => (prev || []).map((r) => r.id === id ? { ...r, ...patch } : r));
+
+  const onTest = async (it) => {
+    setBusyId(it.id);
+    try { const r = await api.post(`/integrations/${it.id}/test`, {}); patchRow(it.id, r.integration); }
+    catch (e) { console.error('Test failed', e); }
+    setBusyId(null);
+  };
+  const onConfig = async (it) => {
+    const desc = window.prompt('Edit integration description:', it.desc || '');
+    if (desc == null) return;
+    setBusyId(it.id);
+    try { const r = await api.patch(`/integrations/${it.id}`, { desc }); patchRow(it.id, r); }
+    catch (e) { console.error('Config save failed', e); }
+    setBusyId(null);
+  };
+  const onLogs = async (it) => {
+    try { setLogs(await api.get(`/integrations/${it.id}/logs`)); }
+    catch (e) { console.error('Logs failed', e); }
+  };
 
   // Nango finished the connection -> hand off to the AI mapping pass.
   const onConnected = (provider) => { setNangoOpen(false); setMapping(provider); };
@@ -129,11 +159,11 @@ export const IntegrationsView = () => {
     }, ...prev]);
   };
 
-  const all = [...added, ...INTEGRATIONS];
+  const all = [...added, ...(live || INTEGRATIONS)];
   const total = all.length;
   const healthy = all.filter(i => i.status === 'healthy').length;
   const degraded = all.filter(i => i.status === 'degraded').length;
-  const errorsToday = 7; // mock
+  const errorsToday = all.filter(i => i.status === 'degraded' || i.status === 'error').length;
 
   const inbound = all.filter(i => i.direction === 'inbound');
   const outbound = all.filter(i => i.direction === 'outbound');
@@ -159,26 +189,44 @@ export const IntegrationsView = () => {
       <div className="integrationGroup">
         <div className="gh">Inbound · {inbound.length}</div>
         <div className="integrationGrid">
-          {inbound.map(it => <IntegrationCard key={it.id} it={it} />)}
+          {inbound.map(it => <IntegrationCard key={it.id} it={it} busy={busyId === it.id} onTest={onTest} onLogs={onLogs} onConfig={onConfig} />)}
         </div>
       </div>
 
       <div className="integrationGroup">
         <div className="gh">Bi-directional · {bi.length}</div>
         <div className="integrationGrid">
-          {bi.map(it => <IntegrationCard key={it.id} it={it} />)}
+          {bi.map(it => <IntegrationCard key={it.id} it={it} busy={busyId === it.id} onTest={onTest} onLogs={onLogs} onConfig={onConfig} />)}
         </div>
       </div>
 
       <div className="integrationGroup">
         <div className="gh">Outbound · {outbound.length}</div>
         <div className="integrationGrid">
-          {outbound.map(it => <IntegrationCard key={it.id} it={it} />)}
+          {outbound.map(it => <IntegrationCard key={it.id} it={it} busy={busyId === it.id} onTest={onTest} onLogs={onLogs} onConfig={onConfig} />)}
         </div>
       </div>
 
       {nangoOpen && <NangoConnect onClose={() => setNangoOpen(false)} onConnected={onConnected} />}
       {mapping && <AiMappingFlow provider={mapping} onClose={() => setMapping(null)} onComplete={onMapped} />}
+
+      {logs && (
+        <div className="overlay" onClick={() => setLogs(null)}>
+          <div className="sidePanel" onClick={e => e.stopPropagation()}>
+            <div className="sidePanelHead">
+              <div><h2>{logs.integration?.name} · activity</h2>
+                <div className="sub">Recent system events · last sync {logs.integration?.lastSync || '—'}</div></div>
+              <button className="iconBtn" onClick={() => setLogs(null)}><Icon name="close" size={16} /></button>
+            </div>
+            <div className="sidePanelBody">
+              {(!logs.lines || logs.lines.length === 0) && <div className="emptyHint">No recent activity.</div>}
+              {(logs.lines || []).map((l, i) => (
+                <div key={i} className="setRow"><div className="setLabel" style={{ minWidth: 120 }}>{l.when}</div><div className="setVal"><span className="setValText">{l.text}</span></div></div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
