@@ -596,6 +596,12 @@ async function main() {
     reports: await prisma.report.count(),
   };
   console.log('Seed complete:', JSON.stringify(counts, null, 2));
+
+  // Phase 1a: derive the parallel entity model from the rows just seeded.
+  const { backfillEntities } = await import('../src/domain/backfill.js');
+  await backfillEntities(prisma);
+  console.log('Backfilled entity model (tracks, types, fields, entities).');
+
   console.log('Login: m.weber@group.eu / demo1234 (and r.mertens@group.eu, l.pieters@group.eu, etc.)');
 }
 
