@@ -68,9 +68,11 @@ export const UserDetail = ({ user, onBack, onPreviewAs }) => {
             <div className="sub">{user.email} · <span className={`statusPill ${statusPillClass[user.status]}`}><span className="d" /> {statusLabel[user.status]}</span></div>
           </div>
         </div>
-        <button className="cta" onClick={() => onPreviewAs(user)}>
-          <Icon name="eye" size={13} strokeWidth={2} /> Preview as {user.name.split(' ')[0]}
-        </button>
+        {onPreviewAs && (
+          <button className="cta" onClick={() => onPreviewAs(user)}>
+            <Icon name="eye" size={13} strokeWidth={2} /> Preview as {user.name.split(' ')[0]}
+          </button>
+        )}
       </div>
 
       <div className="settingsSection">

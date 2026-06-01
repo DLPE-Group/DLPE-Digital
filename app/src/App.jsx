@@ -206,6 +206,10 @@ const GlobalSearch = ({ onPick }) => {
 const App = () => {
   const { t } = useT();
   const { me, logout } = useAuth();
+  // Preview-as is an admin-only capability (server-enforced). Only admins get
+  // the UI for it, so a restricted user is never shown a preview that the
+  // server will ignore.
+  const isAdmin = ['group-admin', 'sys-integrator', 'country-mgr'].includes(me?.roleId);
   const [active, setActive] = React.useState('overview');
   const [timeline, setTimeline] = React.useState(null);
   const [vehTimeline, setVehTimeline] = React.useState(null);
@@ -383,7 +387,7 @@ const App = () => {
     }
     if (active === 'integrations') return <IntegrationsView />;
     if (active === 'structure') return <GroupStructureView />;
-    if (active === 'users') return <UsersView onPreviewAs={(u) => setPreviewUser(u)} />;
+    if (active === 'users') return <UsersView onPreviewAs={isAdmin ? ((u) => setPreviewUser(u)) : null} />;
     if (active === 'roles') return rbacRole
       ? <RbacConfigurator initialRole={rbacRole} onBack={() => setRbacRole(null)}
                           onPreviewRole={(rid) => {
