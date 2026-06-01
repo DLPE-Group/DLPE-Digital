@@ -22,7 +22,7 @@ reportsRouter.get('/:id', async (req, res) => {
   res.json({ id: r.id, spec: r.spec, prose: r.prose, when: r.when });
 });
 
-const specSchema = z.object({
+export const specSchema = z.object({
   title: z.string().min(1),
   prompt: z.string().optional().default(''),
   period: z.string().min(1),
