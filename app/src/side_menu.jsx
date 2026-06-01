@@ -4,7 +4,7 @@ import { useT } from './i18n.jsx';
 
 /* Side menu — primary navigation for the dashboard */
 
-export const SideMenu = ({ active, setActive, counts, onTrackSelect, allowedTracks }) => {
+export const SideMenu = ({ active, setActive, counts, onTrackSelect, allowedTracks, isAdmin }) => {
   const { t } = useT();
   const tracks = [
     { id: 'sales',      label: t('track.sales'),      color: 'var(--track-sales)',    count: counts.sales },
@@ -64,17 +64,21 @@ export const SideMenu = ({ active, setActive, counts, onTrackSelect, allowedTrac
           {item('messages', 'mail', t('nav.messages'), null)}
         </div>
 
-        <div className="navSection">
-          <div className="navHead">Administration</div>
-          {item('structure', 'settings', 'Group structure')}
-          {item('users', 'user', 'Users')}
-          {item('roles', 'lock', 'Roles & permissions')}
-        </div>
+        {/* Administration + Integrations + Audit are group-admin only
+            (mirrors the server's requireAdmin guard). */}
+        {isAdmin && (
+          <div className="navSection">
+            <div className="navHead">Administration</div>
+            {item('structure', 'settings', 'Group structure')}
+            {item('users', 'user', 'Users')}
+            {item('roles', 'lock', 'Roles & permissions')}
+          </div>
+        )}
 
         <div className="navSection">
           <div className="navHead">{t('nav.system')}</div>
-          {item('integrations', 'bolt', t('nav.integrations'))}
-          {item('audit', 'document', t('nav.audit'))}
+          {isAdmin && item('integrations', 'bolt', t('nav.integrations'))}
+          {isAdmin && item('audit', 'document', t('nav.audit'))}
           {item('settings', 'settings', t('nav.settings'))}
         </div>
       </div>
