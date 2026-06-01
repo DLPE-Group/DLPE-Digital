@@ -216,6 +216,13 @@ const App = () => {
       .catch(() => { /* keep VEHICLE_TIMELINE fallback */ });
   }, []);
   const openTimeline = () => setTimeline(vehTimeline || VEHICLE_TIMELINE);
+  // Which tracks the signed-in user may view (role → track access).
+  const [allowedTracks, setAllowedTracks] = React.useState(null);
+  React.useEffect(() => {
+    api.get('/me/permissions')
+      .then((p) => { if (Array.isArray(p?.allowedTracks)) setAllowedTracks(p.allowedTracks); })
+      .catch(() => { /* show all on failure */ });
+  }, []);
   const [previewUser, setPreviewUser] = React.useState(null);
   const [rbacRole, setRbacRole] = React.useState(null);
   const [toast, setToast] = React.useState(null);
@@ -474,7 +481,7 @@ const App = () => {
 
   return (
     <div className="app v1Shell">
-      <SideMenu active={active} setActive={setActive} counts={counts}
+      <SideMenu active={active} setActive={setActive} counts={counts} allowedTracks={allowedTracks}
                 onTrackSelect={() => setOpenTracks({ sales: false, operations: false, workshop: false, finance: false })} />
 
       <div className="v1Main">
