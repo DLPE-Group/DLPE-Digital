@@ -280,3 +280,26 @@ and most foundational).
 - **RLS misconfiguration** locking out legitimate access — single-tenant default
   (one tenant) keeps this low-risk; tested with a cross-tenant isolation test.
 - **Scope creep into provisioning** — explicitly fenced off (§6).
+
+---
+
+## Phase 1a status (implemented)
+
+The parallel entity model is live and backfilled; projection parity is proven by
+`tests/api/projection-parity.test.mjs` (48 API tests green). No live read path
+changed yet. Shipped: `TrackDef`/`StageDef`/`EntityType`/`FieldDef`/`Entity`
+tables (additive migration `20260601192848_entity_model_foundation`), a
+convergent backfill (`server/src/domain/backfill.ts`) derived from existing
+cards/vehicles incl. denormalized `tenantId` (`server/src/domain/tenancy.ts`),
+and projection functions (`server/src/domain/projection.ts`).
+
+**Deferred to follow-on plans (do not forget):**
+- **1b** — repoint `cards.service`/`aggregations`/`scope`/`fleet` to read from
+  `Entity` via the projection; replace `CARD_FIELD_MAP` with per-EntityType
+  governance; SQL `GROUP BY` aggregation + scope `WHERE`; pagination. *(First
+  phase that changes live behavior — confirm before flipping reads.)*
+- **1c** — Row-Level Security: `app.tenant` GUC set per request inside a
+  transaction, RLS policies on `Entity`. (See project memory
+  `tenancy-rls-decision`. Architectural choice — review approach first.)
+- **1d** — physical partitioning of `Entity` by `entityTypeId`/`tenantId` (raw
+  SQL migration), applied when volume warrants.
