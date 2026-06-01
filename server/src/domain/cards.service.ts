@@ -4,6 +4,7 @@ import type { Card, Prisma, Track } from '@prisma/client';
 import { writeAudit } from './audit.service.js';
 import { buildEffectiveForUser } from '../rbac/context.js';
 import { filterCard } from '../rbac/applyCardRules.js';
+import { visibleCompanyIds } from '../rbac/scope.js';
 
 export function trackKeyToEnum(track: string): Track {
   const e = TRACK_ENUM[track.toLowerCase()];
@@ -58,6 +59,10 @@ export async function listCards(track?: string, userId?: string): Promise<Card[]
   const allowed = await userAllowedTracks(userId);
   cards = cards.filter((c) => allowed.includes(TRACK_KEY_FROM_ENUM[c.track]));
 
+  // Row-level scope: hide companies outside the caller's scope (null = all).
+  const visible = await visibleCompanyIds(userId);
+  if (visible) cards = cards.filter((c) => c.companyId != null && visible.has(c.companyId));
+
   // Per-caller: field-level RBAC (always) + auto-escalate (if the pref is on).
   const [pref, eff] = await Promise.all([
     prisma.userPreference.findUnique({ where: { userId } }),
@@ -86,6 +91,11 @@ export async function listCards(track?: string, userId?: string): Promise<Card[]
 export async function getCard(id: string, userId?: string): Promise<Card | null> {
   const card = await prisma.card.findUnique({ where: { id } });
   if (!card || !userId) return card;
+  // Track + row-level scope: a user can't fetch a card outside their access.
+  const allowed = await userAllowedTracks(userId);
+  if (!allowed.includes(TRACK_KEY_FROM_ENUM[card.track])) return null;
+  const visible = await visibleCompanyIds(userId);
+  if (visible && (card.companyId == null || !visible.has(card.companyId))) return null;
   const { effective } = await buildEffectiveForUser(userId);
   return filterCard(card, effective);
 }
