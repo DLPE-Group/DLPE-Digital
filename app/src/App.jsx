@@ -117,6 +117,53 @@ const StubPanel = ({ icon, title, body }) => (
   </div>
 );
 
+// In-app notifications bell — derived from live DB state via /notifications.
+// "Read" state is per-browser (localStorage); there is no external delivery.
+const NotificationsBell = () => {
+  const [items, setItems] = React.useState([]);
+  const [open, setOpen] = React.useState(false);
+  const [dismissed, setDismissed] = React.useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('il_dismissed_notifs') || '[]')); }
+    catch { return new Set(); }
+  });
+  React.useEffect(() => {
+    api.get('/notifications').then(rows => { if (Array.isArray(rows)) setItems(rows); }).catch(() => {});
+  }, []);
+  const visible = items.filter(n => !dismissed.has(n.id));
+  const dismiss = (id) => setDismissed(prev => {
+    const next = new Set(prev); next.add(id);
+    localStorage.setItem('il_dismissed_notifs', JSON.stringify([...next]));
+    return next;
+  });
+  return (
+    <div className="notifWrap">
+      <button className="iconBtn notifBtn" title="Notifications" onClick={() => setOpen(o => !o)}>
+        <Icon name="bell" size={17} />
+        {visible.length > 0 && <span className="notifDot" />}
+      </button>
+      {open && (
+        <>
+          <div className="notifBackdrop" onClick={() => setOpen(false)} />
+          <div className="notifPopover">
+            <div className="notifHead"><span>Notifications</span><span className="notifCount">{visible.length}</span></div>
+            {visible.length === 0 && <div className="notifEmpty">All clear — nothing needs attention.</div>}
+            {visible.map(n => (
+              <div key={n.id} className={`notifItem ${n.kind}`}>
+                <span className="notifIcon"><Icon name={n.icon || 'bell'} size={14} /></span>
+                <div className="notifText">
+                  <div className="notifTitle">{n.title}</div>
+                  <div className="notifSub">{n.body}{n.when ? ` · ${n.when}` : ''}</div>
+                </div>
+                <button className="notifX" title="Dismiss" onClick={() => dismiss(n.id)}><Icon name="close" size={12} /></button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 const App = () => {
   const { t } = useT();
   const { me, logout } = useAuth();
@@ -410,10 +457,7 @@ const App = () => {
           <div className="headerRight">
             <ThemeSwitcher />
             <LanguageSwitcher />
-            <button className="iconBtn notifBtn" title="Notifications">
-              <Icon name="bell" size={17} />
-              <span className="notifDot"></span>
-            </button>
+            <NotificationsBell />
             <button className="iconBtn" title="Help"><Icon name="document" size={16} /></button>
             <button className="iconBtn" title="Sign out" onClick={logout}><Icon name="close" size={16} /></button>
             <Avatar name={me?.name || 'Markus Weber'} size="" />
