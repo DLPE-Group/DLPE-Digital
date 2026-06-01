@@ -56,3 +56,14 @@ test('audit view loads with a Revert action', async ({ page }) => {
   await expect(page.getByRole('heading', { name: /audit log/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /revert/i }).first()).toBeVisible();
 });
+
+test('data model view lists tracks and entity types from the API', async ({ page }) => {
+  await login(page);
+  await navTo(page, 'Data model');
+  await expect(page.getByRole('heading', { name: 'Data model' })).toBeVisible();
+  await expect(page.getByText('Tracks (pipelines)')).toBeVisible();
+  // built-in type labels prove the data came from the API (exact avoids the
+  // "Contract drafted" stage chip / the subtitle text)
+  await expect(page.getByText('Contract', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Vehicle', { exact: true }).first()).toBeVisible();
+});
