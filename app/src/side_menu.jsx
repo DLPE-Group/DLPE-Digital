@@ -72,6 +72,7 @@ export const SideMenu = ({ active, setActive, counts, onTrackSelect, allowedTrac
             {item('structure', 'settings', 'Group structure')}
             {item('users', 'user', 'Users')}
             {item('roles', 'lock', 'Roles & permissions')}
+            {item('datamodel', 'document', 'Data model')}
           </div>
         )}
 

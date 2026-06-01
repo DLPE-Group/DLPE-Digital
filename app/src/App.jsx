@@ -14,6 +14,7 @@ import { IntegrationsView, AuditView } from './views_part1.jsx';
 import { GroupStructureView } from './admin_structure.jsx';
 import { UsersView } from './admin_users.jsx';
 import { RolesView, RbacConfigurator } from './admin_rbac.jsx';
+import { DataModelView } from './data_model.jsx';
 import { ReportsView } from './reports.jsx';
 import {
   SALES_STAGES, OPS_STAGES, WORKSHOP_STAGES, FINANCE_STAGES,
@@ -210,7 +211,7 @@ const App = () => {
   // requireAdmin). Gates the admin/integrations/audit nav + views and the
   // admin-only preview-as capability.
   const isAdmin = me?.roleId === 'group-admin';
-  const ADMIN_ONLY_VIEWS = ['structure', 'users', 'roles', 'integrations', 'audit'];
+  const ADMIN_ONLY_VIEWS = ['structure', 'users', 'roles', 'datamodel', 'integrations', 'audit'];
   const [active, setActive] = React.useState('overview');
   const [timeline, setTimeline] = React.useState(null);
   const [vehTimeline, setVehTimeline] = React.useState(null);
@@ -393,6 +394,7 @@ const App = () => {
       return <VehiclesView onOpenTimeline={openTimeline} />;
     }
     if (active === 'integrations') return <IntegrationsView />;
+    if (active === 'datamodel') return <DataModelView />;
     if (active === 'structure') return <GroupStructureView />;
     if (active === 'users') return <UsersView onPreviewAs={isAdmin ? ((u) => setPreviewUser(u)) : null} />;
     if (active === 'roles') return rbacRole
