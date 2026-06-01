@@ -34,7 +34,11 @@ export const SettingsView = () => {
           <h1>Settings</h1>
           <div className="sub">Stage definitions, SLA thresholds, lock conditions and cross-track triggers — all config-driven. Changes here propagate to every dashboard view without code changes.</div>
         </div>
-        <button className="cta ghost"><Icon name="download" size={12} strokeWidth={2} /> Export config (JSON)</button>
+        <button className="cta ghost" onClick={() => {
+          const cfg = { exportedAt: new Date().toISOString(), preferences: toggles };
+          const url = URL.createObjectURL(new Blob([JSON.stringify(cfg, null, 2)], { type: 'application/json' }));
+          const a = document.createElement('a'); a.href = url; a.download = 'workspace-config.json'; a.click(); URL.revokeObjectURL(url);
+        }}><Icon name="download" size={12} strokeWidth={2} /> Export config (JSON)</button>
       </div>
 
       <StageConfigEditor />

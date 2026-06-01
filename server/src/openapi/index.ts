@@ -400,6 +400,27 @@ registry.registerPath({
   request: { body: { content: jsonContent(integrationAddSchema) } },
   responses: responses(Json),
 });
+registry.registerPath({
+  method: 'patch',
+  path: '/integrations/{id}',
+  tags: ['Integrations'],
+  summary: 'Edit an integration’s config fields',
+  security: secured,
+  request: {
+    params: idParam,
+    body: { content: jsonContent(z.object({ name: z.string(), kind: z.string(), direction: z.string(), desc: z.string(), status: z.string() }).partial().openapi('IntegrationPatchBody')) },
+  },
+  responses: responses(Json),
+});
+registry.registerPath({
+  method: 'post',
+  path: '/integrations/{id}/test',
+  tags: ['Integrations'],
+  summary: 'Test connection (marks healthy + bumps lastSync)',
+  security: secured,
+  request: { params: idParam },
+  responses: responses(Json),
+});
 
 // ===========================================================================
 // RECORDS  (server-side field-level RBAC demo endpoint)
@@ -775,6 +796,23 @@ registry.registerPath({
   tags: ['Fleet'],
   summary: 'Customer portal payload (operator + vehicles + invoices + messages)',
   security: secured,
+  responses: responses(Json),
+});
+registry.registerPath({
+  method: 'get',
+  path: '/portal/messages',
+  tags: ['Fleet'],
+  summary: 'Recent messages to the account team',
+  security: secured,
+  responses: responses(JsonArray),
+});
+registry.registerPath({
+  method: 'post',
+  path: '/portal/messages',
+  tags: ['Fleet'],
+  summary: 'Send a message to the account team (persisted)',
+  security: secured,
+  request: { body: { content: jsonContent(z.object({ body: z.string(), operator: z.string().optional() }).openapi('PortalMessageBody')) } },
   responses: responses(Json),
 });
 

@@ -368,3 +368,13 @@ model UserPreference {
   prefs     Json
   updatedAt DateTime @updatedAt
 }
+
+// Customer-portal messages to the account team.
+model PortalMessage {
+  id        String   @id @default(cuid())
+  operator  String?
+  author    String?
+  when      String
+  body      String
+  createdAt DateTime @default(now())
+}
