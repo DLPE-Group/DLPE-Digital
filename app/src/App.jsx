@@ -20,7 +20,7 @@ import {
   VEHICLE_TIMELINE,
 } from './data.js';
 import { ADMIN_USERS, ROLES } from './admin_data.js';
-import { api } from './api/client.js';
+import { api, setPreviewAs } from './api/client.js';
 import { useAuth } from './api/auth.jsx';
 
 // Map a card to the server action that drives it — mirrors resolveFlow().
@@ -216,14 +216,16 @@ const App = () => {
       .catch(() => { /* keep VEHICLE_TIMELINE fallback */ });
   }, []);
   const openTimeline = () => setTimeline(vehTimeline || VEHICLE_TIMELINE);
-  // Which tracks the signed-in user may view (role → track access).
+  const [previewUser, setPreviewUser] = React.useState(null);
+  // Which tracks the *acting* user may view (role → track access). Re-runs when
+  // preview changes so the menu/scorecards reflect the previewed user.
   const [allowedTracks, setAllowedTracks] = React.useState(null);
   React.useEffect(() => {
+    setPreviewAs(previewUser?.id || null);
     api.get('/me/permissions')
-      .then((p) => { if (Array.isArray(p?.allowedTracks)) setAllowedTracks(p.allowedTracks); })
+      .then((p) => { setAllowedTracks(Array.isArray(p?.allowedTracks) ? p.allowedTracks : null); })
       .catch(() => { /* show all on failure */ });
-  }, []);
-  const [previewUser, setPreviewUser] = React.useState(null);
+  }, [previewUser]);
   const [rbacRole, setRbacRole] = React.useState(null);
   const [toast, setToast] = React.useState(null);
   const [flashIds, setFlashIds] = React.useState([]);
@@ -242,9 +244,11 @@ const App = () => {
 
   const trackSetters = { sales: setSales, operations: setOps, workshop: setWorkshop, finance: setFinance };
 
-  // Load all four pipelines from the API on mount.
+  // Load all four pipelines from the API on mount, and whenever the previewed
+  // user changes (so the live data reflects exactly what that user would see).
   React.useEffect(() => {
     let alive = true;
+    setPreviewAs(previewUser?.id || null);
     Promise.all([
       api.get('/cards?track=sales'),
       api.get('/cards?track=operations'),
@@ -255,7 +259,7 @@ const App = () => {
       setSales(s); setOps(o); setWorkshop(w); setFinance(f);
     }).catch(() => {});
     return () => { alive = false; };
-  }, []);
+  }, [previewUser]);
 
   // Apply / insert a card returned by the server into the right track.
   const applyCard = (card) => {
@@ -419,6 +423,7 @@ const App = () => {
 
         <ScorecardRow sales={sales} ops={ops} workshop={workshop} finance={finance}
                       openTracks={openTracks} focused={focusTrack}
+                      allowedTracks={allowedTracks}
                       only={isDept ? active : null}
                       onClearFilter={() => setActive('overview')}
                       onToggle={toggleTrack} onAct={openFlow} />
@@ -511,7 +516,11 @@ const App = () => {
         </header>
 
         <main className="main">
-          {renderMain()}
+          {/* Remount on preview change so views that fetch on mount (dashboard
+              charts, reports, track aggregations) reload as the previewed user. */}
+          <React.Fragment key={previewUser?.id || 'self'}>
+            {renderMain()}
+          </React.Fragment>
         </main>
       </div>
 

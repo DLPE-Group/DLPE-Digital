@@ -183,7 +183,7 @@ export const TrackScorecard = ({ trackId, label, items, hero, isOpen, focused, o
   );
 };
 
-export const ScorecardRow = ({ sales, ops, workshop, finance, openTracks, focused, only, onClearFilter, onToggle, onAct }) => {
+export const ScorecardRow = ({ sales, ops, workshop, finance, openTracks, focused, only, onClearFilter, onToggle, onAct, allowedTracks }) => {
   const { t } = useT();
   const salesPipeline = sales.reduce((s, i) => s + (i.value || 0), 0);
   const opsServiceDue = ops.filter(i => i.type === 'SERVICE').length + 11;
@@ -214,7 +214,12 @@ export const ScorecardRow = ({ sales, ops, workshop, finance, openTracks, focuse
   ];
 
   const deptLabel = { sales: t('track.sales'), operations: t('track.operations'), workshop: t('track.workshop'), finance: t('track.finance') };
-  const shown = only ? cards.filter(c => c.id === only) : cards;
+  // Track-access (H3): only render scorecards for tracks the user may view.
+  // allowedTracks null/undefined = no restriction (admin / still loading).
+  const visible = allowedTracks && allowedTracks.length
+    ? cards.filter(c => allowedTracks.includes(c.id))
+    : cards;
+  const shown = only ? visible.filter(c => c.id === only) : visible;
 
   return (
     <>
