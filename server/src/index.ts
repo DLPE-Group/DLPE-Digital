@@ -9,6 +9,7 @@ import { existsSync } from 'node:fs';
 import { env, isProd, serveStatic, corsOrigins } from './env.js';
 import { requireAuth } from './auth/middleware.js';
 import { requireAdmin } from './auth/preview.js';
+import { dataModelRouter } from './routes/dataModel.js';
 
 import { authRouter } from './routes/auth.js';
 import { cardsRouter } from './routes/cards.js';
@@ -103,6 +104,7 @@ app.use('/api/aggregations', aggregationsRouter);
 app.use('/api/audit', requireAdmin, auditRouter);
 app.use('/api/integrations', requireAdmin, integrationsRouter);
 app.use('/api/admin', requireAdmin);
+app.use('/api/admin', dataModelRouter);
 app.use('/api/admin', structureRouter);
 app.use('/api/admin', rolesRouter);
 app.use('/api/admin', usersRouter);
