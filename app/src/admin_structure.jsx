@@ -2,6 +2,7 @@ import React from 'react';
 import { Icon } from './icons.jsx';
 import { GROUP_TREE, COUNTRY_DEFAULTS, DATA_SHARING, ADMIN_USERS } from './admin_data.js';
 import { api } from './api/client.js';
+import { SimBadge } from './primitives.jsx';
 
 /* Normalize a server OrgNode tree (uppercase enum kind) to the lowercase
    shape the UI expects, recursively. */
@@ -412,8 +413,8 @@ export const GroupStructureView = () => {
           {/* Data sharing — only meaningful at group/country */}
           {(node.kind === 'group' || node.kind === 'country' || node.kind === 'region') && (
             <div className="setGroup">
-              <div className="setGroupHead">Data sharing
-                <span className="setGroupHint">defaults for {node.name}’s companies · most-restrictive wins at runtime</span>
+              <div className="setGroupHead">Data sharing <SimBadge label="Advisory" title="These modes are saved, but cross-company sharing is not yet enforced at runtime — row-level access is governed by user scope (see Users)." />
+                <span className="setGroupHint">defaults for {node.name}’s companies · saved, not yet runtime-enforced</span>
               </div>
               {sharingRows.map(d => (
                 <div className="shareRow" key={d.type}>
