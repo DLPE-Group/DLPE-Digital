@@ -34,7 +34,7 @@ reportsRouter.post('/', async (req, res) => {
   const parsed = specSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid report spec' });
   const spec = parsed.data as ReportSpec;
-  const prose = await generateProse(spec);
+  const prose = await generateProse(spec, req.user?.id);
   const now = new Date();
   const report = await prisma.report.create({
     data: {

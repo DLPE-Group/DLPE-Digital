@@ -1,6 +1,20 @@
 import { prisma } from '../prisma.js';
 import { trackKeyToEnum } from './cards.service.js';
+import { buildEffectiveForUser } from '../rbac/context.js';
+import { valueRestricted } from '../rbac/applyCardRules.js';
 import type { Card } from '@prisma/client';
+
+const MASK = '€XXX,XXX';
+// True if the caller may not see monetary contract values.
+async function callerValueRestricted(userId?: string): Promise<boolean> {
+  if (!userId) return false;
+  try {
+    const { effective } = await buildEffectiveForUser(userId);
+    return valueRestricted(effective);
+  } catch {
+    return false;
+  }
+}
 
 // repMoney — ported verbatim from app/src/reports.jsx.
 export function repMoney(n: number): string {
@@ -33,10 +47,24 @@ export interface TrackAggregate {
 }
 
 // computeTrack — server twin of the frontend, reading live DB cards.
-export async function computeTrack(track: string): Promise<TrackAggregate> {
+// When the caller may not see contract values, money figures are masked.
+export async function computeTrack(track: string, userId?: string): Promise<TrackAggregate> {
   const trackEnum = trackKeyToEnum(track);
   const items = await prisma.card.findMany({ where: { track: trackEnum } });
   const key = track.toLowerCase();
+  const restricted = await callerValueRestricted(userId);
+  const agg = await computeTrackInner(items, key);
+  if (!restricted) return agg;
+  // Mask any money-shaped string (starts with €) in metrics + chart displays.
+  const maskMoney = (s: string | number) => (typeof s === 'string' && s.startsWith('€') ? MASK : s);
+  return {
+    ...agg,
+    metrics: agg.metrics.map((m) => ({ ...m, value: maskMoney(m.value) })),
+    chart: { ...agg.chart, bars: agg.chart.bars.map((b) => ({ ...b, display: typeof b.display === 'string' && b.display.startsWith('€') ? MASK : b.display })) },
+  };
+}
+
+async function computeTrackInner(items: Card[], key: string): Promise<TrackAggregate> {
 
   if (key === 'sales') {
     const s = items;
@@ -160,8 +188,11 @@ export const DEFAULT_CHARTS = [
 // matching what app/src/dashboard.jsx chart components consume.
 // NOTE: wonThisWeek / ontime / followupsDue / newLeads are documented approximations
 // (no first-class source columns exist for them).
-export async function dashboardSnapshot() {
+export async function dashboardSnapshot(userId?: string) {
   const cards = await prisma.card.findMany();
+  const restricted = await callerValueRestricted(userId);
+  // money() nulls out monetary values for callers who can't see contract values.
+  const money = (v: number) => (restricted ? null : v);
   const byTrack = (t: string) => cards.filter((c) => c.track === t);
   const sumValue = (arr: Card[]) => arr.reduce((a, x) => a + (x.value ?? 0), 0);
 
@@ -194,10 +225,11 @@ export async function dashboardSnapshot() {
 
   return {
     asOf: new Date().toISOString(),
+    restricted,
     metrics: {
-      pipeline: { value: sumValue(sales) },
-      atRisk: { value: sumValue(sales.filter((x) => x.status === 'red')) },
-      wonThisWeek: { value: wonThisWeek },
+      pipeline: { value: money(sumValue(sales)) },
+      atRisk: { value: money(sumValue(sales.filter((x) => x.status === 'red'))) },
+      wonThisWeek: { value: money(wonThisWeek) },
       followupsDue: { value: followupsDue },
       newLeads: { value: newLeads },
       ontime: {
@@ -209,15 +241,15 @@ export async function dashboardSnapshot() {
       },
       receivables: {
         segments: [
-          { label: 'Current', value: current, color: 'var(--track-finance)' },
-          { label: '31d+ overdue', value: overdue, color: 'var(--status-red)' },
+          { label: 'Current', value: money(current), color: 'var(--track-finance)' },
+          { label: '31d+ overdue', value: money(overdue), color: 'var(--status-red)' },
         ],
       },
       pipelineStage: {
         cats: [
-          { label: 'Meeting', value: stageVal(sales, 'meeting') },
-          { label: 'Offer', value: stageVal(sales, 'offer') },
-          { label: 'Contract', value: stageVal(sales, 'contract') },
+          { label: 'Meeting', value: money(stageVal(sales, 'meeting')) },
+          { label: 'Offer', value: money(stageVal(sales, 'offer')) },
+          { label: 'Contract', value: money(stageVal(sales, 'contract')) },
         ],
       },
       openByTrack: {
