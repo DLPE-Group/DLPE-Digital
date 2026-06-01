@@ -13,7 +13,7 @@ dashboardRouter.get('/dashboard', async (req, res) => {
   res.json({ charts: layout?.charts ?? DEFAULT_CHARTS });
 });
 
-const putSchema = z.object({ charts: z.array(z.unknown()) });
+export const putSchema = z.object({ charts: z.array(z.unknown()) });
 
 // PUT /me/dashboard — upsert this user's charts.
 dashboardRouter.put('/dashboard', async (req, res) => {

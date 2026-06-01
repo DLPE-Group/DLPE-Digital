@@ -24,7 +24,7 @@ cardsRouter.get('/:id', async (req, res) => {
   res.json(card);
 });
 
-const stageSchema = z.object({ stageId: z.string().min(1) });
+export const stageSchema = z.object({ stageId: z.string().min(1) });
 cardsRouter.put('/:id/stage', async (req, res) => {
   const parsed = stageSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'stageId required' });

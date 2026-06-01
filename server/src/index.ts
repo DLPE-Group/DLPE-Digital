@@ -72,6 +72,14 @@ const loginLimiter = rateLimit({
 // Health check — unauthenticated, not rate-limited.
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
+// Interactive API docs (Swagger UI) — dev only, unauthenticated, before the
+// rate limiter and auth gate so the page + spec load freely.
+if (!isProd) {
+  const { mountApiDocs } = await import('./openapi/mount.js');
+  mountApiDocs(app);
+  console.log('API docs available at /api/docs');
+}
+
 app.use('/api', apiLimiter);
 
 // Login is the only unauthenticated route under /api/auth (rate-limited harder).

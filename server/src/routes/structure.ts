@@ -15,7 +15,7 @@ structureRouter.get('/structure/:id/settings', async (req, res) => {
   res.json(await resolveSettingsFor(req.params.id));
 });
 
-const companySchema = z.object({
+export const companySchema = z.object({
   name: z.string().min(1),
   code: z.string().optional(),
   meta: z.unknown().optional(),
@@ -31,7 +31,7 @@ structureRouter.post('/structure/:parentId/companies', async (req, res) => {
   }
 });
 
-const patchSchema = z.object({
+export const patchSchema = z.object({
   name: z.string().optional(),
   meta: z.unknown().optional(),
   settings: z.unknown().optional(),
@@ -52,7 +52,7 @@ structureRouter.get('/data-sharing', async (_req, res) => {
   res.json(await prisma.dataSharing.findMany({ orderBy: { type: 'asc' } }));
 });
 
-const sharingSchema = z.object({
+export const sharingSchema = z.object({
   rows: z.array(
     z.object({
       type: z.string().min(1),

@@ -9,7 +9,7 @@ integrationsRouter.get('/', async (_req, res) => {
   res.json(rows);
 });
 
-const addSchema = z.object({
+export const addSchema = z.object({
   name: z.string().min(1),
   kind: z.string().optional().default('Integration · via Nango'),
   direction: z.string().optional().default('inbound'),
