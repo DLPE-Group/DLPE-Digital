@@ -67,7 +67,8 @@ const apiLimiter = rateLimit({
 });
 const loginLimiter = rateLimit({
   windowMs: 15 * 60_000,
-  limit: 10,
+  // Relaxed under test so the suite can log in repeatedly without tripping it.
+  limit: env.NODE_ENV === 'test' ? 100000 : 10,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Too many login attempts, please try again later.' },

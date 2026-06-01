@@ -18,3 +18,8 @@ build/
 # Logs / OS
 *.log
 .DS_Store
+
+# test artifacts
+test-results/
+playwright-report/
+.playwright/
