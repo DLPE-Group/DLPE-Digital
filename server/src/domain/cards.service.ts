@@ -5,6 +5,17 @@ import { writeAudit } from './audit.service.js';
 import { buildEffectiveForUser } from '../rbac/context.js';
 import { filterCard } from '../rbac/applyCardRules.js';
 import { visibleCompanyIds } from '../rbac/scope.js';
+import { entityToCardDTO, type EntityRow } from './projection.js';
+
+// Phase 1b: Entity is the source of truth for pipeline items. Load pipeline
+// entities (optionally one track) and project them to the legacy Card shape so
+// the rest of this module keeps operating on Card-shaped objects unchanged.
+export async function loadPipelineCards(trackKey?: string): Promise<Card[]> {
+  const where: Prisma.EntityWhereInput = { entityType: { kind: 'pipeline' } };
+  if (trackKey) where.trackId = trackKey;
+  const rows = await prisma.entity.findMany({ where, orderBy: { id: 'asc' } });
+  return rows.map((e) => entityToCardDTO(e as unknown as EntityRow) as unknown as Card);
+}
 
 export function trackKeyToEnum(track: string): Track {
   const e = TRACK_ENUM[track.toLowerCase()];
@@ -50,9 +61,7 @@ export async function loadStages(trackEnum: Track): Promise<StageDef[]> {
 }
 
 export async function listCards(track?: string, userId?: string): Promise<Card[]> {
-  const where: Prisma.CardWhereInput = {};
-  if (track) where.track = trackKeyToEnum(track);
-  let cards = await prisma.card.findMany({ where, orderBy: { id: 'asc' } });
+  let cards = await loadPipelineCards(track);
   if (!userId) return cards;
 
   // Functional access: hide tracks the caller's role(s) cannot view.
@@ -89,8 +98,10 @@ export async function listCards(track?: string, userId?: string): Promise<Card[]
 }
 
 export async function getCard(id: string, userId?: string): Promise<Card | null> {
-  const card = await prisma.card.findUnique({ where: { id } });
-  if (!card || !userId) return card;
+  const row = await prisma.entity.findUnique({ where: { id } });
+  if (!row) return null;
+  const card = entityToCardDTO(row as unknown as EntityRow) as unknown as Card;
+  if (!userId) return card;
   // Track + row-level scope: a user can't fetch a card outside their access.
   const allowed = await userAllowedTracks(userId);
   if (!allowed.includes(TRACK_KEY_FROM_ENUM[card.track])) return null;
