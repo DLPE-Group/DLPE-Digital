@@ -1,18 +1,31 @@
 import { Router } from 'express';
 import { prisma } from '../prisma.js';
+import { entityToVehicleDTO, type EntityRow } from '../domain/projection.js';
 
-// Exposes the already-seeded Vehicle / Invoice / FleetOperator / VehicleTimeline
-// models that the frontend previously only read from seed constants.
+// Exposes fleet data. Vehicles are now reference Entities (entityType=vehicle),
+// projected to the legacy Vehicle shape; Invoice / FleetOperator / PortalMessage
+// remain their own models.
 export const fleetRouter: Router = Router();
 
-// GET /vehicles?status=&q= — fleet vehicles (real rows).
+// Load reference vehicle entities projected to the legacy Vehicle DTO.
+async function loadVehicleDTOs() {
+  const rows = await prisma.entity.findMany({
+    where: { entityType: { key: 'vehicle' } },
+    orderBy: { title: 'asc' },
+  });
+  return rows.map((r) => entityToVehicleDTO(r as unknown as EntityRow));
+}
+
+// GET /vehicles?status=&q= — fleet vehicles (reference entities).
 fleetRouter.get('/vehicles', async (req, res) => {
-  const where: { status?: string } = {};
-  if (typeof req.query.status === 'string') where.status = req.query.status;
-  let rows = await prisma.vehicle.findMany({ where, orderBy: { plate: 'asc' } });
+  let vehicles = await loadVehicleDTOs();
+  if (typeof req.query.status === 'string') {
+    const status = req.query.status;
+    vehicles = vehicles.filter((v) => v.status === status);
+  }
   const q = typeof req.query.q === 'string' ? req.query.q.toLowerCase() : '';
-  if (q) rows = rows.filter((v) => `${v.plate} ${v.model ?? ''} ${v.operator ?? ''}`.toLowerCase().includes(q));
-  res.json(rows);
+  if (q) vehicles = vehicles.filter((v) => `${v.plate} ${v.model ?? ''} ${v.operator ?? ''}`.toLowerCase().includes(q));
+  res.json(vehicles);
 });
 
 // GET /vehicles/timeline — the seeded vehicle lifecycle drill-down (first one).
@@ -27,7 +40,7 @@ fleetRouter.get('/vehicles/timeline', async (_req, res) => {
 // GET /portal — the customer-facing fleet view, scoped to one operator
 // (operator + its vehicles + invoices + messages).
 fleetRouter.get('/portal', async (_req, res) => {
-  const vehicles = await prisma.vehicle.findMany({ orderBy: { plate: 'asc' } });
+  const vehicles = await loadVehicleDTOs();
   const operatorName = vehicles.find((v) => v.operator)?.operator ?? null;
   const operator = operatorName
     ? await prisma.fleetOperator.findFirst({ where: { name: operatorName } })
