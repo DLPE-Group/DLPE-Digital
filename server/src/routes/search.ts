@@ -1,25 +1,30 @@
 import { Router } from 'express';
 import { prisma } from '../prisma.js';
 import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
+import { loadPipelineCards } from '../domain/cards.service.js';
+import { entityToVehicleDTO, type EntityRow } from '../domain/projection.js';
 
-// GET /search?q= — cross-entity search over cards + vehicles.
+// GET /search?q= — cross-entity search over pipeline + reference entities.
 export const searchRouter: Router = Router();
 
 searchRouter.get('/search', async (req, res) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   if (q.length < 2) return res.json({ q, results: [] });
-  const ci = { contains: q, mode: 'insensitive' as const };
+  const ql = q.toLowerCase();
+  const has = (s: string | null | undefined) => (s ?? '').toLowerCase().includes(ql);
 
-  const [cards, vehicles] = await Promise.all([
-    prisma.card.findMany({
-      where: { OR: [{ customer: ci }, { vehicle: ci }, { sub: ci }, { stageName: ci }] },
-      take: 6, orderBy: { id: 'asc' },
-    }),
-    prisma.vehicle.findMany({
-      where: { OR: [{ plate: ci }, { model: ci }, { operator: ci }] },
-      take: 6, orderBy: { plate: 'asc' },
-    }),
-  ]);
+  const cards = (await loadPipelineCards())
+    .filter((c) => has(c.customer) || has(c.vehicle) || has(c.sub) || has(c.stageName))
+    .slice(0, 6);
+
+  const vehicleRows = await prisma.entity.findMany({
+    where: { entityType: { key: 'vehicle' } },
+    orderBy: { title: 'asc' },
+  });
+  const vehicles = vehicleRows
+    .map((r) => entityToVehicleDTO(r as unknown as EntityRow))
+    .filter((v) => has(v.plate) || has(v.model) || has(v.operator))
+    .slice(0, 6);
 
   const results = [
     ...cards.map((c) => ({

@@ -1,5 +1,5 @@
 import { prisma } from '../prisma.js';
-import { trackKeyToEnum, userAllowedTracks } from './cards.service.js';
+import { userAllowedTracks, loadPipelineCards } from './cards.service.js';
 import { visibleCompanyIds } from '../rbac/scope.js';
 import { buildEffectiveForUser } from '../rbac/context.js';
 import { valueRestricted } from '../rbac/applyCardRules.js';
@@ -66,8 +66,7 @@ export interface TrackAggregate {
 // computeTrack — server twin of the frontend, reading live DB cards.
 // When the caller may not see contract values, money figures are masked.
 export async function computeTrack(track: string, userId?: string): Promise<TrackAggregate> {
-  const trackEnum = trackKeyToEnum(track);
-  const raw = await prisma.card.findMany({ where: { track: trackEnum } });
+  const raw = await loadPipelineCards(track.toLowerCase());
   const key = track.toLowerCase();
   // Track-access (H3) + scope (H4): if the caller can't view this track, the
   // scoped set is empty and every metric computes to zero.
@@ -211,7 +210,7 @@ export const DEFAULT_CHARTS = [
 export async function dashboardSnapshot(userId?: string) {
   // Track-access (H3) + scope (H4): the snapshot reflects only what the caller
   // may see, so the overview matches the side menu and the per-track lists.
-  const { cards, allowed } = await scopeCardsFor(await prisma.card.findMany(), userId);
+  const { cards, allowed } = await scopeCardsFor(await loadPipelineCards(), userId);
   const restricted = await callerValueRestricted(userId);
   // money() nulls out monetary values for callers who can't see contract values.
   const money = (v: number) => (restricted ? null : v);
