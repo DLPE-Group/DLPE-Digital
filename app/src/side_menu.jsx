@@ -44,9 +44,6 @@ export const SideMenu = ({ active, setActive, counts, onTrackSelect }) => {
         <div className="navSection">
           <div className="navHead">
             <span>{t('nav.tracks')}</span>
-            <button className="iconBtn" style={{ width: 22, height: 22 }} title="Add track">
-              <Icon name="plus" size={11} />
-            </button>
           </div>
           {tracks.map(tr => (
             <button key={tr.id}

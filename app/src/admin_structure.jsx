@@ -322,7 +322,10 @@ export const GroupStructureView = () => {
           <h1>Group structure</h1>
           <div className="sub">The organizational tree — group, regions, countries and companies. Settings cascade down each level; any level can override the one above. Inherited values appear greyed.</div>
         </div>
-        <button className="cta ghost"><Icon name="download" size={12} strokeWidth={2} /> Export structure</button>
+        <button className="cta ghost" onClick={() => {
+          const url = URL.createObjectURL(new Blob([JSON.stringify(tree, null, 2)], { type: 'application/json' }));
+          const a = document.createElement('a'); a.href = url; a.download = 'org-structure.json'; a.click(); URL.revokeObjectURL(url);
+        }}><Icon name="download" size={12} strokeWidth={2} /> Export structure</button>
       </div>
 
       <div className="viewStats" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>

@@ -290,6 +290,18 @@ export const AuditView = () => {
 
   const days = [...new Set(filtered.map(a => a.day))];
 
+  // Real client-side CSV export of the (filtered) audit entries.
+  const exportCsv = () => {
+    const head = ['day', 'time', 'actor', 'role', 'verb', 'target', 'track', 'kind'];
+    const esc = (c) => `"${String(c ?? '').replace(/"/g, '""')}"`;
+    const rows = [head, ...filtered.map(a => [a.day, a.time, a.actor, a.actorRole, a.verb, a.target, a.track, a.kind])];
+    const csv = rows.map(r => r.map(esc).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const link = document.createElement('a');
+    link.href = url; link.download = 'audit-log.csv'; link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="viewWrap">
       <div className="viewHero">
@@ -297,7 +309,7 @@ export const AuditView = () => {
           <h1>Audit log</h1>
           <div className="sub">Every action taken from this dashboard, with actor, timestamp, and downstream cascades. Reversible from this view. System events (Talend syncs, PEPPOL webhooks, supplier API callbacks) are interleaved so you can see the full state-of-the-world.</div>
         </div>
-        <button className="cta ghost"><Icon name="download" size={12} strokeWidth={2} /> Export CSV</button>
+        <button className="cta ghost" onClick={exportCsv}><Icon name="download" size={12} strokeWidth={2} /> Export CSV</button>
       </div>
 
       <div className="filterBar">

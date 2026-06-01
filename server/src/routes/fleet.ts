@@ -36,12 +36,34 @@ fleetRouter.get('/portal', async (_req, res) => {
   const invoices = operator?.companyId
     ? await prisma.invoice.findMany({ where: { companyId: operator.companyId }, orderBy: { ref: 'asc' } })
     : await prisma.invoice.findMany({ orderBy: { ref: 'asc' } });
-  // Portal messages are added in Package F (PortalMessage model).
+  const messages = await prisma.portalMessage.findMany({ orderBy: { createdAt: 'desc' }, take: 10 });
   res.json({
     operator: operator?.name ?? 'Fleet operator',
     contact: operator?.contact ?? '',
     vehicles: opVehicles,
     invoices,
-    messages: [],
+    messages: messages.map((m) => ({ when: m.when, body: m.body })),
   });
+});
+
+// GET /portal/messages — recent messages to the account team.
+fleetRouter.get('/portal/messages', async (_req, res) => {
+  const rows = await prisma.portalMessage.findMany({ orderBy: { createdAt: 'desc' }, take: 50 });
+  res.json(rows);
+});
+
+// POST /portal/messages — send a message to the account team (persisted).
+fleetRouter.post('/portal/messages', async (req, res) => {
+  const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
+  if (!body) return res.status(400).json({ error: 'Message body required' });
+  const when = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const row = await prisma.portalMessage.create({
+    data: {
+      operator: typeof req.body?.operator === 'string' ? req.body.operator : null,
+      author: req.user?.name ?? null,
+      when: `Today · ${when}`,
+      body,
+    },
+  });
+  res.json(row);
 });

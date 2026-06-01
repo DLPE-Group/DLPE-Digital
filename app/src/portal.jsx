@@ -35,6 +35,32 @@ export const CustomerPortal = () => {
     return () => { cancelled = true; };
   }, []);
 
+  const [composing, setComposing] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
+
+  const sendMessage = async () => {
+    const body = msg.trim();
+    if (!body) return;
+    try {
+      const row = await api.post('/portal/messages', { body, operator: data.operator });
+      setData(prev => ({ ...prev, messages: [{ when: row.when, body: row.body }, ...(prev.messages || [])] }));
+    } catch (e) { console.error('Failed to send message', e); }
+    setMsg(''); setComposing(false);
+  };
+
+  // Real client-side fleet report download (from the loaded portal data).
+  const downloadFleetReport = () => {
+    const report = {
+      operator: data.operator, generatedAt: new Date().toISOString(),
+      vehicles: data.vehicles, invoices: data.invoices,
+    };
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `fleet-report-${(data.operator || 'fleet').replace(/\s+/g, '-').toLowerCase()}.json`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
   const inWorkshop = data.vehicles.filter(v => v.statusLabel === 'In workshop').length;
   const serviceDue = data.vehicles.filter(v => v.statusLabel === 'Service due').length;
   const openInvoiceValue = data.invoices.reduce((s, i) => s + i.value, 0);
@@ -49,14 +75,27 @@ export const CustomerPortal = () => {
           <div className="sub">{data.contact} · signed in</div>
         </div>
         <div className="row">
-          <button className="cta ghost">
+          <button className="cta ghost" onClick={() => setComposing(v => !v)}>
             <Icon name="mail" size={12} strokeWidth={2} /> Message account team
           </button>
-          <button className="cta">
+          <button className="cta" onClick={downloadFleetReport}>
             <Icon name="download" size={12} strokeWidth={2} /> Fleet report
           </button>
         </div>
       </div>
+
+      {composing && (
+        <div className="portalSection" style={{ marginBottom: 16 }}>
+          <div className="h">Message the account team</div>
+          <textarea className="textInput" rows={3} autoFocus value={msg}
+                    placeholder="Type your message…" onChange={e => setMsg(e.target.value)}
+                    style={{ width: '100%', resize: 'vertical' }} />
+          <div className="row" style={{ marginTop: 8, justifyContent: 'flex-end' }}>
+            <button className="cta ghost" onClick={() => { setComposing(false); setMsg(''); }}>Cancel</button>
+            <button className="cta" disabled={!msg.trim()} onClick={sendMessage}>Send</button>
+          </div>
+        </div>
+      )}
 
       <div className="portalTiles">
         <PortalTile label="Vehicles in fleet" value={data.vehicles.length} sub={`${data.vehicles.filter(v => v.status === 'ok').length} active · ${inWorkshop} in workshop`} />
