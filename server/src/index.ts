@@ -23,6 +23,7 @@ import { stageConfigRouter } from './routes/stageConfig.js';
 import { triggersRouter } from './routes/triggers.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { permissionsRouter } from './routes/permissions.js';
+import { preferencesRouter } from './routes/preferences.js';
 import { recordsRouter } from './routes/records.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -101,6 +102,7 @@ app.use('/api/admin', triggersRouter);
 app.use('/api/records', recordsRouter);
 app.use('/api/me', dashboardRouter);
 app.use('/api/me', permissionsRouter);
+app.use('/api/me', preferencesRouter);
 
 // --- Serve the built frontend (production / SERVE_STATIC) ---
 // Default to the app's built dist resolved relative to this file
