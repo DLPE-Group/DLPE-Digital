@@ -206,10 +206,11 @@ const GlobalSearch = ({ onPick }) => {
 const App = () => {
   const { t } = useT();
   const { me, logout } = useAuth();
-  // Preview-as is an admin-only capability (server-enforced). Only admins get
-  // the UI for it, so a restricted user is never shown a preview that the
-  // server will ignore.
-  const isAdmin = ['group-admin', 'sys-integrator', 'country-mgr'].includes(me?.roleId);
+  // "Admin" = group-admin (single source of truth, mirrors the server's
+  // requireAdmin). Gates the admin/integrations/audit nav + views and the
+  // admin-only preview-as capability.
+  const isAdmin = me?.roleId === 'group-admin';
+  const ADMIN_ONLY_VIEWS = ['structure', 'users', 'roles', 'integrations', 'audit'];
   const [active, setActive] = React.useState('overview');
   const [timeline, setTimeline] = React.useState(null);
   const [vehTimeline, setVehTimeline] = React.useState(null);
@@ -381,6 +382,12 @@ const App = () => {
 
   // ---- Render ----
   const renderMain = () => {
+    // Defense-in-depth: even if a non-admin reaches an admin-only view (deep
+    // link, stale state), don't render it — the API would 403 anyway.
+    if (!isAdmin && ADMIN_ONLY_VIEWS.includes(active)) {
+      return <StubPanel icon="lock" title="Admin access required"
+        body="This area is restricted to group administrators. Switch to an account with admin access to manage structure, users, roles, integrations, or the audit log." />;
+    }
     if (active === 'portal') return <CustomerPortal />;
     if (active === 'timeline' || active === 'vehicles') {
       return <VehiclesView onOpenTimeline={openTimeline} />;
@@ -490,7 +497,7 @@ const App = () => {
 
   return (
     <div className="app v1Shell">
-      <SideMenu active={active} setActive={setActive} counts={counts} allowedTracks={allowedTracks}
+      <SideMenu active={active} setActive={setActive} counts={counts} allowedTracks={allowedTracks} isAdmin={isAdmin}
                 onTrackSelect={() => setOpenTracks({ sales: false, operations: false, workshop: false, finance: false })} />
 
       <div className="v1Main">
