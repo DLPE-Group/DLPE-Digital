@@ -1,5 +1,5 @@
-import type { PrismaClient } from '@prisma/client';
-import { TRACK_KEYS, STAGE_CONFIG, DATA_TYPES, FIELD_CATEGORIES } from '@dlpe/shared';
+import type { Prisma, PrismaClient } from '@prisma/client';
+import { TRACK_KEYS, STAGE_CONFIG, DATA_TYPES, TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
 import { loadTenantResolver } from './tenancy.js';
 
 const TRACK_META: Record<string, { label: string; color: string; order: number }> = {
@@ -22,13 +22,18 @@ const REFERENCE_TYPES = [
   { key: 'fleet_operator', label: 'Fleet operator' },
 ];
 
-const dataKindFor = (cat: string | undefined): string =>
-  cat === 'Financial' ? 'money' : 'text';
+const dataKindFor = (cat: string | undefined): string => (cat === 'Financial' ? 'money' : 'text');
 
-// Idempotent: upserts every derived row by stable key/id, so it can run on every
-// seed and on an already-migrated DB without duplicating.
-export async function backfillEntities(prisma: PrismaClient): Promise<void> {
-  // 1) Tracks
+export interface MetaCtx {
+  trackIdByKey: Record<string, string>;
+  typeIdByKey: Record<string, string>;
+  tenantFor: (companyId: string | null) => string | null;
+}
+
+// Create/refresh the data-driven meta-model (tracks, stages, entity types,
+// fields) from the shared catalogues. Idempotent. Returns lookups + the tenant
+// resolver so callers can build Entity rows.
+export async function seedMetaModel(prisma: PrismaClient): Promise<MetaCtx> {
   const trackIdByKey: Record<string, string> = {};
   for (const key of TRACK_KEYS) {
     const meta = TRACK_META[key];
@@ -40,7 +45,6 @@ export async function backfillEntities(prisma: PrismaClient): Promise<void> {
     trackIdByKey[key] = row.id;
   }
 
-  // 2) Stages (from STAGE_CONFIG, keyed by track key)
   for (const key of TRACK_KEYS) {
     const stages = STAGE_CONFIG[key] ?? [];
     for (let i = 0; i < stages.length; i++) {
@@ -53,11 +57,7 @@ export async function backfillEntities(prisma: PrismaClient): Promise<void> {
     }
   }
 
-  // 3) Entity types (pipeline per track + reference types) and their fields
   const typeIdByKey: Record<string, string> = {};
-  const fieldsByTypeKey: Record<string, { id: string; label: string; cat: string }[]> = {};
-  for (const dt of DATA_TYPES) fieldsByTypeKey[dt.id] = dt.fields;
-
   let order = 0;
   for (const key of TRACK_KEYS) {
     const t = PIPELINE_TYPE[key];
@@ -78,7 +78,8 @@ export async function backfillEntities(prisma: PrismaClient): Promise<void> {
     typeIdByKey[rt.key] = row.id;
     order++;
   }
-  // FieldDefs for any type that has a matching DATA_TYPES entry
+  const fieldsByTypeKey: Record<string, { id: string; label: string; cat: string }[]> = {};
+  for (const dt of DATA_TYPES) fieldsByTypeKey[dt.id] = dt.fields;
   for (const [typeKey, defs] of Object.entries(fieldsByTypeKey)) {
     const entityTypeId = typeIdByKey[typeKey];
     if (!entityTypeId) continue;
@@ -91,59 +92,84 @@ export async function backfillEntities(prisma: PrismaClient): Promise<void> {
       });
     }
   }
-  void FIELD_CATEGORIES; // categories are sourced from DATA_TYPES.fields[].cat
 
-  // 4) Entities from Cards. Convergent: re-running refreshes the mutable
-  // envelope so entities track the source rows (id/createdAt/createdById are
-  // immutable and only set on create).
   const tenantFor = await loadTenantResolver(prisma);
-  const cards = await prisma.card.findMany();
-  for (const c of cards) {
-    const trackKey = c.track.toLowerCase();
-    const typeKey = PIPELINE_TYPE[trackKey]?.key;
-    if (!typeKey) continue;
-    const data = {
-      tenantId: tenantFor(c.companyId),
-      entityTypeId: typeIdByKey[typeKey],
-      companyId: c.companyId,
-      title: c.customer,
-      value: c.value,
-      owner: c.owner,
-      status: c.status,
-      sub: c.sub,
-      sources: c.sources,
-      fields: { type: c.type, vehicle: c.vehicle, meta: c.meta },
-      trackId: trackKey,
-      stageId: c.stageId,
-      stageName: c.stageName,
-      days: c.days,
-      daysLabel: c.daysLabel,
-      cta: c.cta,
-      awaitingSign: c.awaitingSign,
-    };
-    await prisma.entity.upsert({
-      where: { id: c.id },
-      update: data,
-      create: { id: c.id, ...data, createdById: c.createdById, createdAt: c.createdAt, updatedAt: c.updatedAt },
-    });
-  }
+  return { trackIdByKey, typeIdByKey, tenantFor };
+}
 
-  // 5) Entities from Vehicles (reference). Convergent like the cards above.
-  const vehicles = await prisma.vehicle.findMany();
-  for (const v of vehicles) {
-    const data = {
-      tenantId: tenantFor(v.companyId),
-      entityTypeId: typeIdByKey['vehicle'],
-      companyId: v.companyId,
-      title: v.plate,
-      status: v.status,
-      sources: [],
-      fields: { plate: v.plate, model: v.model, vin: v.vin, operator: v.operator, statusLabel: v.statusLabel, note: v.note, meta: v.meta },
-    };
-    await prisma.entity.upsert({
-      where: { id: v.id },
-      update: data,
-      create: { id: v.id, ...data },
-    });
-  }
+// A legacy card-shaped seed row (track may be the enum 'SALES' or key 'sales').
+export interface CardSeed {
+  id: string;
+  companyId?: string | null;
+  track: string;
+  type: string;
+  customer: string;
+  value?: number | null;
+  vehicle?: string | null;
+  sub: string;
+  stageId: string;
+  stageName: string;
+  days: number;
+  daysLabel?: string | null;
+  owner: string;
+  status: string;
+  cta: string;
+  sources: string[];
+  awaitingSign?: boolean;
+  meta?: unknown;
+}
+
+// Map a card-shaped seed row to an Entity create payload (pipeline kind).
+export function cardToEntityCreate(c: CardSeed, ctx: MetaCtx): Prisma.EntityCreateInput {
+  const trackKey = TRACK_KEY_FROM_ENUM[c.track] ?? c.track.toLowerCase();
+  const typeKey = PIPELINE_TYPE[trackKey]?.key ?? 'operation';
+  return {
+    id: c.id,
+    tenantId: ctx.tenantFor(c.companyId ?? null),
+    entityType: { connect: { id: ctx.typeIdByKey[typeKey] } },
+    company: c.companyId ? { connect: { id: c.companyId } } : undefined,
+    title: c.customer,
+    value: c.value ?? null,
+    owner: c.owner,
+    status: c.status,
+    sub: c.sub,
+    sources: c.sources,
+    fields: { type: c.type, vehicle: c.vehicle ?? null, meta: (c.meta as Prisma.InputJsonValue) ?? null },
+    trackId: trackKey,
+    stageId: c.stageId,
+    stageName: c.stageName,
+    days: c.days,
+    daysLabel: c.daysLabel ?? null,
+    cta: c.cta,
+    awaitingSign: c.awaitingSign ?? false,
+  };
+}
+
+export interface VehicleSeed {
+  id?: string;
+  plate: string;
+  model?: string | null;
+  vin?: string | null;
+  operator?: string | null;
+  status?: string | null;
+  statusLabel?: string | null;
+  note?: string | null;
+  companyId?: string | null;
+}
+
+// Map a vehicle-shaped seed row to an Entity create payload (reference kind).
+export function vehicleToEntityCreate(v: VehicleSeed, ctx: MetaCtx): Prisma.EntityCreateInput {
+  return {
+    id: v.id ?? `veh-${v.plate.replace(/[^A-Za-z0-9]/g, '')}`,
+    tenantId: ctx.tenantFor(v.companyId ?? null),
+    entityType: { connect: { id: ctx.typeIdByKey['vehicle'] } },
+    company: v.companyId ? { connect: { id: v.companyId } } : undefined,
+    title: v.plate,
+    status: v.status ?? null,
+    sources: [],
+    fields: {
+      plate: v.plate, model: v.model ?? null, vin: v.vin ?? null, operator: v.operator ?? null,
+      statusLabel: v.statusLabel ?? null, note: v.note ?? null,
+    },
+  };
 }

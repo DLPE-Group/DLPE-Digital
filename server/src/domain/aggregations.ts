@@ -4,7 +4,7 @@ import { visibleCompanyIds } from '../rbac/scope.js';
 import { buildEffectiveForUser } from '../rbac/context.js';
 import { valueRestricted } from '../rbac/applyCardRules.js';
 import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
-import type { Card } from '@prisma/client';
+import type { CardDTO as Card } from '@dlpe/shared';
 
 // Apply track-access (H3) + row-level scope (H4) to a card set for the caller.
 // Returns the scoped cards plus the caller's allowed track keys (null = all,
@@ -240,11 +240,11 @@ export async function dashboardSnapshot(userId?: string) {
   // Approximations
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const wonThisWeek = sumValue(
-    sales.filter((x) => x.stageId === 'won' && x.updatedAt >= weekAgo),
+    sales.filter((x) => x.stageId === 'won' && !!x.updatedAt && x.updatedAt >= weekAgo),
   );
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
-  const newLeads = cards.filter((x) => x.createdAt >= startOfToday).length;
+  const newLeads = cards.filter((x) => !!x.createdAt && x.createdAt >= startOfToday).length;
   const followupsDue = sales.filter((x) => x.status === 'amber' || x.status === 'red').length;
   const onGreen = ops.filter((x) => x.status === 'green').length;
   const ontimePct = ops.length ? Math.round((onGreen / ops.length) * 100) : 0;

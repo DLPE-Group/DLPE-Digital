@@ -22,6 +22,8 @@ export interface CardDTO {
   awaitingSign: boolean;
   meta?: unknown;
   createdById: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface ReportSpec {
