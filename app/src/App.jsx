@@ -279,6 +279,29 @@ const App = () => {
       : [card, ...prev]);
   };
 
+  // Create a new pipeline item in a track (quick capture: title + optional value).
+  const createItem = async (track) => {
+    const customer = window.prompt(`New ${track} item — title / customer name:`);
+    if (!customer || !customer.trim()) return;
+    const valueStr = window.prompt('Value in € (optional):', '');
+    const value = valueStr && !Number.isNaN(Number(valueStr)) ? Number(valueStr) : null;
+    try {
+      const card = await api.post('/cards', { track, customer: customer.trim(), value });
+      addCard(card);
+      setToast({ title: 'Item created', lines: [`${card.customer} added to ${track}`] });
+    } catch (e) { window.alert(e.message || 'Could not create item'); }
+  };
+
+  // Delete a pipeline item.
+  const deleteItem = async (item) => {
+    if (!window.confirm(`Delete "${item.customer}"? This cannot be undone.`)) return;
+    try {
+      await api.del(`/cards/${item.id}`);
+      const setter = trackSetters[trackKey(item.track)];
+      if (setter) setter(prev => prev.filter(x => x.id !== item.id));
+    } catch (e) { window.alert(e.message || 'Could not delete item'); }
+  };
+
   // Generic flow opener — resolves the modal flow, then runs the server action
   // on completion and applies the authoritative result (incl. any cascade).
   const openFlow = (item) => {
@@ -451,6 +474,7 @@ const App = () => {
                  isOpen={true} onToggle={() => toggleTrack('sales')}
                  onOpenTimeline={openTimeline}
                  onAct={openFlow} onMoveStage={moveStage('sales', SALES_STAGES, setSales)}
+                 onCreate={createItem} onDelete={deleteItem}
                  flashIds={flashIds} />
         )}
 
@@ -460,6 +484,7 @@ const App = () => {
                  isOpen={true} onToggle={() => toggleTrack('operations')}
                  onOpenTimeline={openTimeline}
                  onAct={openFlow} onMoveStage={moveStage('operations', OPS_STAGES, setOps)}
+                 onCreate={createItem} onDelete={deleteItem}
                  flashIds={flashIds} />
         )}
 
@@ -469,6 +494,7 @@ const App = () => {
                  isOpen={true} onToggle={() => toggleTrack('workshop')}
                  onOpenTimeline={openTimeline}
                  onAct={openFlow} onMoveStage={moveStage('workshop', WORKSHOP_STAGES, setWorkshop)}
+                 onCreate={createItem} onDelete={deleteItem}
                  flashIds={flashIds} />
         )}
 
@@ -478,6 +504,7 @@ const App = () => {
                  isOpen={true} onToggle={() => toggleTrack('finance')}
                  onOpenTimeline={openTimeline}
                  onAct={openFlow} onMoveStage={moveStage('finance', FINANCE_STAGES, setFinance)}
+                 onCreate={createItem} onDelete={deleteItem}
                  flashIds={flashIds} />
         )}
 

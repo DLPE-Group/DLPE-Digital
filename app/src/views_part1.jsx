@@ -66,7 +66,7 @@ const INTEGRATIONS = [
     desc: 'Fallback for systems without API access. Used for legacy CRM exports and one-off data loads.' },
 ];
 
-const IntegrationCard = ({ it, onTest, onLogs, onConfig, busy }) => (
+const IntegrationCard = ({ it, onTest, onLogs, onConfig, onDelete, busy }) => (
   <div className={`integrationCard ${it.nango ? 'viaNango' : ''}`}>
     <div className="integrationLogo" style={it.logoColor ? { background: it.logoColor, color: '#fff' } : undefined}>{it.logo}</div>
     <div className="integrationMain">
@@ -88,6 +88,7 @@ const IntegrationCard = ({ it, onTest, onLogs, onConfig, busy }) => (
       <button className="miniBtn" disabled={busy || !onTest} onClick={() => onTest && onTest(it)}><Icon name="refresh" size={11} /> Test</button>
       <button className="miniBtn" disabled={!onLogs} onClick={() => onLogs && onLogs(it)}><Icon name="document" size={11} /> Logs</button>
       <button className="miniBtn" disabled={busy || !onConfig} onClick={() => onConfig && onConfig(it)}><Icon name="settings" size={11} /> Config</button>
+      {onDelete && <button className="miniBtn" disabled={busy} onClick={() => onDelete(it)} style={{ color: 'var(--status-red, #e05)' }}><Icon name="close" size={11} /> Remove</button>}
     </div>
   </div>
 );
@@ -132,6 +133,14 @@ export const IntegrationsView = () => {
   const onLogs = async (it) => {
     try { setLogs(await api.get(`/integrations/${it.id}/logs`)); }
     catch (e) { console.error('Logs failed', e); }
+  };
+  const onDelete = async (it) => {
+    if (!window.confirm(`Remove integration "${it.name}"?`)) return;
+    setBusyId(it.id);
+    try { await api.del(`/integrations/${it.id}`); } catch (e) { /* may be a local-only row */ }
+    setLive((prev) => (prev || INTEGRATIONS).filter((r) => r.id !== it.id));
+    setAdded((prev) => prev.filter((r) => r.id !== it.id));
+    setBusyId(null);
   };
 
   // Nango finished the connection -> hand off to the AI mapping pass.
@@ -189,21 +198,21 @@ export const IntegrationsView = () => {
       <div className="integrationGroup">
         <div className="gh">Inbound · {inbound.length}</div>
         <div className="integrationGrid">
-          {inbound.map(it => <IntegrationCard key={it.id} it={it} busy={busyId === it.id} onTest={onTest} onLogs={onLogs} onConfig={onConfig} />)}
+          {inbound.map(it => <IntegrationCard key={it.id} it={it} busy={busyId === it.id} onTest={onTest} onLogs={onLogs} onConfig={onConfig} onDelete={onDelete} />)}
         </div>
       </div>
 
       <div className="integrationGroup">
         <div className="gh">Bi-directional · {bi.length}</div>
         <div className="integrationGrid">
-          {bi.map(it => <IntegrationCard key={it.id} it={it} busy={busyId === it.id} onTest={onTest} onLogs={onLogs} onConfig={onConfig} />)}
+          {bi.map(it => <IntegrationCard key={it.id} it={it} busy={busyId === it.id} onTest={onTest} onLogs={onLogs} onConfig={onConfig} onDelete={onDelete} />)}
         </div>
       </div>
 
       <div className="integrationGroup">
         <div className="gh">Outbound · {outbound.length}</div>
         <div className="integrationGrid">
-          {outbound.map(it => <IntegrationCard key={it.id} it={it} busy={busyId === it.id} onTest={onTest} onLogs={onLogs} onConfig={onConfig} />)}
+          {outbound.map(it => <IntegrationCard key={it.id} it={it} busy={busyId === it.id} onTest={onTest} onLogs={onLogs} onConfig={onConfig} onDelete={onDelete} />)}
         </div>
       </div>
 

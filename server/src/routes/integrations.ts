@@ -71,6 +71,14 @@ integrationsRouter.get('/:id/logs', async (req, res) => {
   res.json({ integration: { id: it.id, name: it.name, status: it.status, lastSync: it.lastSync }, lines });
 });
 
+// DELETE /integrations/:id — remove a connector.
+integrationsRouter.delete('/:id', async (req, res) => {
+  const existing = await prisma.integration.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: 'Integration not found' });
+  await prisma.integration.delete({ where: { id: req.params.id } });
+  res.json({ ok: true });
+});
+
 // POST /integrations/:id/test — "test connection": marks healthy + bumps lastSync.
 integrationsRouter.post('/:id/test', async (req, res) => {
   const existing = await prisma.integration.findUnique({ where: { id: req.params.id } });

@@ -90,6 +90,23 @@ export const RolesView = ({ onConfigure }) => {
     setBusy(false);
   };
 
+  const renameRole = async (r) => {
+    const name = window.prompt('Rename role', r.name);
+    if (!name || name.trim() === r.name) return;
+    setBusy(true);
+    try { await api.patch(`/admin/roles/${r.id}`, { name: name.trim() }); await refresh(); }
+    catch (e) { window.alert(e.message || 'Rename failed'); }
+    setBusy(false);
+  };
+
+  const deleteRole = async (r) => {
+    if (!window.confirm(`Delete role "${r.name}"? This cannot be undone.`)) return;
+    setBusy(true);
+    try { await api.del(`/admin/roles/${r.id}`); await refresh(); }
+    catch (e) { window.alert(e.message || 'Delete failed'); }
+    setBusy(false);
+  };
+
   const list = roles.filter(r => !q || `${r.name} ${r.desc}`.toLowerCase().includes(q.toLowerCase()));
   return (
     <div className="viewWrap" style={{ maxWidth: 1100 }}>
@@ -136,6 +153,11 @@ export const RolesView = ({ onConfigure }) => {
             <div className="roleEdit"><span className="k">Edit rights</span> {r.edit}</div>
             <div className="roleActions">
               <button className="cta ghost sm" disabled={busy} onClick={() => cloneRole(r.id)}><Icon name="document" size={11} /> Clone</button>
+              <button className="cta ghost sm" disabled={busy} onClick={() => renameRole(r)} title="Rename role">Rename</button>
+              {!r.system && (
+                <button className="cta ghost sm" disabled={busy} onClick={() => deleteRole(r)} title="Delete role"
+                        style={{ color: 'var(--status-red, #e05)' }}>Delete</button>
+              )}
               <button className="cta sm" onClick={() => onConfigure(r.id)}>
                 <Icon name="settings" size={11} strokeWidth={2} /> Edit field permissions
               </button>

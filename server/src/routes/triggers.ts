@@ -24,6 +24,17 @@ triggersRouter.post('/triggers', async (req, res) => {
   res.json(row);
 });
 
+triggersRouter.patch('/triggers/:id', async (req, res) => {
+  const parsed = triggerSchema.partial().safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid trigger patch' });
+  try {
+    const row = await prisma.crossTrigger.update({ where: { id: req.params.id }, data: parsed.data });
+    res.json(row);
+  } catch (e) {
+    res.status(404).json({ error: (e as Error).message });
+  }
+});
+
 triggersRouter.delete('/triggers/:id', async (req, res) => {
   await prisma.crossTrigger.delete({ where: { id: req.params.id } }).catch(() => undefined);
   res.json({ ok: true });
