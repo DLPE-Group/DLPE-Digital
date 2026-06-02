@@ -16,6 +16,9 @@ export const DataModelView = () => {
   const [newType, setNewType] = React.useState(null); // {key,label,kind,trackKey} | null
   const [addFieldFor, setAddFieldFor] = React.useState(null); // typeKey | null
   const [field, setField] = React.useState({ key: '', label: '', category: '', dataKind: 'text' });
+  const [editTrack, setEditTrack] = React.useState(null); // {key,label,color} | null
+  const [editType, setEditType] = React.useState(null); // {key,label} | null
+  const [editField, setEditField] = React.useState(null); // {typeKey,key,label,category,dataKind} | null
 
   const reload = React.useCallback(() => {
     return api.get('/admin/data-model').then(setModel).catch((e) => setErr(e.message));
@@ -44,6 +47,20 @@ export const DataModelView = () => {
   };
   const deleteField = (typeKey, fieldKey) =>
     run(api.del(`/admin/data-model/types/${typeKey}/fields/${fieldKey}`));
+
+  const saveTrack = async () => {
+    if (await run(api.patch(`/admin/data-model/tracks/${editTrack.key}`, { label: editTrack.label, color: editTrack.color }))) setEditTrack(null);
+  };
+  const deleteTrack = (key) =>
+    window.confirm(`Delete track "${key}"? This cannot be undone.`) && run(api.del(`/admin/data-model/tracks/${key}`));
+  const saveType = async () => {
+    if (await run(api.patch(`/admin/data-model/types/${editType.key}`, { label: editType.label }))) setEditType(null);
+  };
+  const deleteType = (key) =>
+    window.confirm(`Delete entity type "${key}"? This cannot be undone.`) && run(api.del(`/admin/data-model/types/${key}`));
+  const saveField = async () => {
+    if (await run(api.patch(`/admin/data-model/types/${editField.typeKey}/fields/${editField.key}`, { label: editField.label, category: editField.category, dataKind: editField.dataKind }))) setEditField(null);
+  };
 
   return (
     <>
@@ -102,7 +119,19 @@ export const DataModelView = () => {
                     <strong>{t.label}</strong>
                     <code style={codeChip}>{t.key}</code>
                     {t.builtin && <span style={badge}>built-in</span>}
+                    <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                      <button style={miniBtn} title="Rename / recolor" onClick={() => setEditTrack({ key: t.key, label: t.label, color: t.color || '' })}>Edit</button>
+                      {!t.builtin && <button style={delBtn} title="Delete track" onClick={() => deleteTrack(t.key)}>Delete</button>}
+                    </span>
                   </div>
+                  {editTrack?.key === t.key && (
+                    <div style={{ margin: '4px 0 10px' }}>
+                      <Form title={`Edit ${t.key}`} onCancel={() => setEditTrack(null)} onSave={saveTrack} compact>
+                        <In ph="Label" v={editTrack.label} on={(v) => setEditTrack({ ...editTrack, label: v })} />
+                        <In ph="color (e.g. #39c)" v={editTrack.color} on={(v) => setEditTrack({ ...editTrack, color: v })} />
+                      </Form>
+                    </div>
+                  )}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {t.stages.map((s) => (
                       <span key={s.stageId} style={stageChip} title={`SLA ${s.sla}d${s.lock ? ` · needs ${s.lock}` : ''}`}>{s.label}</span>
@@ -126,19 +155,40 @@ export const DataModelView = () => {
                     </span>
                     {e.trackKey && <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>→ {e.trackKey} track</span>}
                     {e.builtin && <span style={badge}>built-in</span>}
-                    <button style={miniBtn} onClick={() => { setAddFieldFor(e.key); setField({ key: '', label: '', category: '', dataKind: 'text' }); }}>
-                      + Add field
-                    </button>
+                    <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                      <button style={miniBtn} onClick={() => { setAddFieldFor(e.key); setField({ key: '', label: '', category: '', dataKind: 'text' }); }}>+ Add field</button>
+                      <button style={miniBtn} title="Rename" onClick={() => setEditType({ key: e.key, label: e.label })}>Edit</button>
+                      {!e.builtin && <button style={delBtn} title="Delete type" onClick={() => deleteType(e.key)}>Delete</button>}
+                    </span>
                   </div>
+                  {editType?.key === e.key && (
+                    <div style={{ marginBottom: 10 }}>
+                      <Form title={`Edit ${e.key}`} onCancel={() => setEditType(null)} onSave={saveType} compact>
+                        <In ph="Label" v={editType.label} on={(v) => setEditType({ ...editType, label: v })} />
+                      </Form>
+                    </div>
+                  )}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {e.fields.length === 0 && <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>No fields yet.</span>}
                     {e.fields.map((f) => (
                       <span key={f.key} style={fieldChip} title={`${f.category || ''} · ${f.dataKind}`}>
                         {f.label}
-                        <button style={xBtn} title="Remove field" onClick={() => deleteField(e.key, f.key)}>×</button>
+                        <button style={xBtn} title="Edit field" onClick={() => setEditField({ typeKey: e.key, key: f.key, label: f.label, category: f.category || '', dataKind: f.dataKind })}>✎</button>
+                        {!f.builtin && <button style={xBtn} title="Remove field" onClick={() => deleteField(e.key, f.key)}>×</button>}
                       </span>
                     ))}
                   </div>
+                  {editField?.typeKey === e.key && (
+                    <div style={{ marginTop: 10 }}>
+                      <Form title={`Edit field ${editField.key}`} onCancel={() => setEditField(null)} onSave={saveField} compact>
+                        <In ph="Label" v={editField.label} on={(v) => setEditField({ ...editField, label: v })} />
+                        <In ph="Category" v={editField.category} on={(v) => setEditField({ ...editField, category: v })} />
+                        <select value={editField.dataKind} onChange={(ev) => setEditField({ ...editField, dataKind: ev.target.value })} style={inp}>
+                          {DATA_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+                        </select>
+                      </Form>
+                    </div>
+                  )}
                   {addFieldFor === e.key && (
                     <div style={{ marginTop: 10 }}>
                       <Form title={`Add field to ${e.label}`} onCancel={() => setAddFieldFor(null)} onSave={() => addField(e.key)} compact>
@@ -190,5 +240,6 @@ const stageChip = { fontSize: 12, padding: '2px 8px', borderRadius: 12, backgrou
 const fieldChip = { fontSize: 12, padding: '2px 4px 2px 8px', borderRadius: 4, background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: 4 };
 const xBtn = { border: 'none', background: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 2px' };
 const miniBtn = { fontSize: 12, padding: '3px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-secondary)', cursor: 'pointer' };
+const delBtn = { fontSize: 12, padding: '3px 8px', borderRadius: 5, border: '1px solid var(--status-red, #e05)', background: 'var(--bg)', color: 'var(--status-red, #e05)', cursor: 'pointer' };
 const inp = { padding: '6px 9px', borderRadius: 6, border: '1px solid var(--border, #333)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13 };
 const errBar = { margin: '10px 0', padding: '8px 12px', borderRadius: 6, background: 'var(--bg-muted)', border: '1px solid var(--status-red, #e05)', color: 'var(--status-red, #e05)', fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' };

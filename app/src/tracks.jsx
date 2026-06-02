@@ -51,7 +51,7 @@ const StageRail = ({ stages, items, stageFilter, setStageFilter }) => {
   );
 };
 
-export const ItemCard = ({ item, onOpenTimeline, onAct, flash }) => {
+export const ItemCard = ({ item, onOpenTimeline, onAct, onDelete, flash }) => {
   const [expanded, setExpanded] = React.useState(false);
   const ref = React.useRef(null);
 
@@ -115,6 +115,12 @@ export const ItemCard = ({ item, onOpenTimeline, onAct, flash }) => {
           <button className="cta ghost" onClick={() => onOpenTimeline && onOpenTimeline(item)}>
             <Icon name="timeline" size={12} strokeWidth={2} />
             Timeline
+          </button>
+        )}
+        {onDelete && (
+          <button className="cta ghost" title="Delete item" onClick={() => onDelete(item)}
+                  style={{ color: 'var(--status-red, #e05)' }}>
+            <Icon name="close" size={12} strokeWidth={2} />
           </button>
         )}
       </div>
@@ -250,7 +256,7 @@ export const TrackPreview = ({ items, onExpand, onAct }) => {
 };
 
 export const Track = ({ trackId, title, accent, items, stages, owner,
-                 isOpen, onToggle, onOpenTimeline, onAct, onMoveStage, flashIds }) => {
+                 isOpen, onToggle, onOpenTimeline, onAct, onMoveStage, onDelete, onCreate, flashIds }) => {
   const { t } = useT();
   const [stageFilter, setStageFilter] = React.useState(null);
   const [search, setSearch] = React.useState('');
@@ -324,6 +330,12 @@ export const Track = ({ trackId, title, accent, items, stages, owner,
             </button>
           </div>
         )}
+        {onCreate && (
+          <button className="cta ghost sm" onClick={() => onCreate(trackId)} title="Create a new item in this track"
+                  style={{ marginLeft: 8 }}>
+            <Icon name="plus" size={11} strokeWidth={2} /> New item
+          </button>
+        )}
         <span className="headDiv" />
         <div className="trackOwner">
           <Avatar name={owner} size="sm" muted />
@@ -350,7 +362,7 @@ export const Track = ({ trackId, title, accent, items, stages, owner,
             <div className="cardsGrid">
               {visibleItems.map(it => (
                 <ItemCard key={it.id} item={it}
-                          onOpenTimeline={onOpenTimeline} onAct={onAct}
+                          onOpenTimeline={onOpenTimeline} onAct={onAct} onDelete={onDelete}
                           flash={flashIds && flashIds.includes(it.id)} />
               ))}
               {visibleItems.length === 0 && (

@@ -15,6 +15,16 @@ export const UserDetail = ({ user, onBack, onPreviewAs }) => {
   const [secondary, setSecondary] = React.useState(user.secondary);
   const [adding, setAdding] = React.useState(false);
   const [summary] = React.useState(user.summary);
+  const [status, setStatus] = React.useState(user.status);
+
+  const toggleStatus = async () => {
+    const next = status === 'disabled' ? 'active' : 'disabled';
+    if (next === 'disabled' && !window.confirm(`Deactivate ${user.name}? They will be unable to sign in.`)) return;
+    try {
+      await api.patch(`/admin/users/${user.id}`, { status: next });
+      setStatus(next);
+    } catch (e) { window.alert(e.message || 'Failed to update status'); }
+  };
 
   // Load the real user's persisted secondary scopes (with server ids) on open.
   React.useEffect(() => {
@@ -65,14 +75,21 @@ export const UserDetail = ({ user, onBack, onPreviewAs }) => {
           <span className="userAvatarLg">{user.initials}</span>
           <div>
             <h1>{user.name}</h1>
-            <div className="sub">{user.email} · <span className={`statusPill ${statusPillClass[user.status]}`}><span className="d" /> {statusLabel[user.status]}</span></div>
+            <div className="sub">{user.email} · <span className={`statusPill ${statusPillClass[status]}`}><span className="d" /> {statusLabel[status]}</span></div>
           </div>
         </div>
-        {onPreviewAs && (
-          <button className="cta" onClick={() => onPreviewAs(user)}>
-            <Icon name="eye" size={13} strokeWidth={2} /> Preview as {user.name.split(' ')[0]}
+        <div style={{ display: 'flex', gap: 8 }}>
+          {onPreviewAs && (
+            <button className="cta" onClick={() => onPreviewAs(user)}>
+              <Icon name="eye" size={13} strokeWidth={2} /> Preview as {user.name.split(' ')[0]}
+            </button>
+          )}
+          <button className="cta ghost" onClick={toggleStatus}
+                  style={status === 'disabled' ? undefined : { color: 'var(--status-red, #e05)' }}>
+            <Icon name={status === 'disabled' ? 'check' : 'close'} size={13} />
+            {status === 'disabled' ? 'Reactivate' : 'Deactivate'}
           </button>
-        )}
+        </div>
       </div>
 
       <div className="settingsSection">

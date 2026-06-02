@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma.js';
-import { getTree, resolveSettingsFor, addCompany, updateNode } from '../domain/structure.service.js';
+import { getTree, resolveSettingsFor, addCompany, updateNode, addNode, deleteNode } from '../domain/structure.service.js';
 
 export const structureRouter: Router = Router();
 
@@ -26,6 +26,31 @@ structureRouter.post('/structure/:parentId/companies', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: 'name required' });
   try {
     res.json(await addCompany(req.params.parentId, parsed.data));
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+// Add a child node (region / country / company) under a parent.
+export const nodeSchema = z.object({
+  kind: z.enum(['REGION', 'COUNTRY', 'COMPANY']),
+  name: z.string().min(1),
+  code: z.string().optional(),
+});
+structureRouter.post('/structure/:parentId/nodes', async (req, res) => {
+  const parsed = nodeSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: 'kind + name required' });
+  try {
+    res.json(await addNode(req.params.parentId, parsed.data));
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+structureRouter.delete('/structure/:id', async (req, res) => {
+  try {
+    await deleteNode(req.params.id);
+    res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }

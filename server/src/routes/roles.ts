@@ -37,6 +37,40 @@ rolesRouter.post('/roles', async (req, res) => {
   }
 });
 
+const patchRoleSchema = z.object({
+  name: z.string().min(1).optional(),
+  desc: z.string().optional(),
+  tracks: z.array(z.string()).optional(),
+});
+// PATCH /admin/roles/:id — rename / edit a role.
+rolesRouter.patch('/roles/:id', async (req, res) => {
+  const parsed = patchRoleSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid role payload' });
+  const role = await prisma.role.findUnique({ where: { id: req.params.id } });
+  if (!role) return res.status(404).json({ error: 'Role not found' });
+  const updated = await prisma.role.update({ where: { id: req.params.id }, data: parsed.data });
+  res.json(updated);
+});
+
+// DELETE /admin/roles/:id — remove a custom role (blocked for system roles or
+// roles still assigned to any user, primary or secondary).
+rolesRouter.delete('/roles/:id', async (req, res) => {
+  const role = await prisma.role.findUnique({ where: { id: req.params.id } });
+  if (!role) return res.status(404).json({ error: 'Role not found' });
+  if (role.system) return res.status(400).json({ error: 'System roles cannot be deleted.' });
+  const [primary, secondary] = await Promise.all([
+    prisma.user.count({ where: { roleId: req.params.id } }),
+    prisma.userScope.count({ where: { roleId: req.params.id } }),
+  ]);
+  const inUse = primary + secondary;
+  if (inUse > 0) return res.status(400).json({ error: `Role is assigned to ${inUse} user(s) — reassign them first.` });
+  await prisma.$transaction([
+    prisma.fieldRule.deleteMany({ where: { roleId: req.params.id } }),
+    prisma.role.delete({ where: { id: req.params.id } }),
+  ]);
+  res.json({ ok: true });
+});
+
 // POST /admin/roles/:id/clone — duplicate a role + all its field rules.
 rolesRouter.post('/roles/:id/clone', async (req, res) => {
   const src = await prisma.role.findUnique({ where: { id: req.params.id } });
