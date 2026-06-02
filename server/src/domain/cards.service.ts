@@ -1,6 +1,6 @@
 import { prisma } from '../prisma.js';
-import { STAGE_CONFIG, TRACK_ENUM, TRACK_KEY_FROM_ENUM, type TrackKey } from '@dlpe/shared';
-import type { Card, Prisma, Track } from '@prisma/client';
+import { STAGE_CONFIG, TRACK_ENUM, TRACK_KEY_FROM_ENUM, type TrackKey, type CardDTO as Card } from '@dlpe/shared';
+import type { Prisma, Track } from '@prisma/client';
 import { writeAudit } from './audit.service.js';
 import { buildEffectiveForUser } from '../rbac/context.js';
 import { filterCard } from '../rbac/applyCardRules.js';
@@ -82,13 +82,13 @@ export async function listCards(track?: string, userId?: string): Promise<Card[]
   // Preload DB stage config (admin-editable SLAs) for the tracks present.
   const stagesByTrack: Partial<Record<Track, StageDef[]>> = {};
   if (autoEscalate) {
-    for (const tr of [...new Set(cards.map((c) => c.track))]) stagesByTrack[tr] = await loadStages(tr);
+    for (const tr of [...new Set(cards.map((c) => c.track))] as Track[]) stagesByTrack[tr] = await loadStages(tr);
   }
 
   return cards.map((c0) => {
     const c = filterCard(c0, eff.effective); // strip/mask restricted fields
     if (autoEscalate) {
-      const sla = stagesByTrack[c.track]?.find((s) => s.id === c.stageId)?.sla ?? 0;
+      const sla = stagesByTrack[c.track as Track]?.find((s) => s.id === c.stageId)?.sla ?? 0;
       if (sla > 0 && c.days > sla * 2 && c.status !== 'red') {
         return { ...c, status: 'red', escalated: true, daysLabel: `escalated · ${c.days}d in stage` } as Card;
       }
@@ -147,7 +147,7 @@ export async function moveStage(
   const card = entityToCardDTO(row as unknown as EntityRow) as unknown as Card;
 
   const trackKey = TRACK_KEY_FROM_ENUM[card.track] as TrackKey;
-  const stages = await loadStages(card.track);
+  const stages = await loadStages(card.track as Track);
   const stage = stages.find((s) => s.id === stageId);
   const stageName = stage?.label ?? stageId;
 

@@ -67,8 +67,6 @@ model OrgNode {
   parent    OrgNode?  @relation("OrgChildren", fields: [parentId], references: [id])
   children  OrgNode[] @relation("OrgChildren")
 
-  cards         Card[]
-  vehicles      Vehicle[]
   fleetOps      FleetOperator[]
   invoices      Invoice[]
   entities      Entity[]
@@ -151,34 +149,6 @@ model Session {
   @@index([userId])
 }
 
-// ---------------- Unified card table ----------------
-model Card {
-  id           String   @id
-  companyId    String?
-  company      OrgNode? @relation(fields: [companyId], references: [id])
-  track        Track
-  type         String
-  customer     String
-  value        Int?
-  vehicle      String?
-  sub          String
-  stageId      String
-  stageName    String
-  days         Int      @default(0)
-  daysLabel    String?
-  owner        String
-  status       String // red | amber | green
-  cta          String
-  sources      String[]
-  awaitingSign Boolean  @default(false)
-  meta         Json?
-  createdById  String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  @@index([companyId, track, stageId])
-}
-
 // ---------------- RBAC field rules (diffs from DEFAULT_RULE) ----------------
 model FieldRule {
   roleId     String
@@ -232,20 +202,6 @@ model CrossTrigger {
 }
 
 // ---------------- Domain mock-shape models ----------------
-model Vehicle {
-  id          String   @id @default(cuid())
-  plate       String   @unique
-  model       String?
-  vin         String?
-  operator    String?
-  status      String?
-  statusLabel String?
-  note        String?
-  companyId   String?
-  company     OrgNode? @relation(fields: [companyId], references: [id])
-  meta        Json?
-}
-
 model FleetOperator {
   id        String   @id @default(cuid())
   name      String

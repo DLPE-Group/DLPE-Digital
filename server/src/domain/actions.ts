@@ -1,4 +1,4 @@
-import type { Card, Prisma } from '@prisma/client';
+import type { CardDTO as Card } from '@dlpe/shared';
 import { prisma } from '../prisma.js';
 import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
 import { runTriggers } from './triggers.engine.js';
@@ -21,7 +21,7 @@ export interface RunActionResult {
   createdCards: Card[];
 }
 
-type PatchFn = (card: Card, state: Record<string, unknown>) => Prisma.CardUpdateInput;
+type PatchFn = (card: Card, state: Record<string, unknown>) => Partial<Card>;
 
 // onPatch ports from app/src/action_flows.jsx — one per flow.
 const PATCHES: Record<ActionName, PatchFn> = {
