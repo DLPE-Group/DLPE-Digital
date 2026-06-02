@@ -66,4 +66,7 @@ test('data model view lists tracks and entity types from the API', async ({ page
   // "Contract drafted" stage chip / the subtitle text)
   await expect(page.getByText('Contract', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Vehicle', { exact: true }).first()).toBeVisible();
+  // no-code authoring controls are present
+  await expect(page.getByRole('button', { name: /new entity type/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /add field/i }).first()).toBeVisible();
 });
