@@ -353,4 +353,23 @@ assertion; **60 API + 8 UI green**; live create→verify→cleanup smoke passed.
 
 **Remaining (all optional / infra):** SQL `GROUP BY` aggregation + pagination
 (perf, when volume warrants), RLS (1c — needs non-superuser role decision),
-partitioning (1d), and the eventual `Card`/`Vehicle` table drop (Phase 4).
+partitioning (1d).
+
+---
+
+## Phase 4 status (legacy tables retired — implemented)
+
+`Card` and `Vehicle` are gone. The seed writes `Entity` directly
+(`seedMetaModel` + `cardToEntityCreate`/`vehicleToEntityCreate`, idempotent with
+deterministic vehicle ids — fixing a duplicate-entity leak the old backfill had
+on reseed); the backfill-from-DB shim is removed. The `Card`/`Vehicle` Prisma
+models + tables are dropped (hand-authored migration `20260602100000_drop_card_vehicle`
+applied via `migrate deploy`, since `migrate dev` refuses destructive changes
+non-interactively). The domain code now types pipeline rows with the shared
+`CardDTO` (aliased as `Card`) instead of the Prisma model. **60 API + 8 UI green;
+`Entity` is the sole data model.**
+
+**Truly remaining (optional/infra):** SQL `GROUP BY` aggregation + pagination,
+RLS (1c), partitioning (1d). Also a noted **follow-up**: stage config has two
+sources — the live runtime reads the `StageConfig` table while the Data-model UI
+edits `StageDef`; these should be unified to `StageDef` in a small future pass.
