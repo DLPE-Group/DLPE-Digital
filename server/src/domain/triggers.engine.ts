@@ -1,4 +1,5 @@
-import type { Card, Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
+import type { CardDTO as Card } from '@dlpe/shared';
 import { trackKeyToEnum } from './cards.service.js';
 import { entityToCardDTO, type EntityRow } from './projection.js';
 import { loadTenantResolver } from './tenancy.js';

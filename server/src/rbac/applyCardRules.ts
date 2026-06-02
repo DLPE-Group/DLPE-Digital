@@ -6,7 +6,7 @@
 // sums (see aggregations.ts).
 import { maskValue } from './mask.js';
 import type { EffectiveMap } from './context.js';
-import type { Card } from '@prisma/client';
+import type { CardDTO as Card } from '@dlpe/shared';
 
 // Track enum → the pipeline EntityType key that governs its cards.
 const TYPE_KEY_BY_TRACK: Record<string, string> = {
@@ -40,7 +40,7 @@ function typeKeyForCard(card: Card): string {
 
 export function filterCard(card: Card, effective: EffectiveMap): Card {
   const fieldMap = FIELD_MAP_BY_TYPE[typeKeyForCard(card)] ?? {};
-  let out: Record<string, unknown> = card;
+  let out: Record<string, unknown> = card as unknown as Record<string, unknown>;
   let cloned = false;
   const ensure = () => { if (!cloned) { out = { ...card }; cloned = true; } };
 
@@ -56,7 +56,7 @@ export function filterCard(card: Card, effective: EffectiveMap): Card {
       if (v != null) out[cardField] = maskValue(cardField, String(v));
     }
   }
-  return out as Card;
+  return out as unknown as Card;
 }
 
 // True when the caller cannot fully see monetary values for a given pipeline

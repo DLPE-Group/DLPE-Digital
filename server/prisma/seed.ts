@@ -17,10 +17,11 @@ import {
   DATA_TYPES,
   FIELD_CATEGORIES,
 } from '@dlpe/shared';
+import { seedMetaModel, cardToEntityCreate, vehicleToEntityCreate, type CardSeed } from '../src/domain/backfill.js';
 
 const prisma = new PrismaClient();
 
-const TRACK_ENUM: Record<string, Prisma.CardCreateInput['track']> = {
+const TRACK_ENUM: Record<string, string> = {
   sales: 'SALES',
   operations: 'OPERATIONS',
   workshop: 'WORKSHOP',
@@ -302,7 +303,7 @@ const SEED_FINANCE: RawCard[] = [
   { id: 'f4', customer: 'Supplier · MAN Trucks AG', value: 87500, type: 'SUPPLIER', sub: 'PEPPOL invoice · 12 vehicles', stageId: 'supplier', stageName: 'Supplier invoice', days: 1, daysLabel: 'received 1d ago', owner: 'Ines Vandeput', status: 'green', cta: 'Approve for payment', sources: ['PEPPOL'] },
 ];
 
-function cardRows(arr: RawCard[], track: string): Prisma.CardCreateManyInput[] {
+function cardRows(arr: RawCard[], track: string): CardSeed[] {
   return arr.map((c) => ({
     id: c.id,
     companyId: companyFor(c.customer),
@@ -429,7 +430,11 @@ async function main() {
   await prisma.report.deleteMany();
   await prisma.dashboardLayout.deleteMany();
   await prisma.session.deleteMany();
-  await prisma.card.deleteMany();
+  await prisma.entity.deleteMany();
+  await prisma.fieldDef.deleteMany();
+  await prisma.entityType.deleteMany();
+  await prisma.stageDef.deleteMany();
+  await prisma.trackDef.deleteMany();
   await prisma.fieldRule.deleteMany();
   await prisma.rbacVersion.deleteMany();
   await prisma.stageConfig.deleteMany();
@@ -437,7 +442,6 @@ async function main() {
   await prisma.userScope.deleteMany();
   await prisma.user.deleteMany();
   await prisma.invoice.deleteMany();
-  await prisma.vehicle.deleteMany();
   await prisma.fleetOperator.deleteMany();
   await prisma.dataSharing.deleteMany();
   await prisma.integration.deleteMany();
@@ -508,7 +512,7 @@ async function main() {
   const stageRows: Prisma.StageConfigCreateManyInput[] = [];
   for (const [track, stages] of Object.entries(STAGE_CONFIG)) {
     stages.forEach((s, i) => {
-      stageRows.push({ track: TRACK_ENUM[track], order: i, stageId: s.id, label: s.label, sla: s.sla, lock: s.lock, cta: s.cta });
+      stageRows.push({ track: TRACK_ENUM[track] as Prisma.StageConfigCreateManyInput['track'], order: i, stageId: s.id, label: s.label, sla: s.sla, lock: s.lock, cta: s.cta });
     });
   }
   await prisma.stageConfig.createMany({ data: stageRows });
@@ -516,11 +520,19 @@ async function main() {
   // Cross-track triggers (incl. Brussels rows).
   await prisma.crossTrigger.createMany({ data: CROSS_TRIGGERS });
 
-  // Cards (four arrays; o1/f1 absent).
-  await prisma.card.createMany({ data: cardRows(SEED_SALES, 'sales') });
-  await prisma.card.createMany({ data: cardRows(SEED_OPS, 'operations') });
-  await prisma.card.createMany({ data: cardRows(SEED_WORKSHOP, 'workshop') });
-  await prisma.card.createMany({ data: cardRows(SEED_FINANCE, 'finance') });
+  // Data-driven meta-model (tracks, stages, entity types, fields).
+  const meta = await seedMetaModel(prisma);
+
+  // Pipeline items as Entities (four arrays; o1/f1 absent — cascade-only).
+  const seedCards: CardSeed[] = [
+    ...cardRows(SEED_SALES, 'sales'),
+    ...cardRows(SEED_OPS, 'operations'),
+    ...cardRows(SEED_WORKSHOP, 'workshop'),
+    ...cardRows(SEED_FINANCE, 'finance'),
+  ];
+  for (const c of seedCards) {
+    await prisma.entity.create({ data: cardToEntityCreate(c, meta) });
+  }
 
   // Vehicle timeline + events (Brussels drill-down).
   const brusselsCompany = companyFor(VEHICLE_TIMELINE.customer);
@@ -541,7 +553,12 @@ async function main() {
   // Portal fleet → FleetOperator + Vehicles + Invoices.
   await prisma.fleetOperator.create({ data: { name: PORTAL_FLEET.operator, contact: PORTAL_FLEET.contact, companyId: brusselsCompany === 'cmp-brussels' ? 'cmp-rotterdam' : companyFor(PORTAL_FLEET.operator), meta: { messages: 3 } } });
   for (const v of PORTAL_FLEET.vehicles) {
-    await prisma.vehicle.create({ data: { plate: v.plate, model: v.model, status: v.status, statusLabel: v.statusLabel, note: v.note, operator: PORTAL_FLEET.operator, companyId: companyFor(PORTAL_FLEET.operator) } });
+    await prisma.entity.create({
+      data: vehicleToEntityCreate(
+        { plate: v.plate, model: v.model, status: v.status, statusLabel: v.statusLabel, note: v.note, operator: PORTAL_FLEET.operator, companyId: companyFor(PORTAL_FLEET.operator) },
+        meta,
+      ),
+    });
   }
   for (const inv of PORTAL_FLEET.invoices) {
     await prisma.invoice.create({ data: { ref: inv.ref, value: inv.value, due: inv.due, status: inv.status, companyId: companyFor(PORTAL_FLEET.operator) } });
@@ -587,7 +604,7 @@ async function main() {
     orgNodes: await prisma.orgNode.count(),
     users: await prisma.user.count(),
     roles: await prisma.role.count(),
-    cards: await prisma.card.count(),
+    entities: await prisma.entity.count(),
     fieldRules: await prisma.fieldRule.count(),
     stageConfig: await prisma.stageConfig.count(),
     crossTriggers: await prisma.crossTrigger.count(),
@@ -596,12 +613,6 @@ async function main() {
     reports: await prisma.report.count(),
   };
   console.log('Seed complete:', JSON.stringify(counts, null, 2));
-
-  // Phase 1a: derive the parallel entity model from the rows just seeded.
-  const { backfillEntities } = await import('../src/domain/backfill.js');
-  await backfillEntities(prisma);
-  console.log('Backfilled entity model (tracks, types, fields, entities).');
-
   console.log('Login: m.weber@group.eu / demo1234 (and r.mertens@group.eu, l.pieters@group.eu, etc.)');
 }
 
