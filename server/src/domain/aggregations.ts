@@ -22,16 +22,22 @@ async function scopeCardsFor(
 }
 
 const MASK = '€XXX,XXX';
-// True if the caller may not see monetary contract values.
-async function callerValueRestricted(userId?: string): Promise<boolean> {
+// Per-type money restriction for the caller (e.g. 'contract', 'invoice',
+// 'workshop_order') — so aggregates follow per-EntityType field rules.
+async function callerValueRestricted(userId?: string, typeKey = 'contract'): Promise<boolean> {
   if (!userId) return false;
   try {
     const { effective } = await buildEffectiveForUser(userId);
-    return valueRestricted(effective);
+    return valueRestricted(effective, typeKey);
   } catch {
     return false;
   }
 }
+
+// The pipeline EntityType key whose money governs a given track's aggregates.
+const TYPE_KEY_BY_TRACK_KEY: Record<string, string> = {
+  sales: 'contract', operations: 'operation', workshop: 'workshop_order', finance: 'invoice',
+};
 
 // repMoney — ported verbatim from app/src/reports.jsx.
 export function repMoney(n: number): string {
@@ -71,7 +77,7 @@ export async function computeTrack(track: string, userId?: string): Promise<Trac
   // Track-access (H3) + scope (H4): if the caller can't view this track, the
   // scoped set is empty and every metric computes to zero.
   const { cards: items } = await scopeCardsFor(raw, userId);
-  const restricted = await callerValueRestricted(userId);
+  const restricted = await callerValueRestricted(userId, TYPE_KEY_BY_TRACK_KEY[key] ?? 'contract');
   const agg = await computeTrackInner(items, key);
   if (!restricted) return agg;
   // Mask any money-shaped string (starts with €) in metrics + chart displays.
@@ -211,9 +217,13 @@ export async function dashboardSnapshot(userId?: string) {
   // Track-access (H3) + scope (H4): the snapshot reflects only what the caller
   // may see, so the overview matches the side menu and the per-track lists.
   const { cards, allowed } = await scopeCardsFor(await loadPipelineCards(), userId);
-  const restricted = await callerValueRestricted(userId);
-  // money() nulls out monetary values for callers who can't see contract values.
-  const money = (v: number) => (restricted ? null : v);
+  // Per-type money gates: Sales money follows the contract rules, Finance money
+  // follows the invoice rules — so the dashboard reflects per-EntityType field
+  // governance ("aggregates follow").
+  const restricted = await callerValueRestricted(userId, 'contract');
+  const restrictedInvoice = await callerValueRestricted(userId, 'invoice');
+  const money = (v: number) => (restricted ? null : v); // Sales/contract money
+  const moneyInv = (v: number) => (restrictedInvoice ? null : v); // Finance/invoice money
   const byTrack = (t: string) => cards.filter((c) => c.track === t);
   const sumValue = (arr: Card[]) => arr.reduce((a, x) => a + (x.value ?? 0), 0);
 
@@ -262,8 +272,8 @@ export async function dashboardSnapshot(userId?: string) {
       },
       receivables: {
         segments: [
-          { label: 'Current', value: money(current), color: 'var(--track-finance)' },
-          { label: '31d+ overdue', value: money(overdue), color: 'var(--status-red)' },
+          { label: 'Current', value: moneyInv(current), color: 'var(--track-finance)' },
+          { label: '31d+ overdue', value: moneyInv(overdue), color: 'var(--status-red)' },
         ],
       },
       pipelineStage: {
