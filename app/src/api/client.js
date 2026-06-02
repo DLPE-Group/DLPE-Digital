@@ -14,10 +14,18 @@ export function setToken(t) {
 let onUnauthorized = null;
 export function setUnauthorizedHandler(fn) { onUnauthorized = fn; }
 
+// "Preview as" — when an admin previews the product as another user, every
+// request carries their id in x-preview-as so the server serves that user's
+// data/permissions (admin-only; ignored server-side for non-admins).
+let previewAsId = null;
+export function setPreviewAs(id) { previewAsId = id || null; }
+export function getPreviewAs() { return previewAsId; }
+
 export async function apiFetch(path, opts = {}) {
   const headers = { 'content-type': 'application/json', ...(opts.headers || {}) };
   const token = getToken();
   if (token) headers.authorization = `Bearer ${token}`;
+  if (previewAsId) headers['x-preview-as'] = previewAsId;
 
   const body = opts.body != null && typeof opts.body !== 'string'
     ? JSON.stringify(opts.body)

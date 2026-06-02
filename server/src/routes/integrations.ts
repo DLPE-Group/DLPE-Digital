@@ -41,3 +41,43 @@ integrationsRouter.post('/', async (req, res) => {
   });
   res.json(row);
 });
+
+// PATCH /integrations/:id — edit an integration's config fields.
+const patchIntegrationSchema = z.object({
+  name: z.string().optional(),
+  kind: z.string().optional(),
+  direction: z.string().optional(),
+  desc: z.string().optional(),
+  status: z.string().optional(),
+}).partial();
+integrationsRouter.patch('/:id', async (req, res) => {
+  const parsed = patchIntegrationSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid integration patch' });
+  try {
+    const row = await prisma.integration.update({ where: { id: req.params.id }, data: parsed.data });
+    res.json(row);
+  } catch (e) {
+    res.status(404).json({ error: (e as Error).message });
+  }
+});
+
+// GET /integrations/:id/logs — recent activity for this integration. Derived
+// from system audit entries (real events flowing through the DataSource).
+integrationsRouter.get('/:id/logs', async (req, res) => {
+  const it = await prisma.integration.findUnique({ where: { id: req.params.id } });
+  if (!it) return res.status(404).json({ error: 'Integration not found' });
+  const sys = await prisma.auditEntry.findMany({ where: { isSystem: true }, orderBy: { createdAt: 'desc' }, take: 12 });
+  const lines = sys.map((a) => ({ when: `${a.day} · ${a.time}`, text: `${a.verb} — ${a.target}` }));
+  res.json({ integration: { id: it.id, name: it.name, status: it.status, lastSync: it.lastSync }, lines });
+});
+
+// POST /integrations/:id/test — "test connection": marks healthy + bumps lastSync.
+integrationsRouter.post('/:id/test', async (req, res) => {
+  const existing = await prisma.integration.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: 'Integration not found' });
+  const row = await prisma.integration.update({
+    where: { id: req.params.id },
+    data: { status: 'healthy', lastSync: 'just now' },
+  });
+  res.json({ ok: true, integration: row });
+});

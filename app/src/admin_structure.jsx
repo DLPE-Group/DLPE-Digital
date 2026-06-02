@@ -2,6 +2,7 @@ import React from 'react';
 import { Icon } from './icons.jsx';
 import { GROUP_TREE, COUNTRY_DEFAULTS, DATA_SHARING, ADMIN_USERS } from './admin_data.js';
 import { api } from './api/client.js';
+import { SimBadge } from './primitives.jsx';
 
 /* Normalize a server OrgNode tree (uppercase enum kind) to the lowercase
    shape the UI expects, recursively. */
@@ -115,6 +116,35 @@ const SettingRow = ({ label, resolved, parentKindLabel }) => {
   );
 };
 
+/* Editable variant — when an override is staged in the draft it shows an input;
+   otherwise it shows the resolved (inherited/own) value with an "override" action. */
+const EditableSettingRow = ({ label, settingKey, resolved, draftValue, onEdit, onRevert }) => {
+  const editing = draftValue !== undefined;
+  return (
+    <div className="setRow">
+      <div className="setLabel">{label}</div>
+      {editing ? (
+        <div className="setVal">
+          <input className="textInput" style={{ maxWidth: 220 }} value={draftValue}
+                 autoFocus onChange={e => onEdit(settingKey, e.target.value)} />
+          <span className="overrideTag">override · <button className="revertLink" onClick={() => onRevert(settingKey)}>↩ revert</button></span>
+        </div>
+      ) : (
+        <div className={`setVal ${resolved.inherited ? 'inherited' : ''}`}>
+          <span className="setValText">{resolved.value ?? '— not set —'}</span>
+          {resolved.inherited ? (
+            <span className="inheritTag"><Icon name="arrow" size={10} className="up" /> inherited from {resolved.sourceName} · <button className="revertLink" onClick={() => onEdit(settingKey, resolved.value ?? '')}>override</button></span>
+          ) : resolved.overridden ? (
+            <span className="overrideTag">overrides {resolved.sourceName} · <button className="revertLink" onClick={() => onRevert(settingKey)}>↩ revert</button></span>
+          ) : (
+            <span className="setHereTag">set here · <button className="revertLink" onClick={() => onEdit(settingKey, resolved.value ?? '')}>edit</button></span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const AddCompanyPanel = ({ country, onClose, onSave }) => {
   const def = COUNTRY_DEFAULTS[country.code] || {};
   const [name, setName] = React.useState('');
@@ -169,6 +199,9 @@ export const GroupStructureView = () => {
   const [sharing, setSharing] = React.useState(
     Object.fromEntries(DATA_SHARING.map(d => [d.type, d.mode]))
   );
+  const [renaming, setRenaming] = React.useState(false);
+  const [draft, setDraft] = React.useState({ name: '', overrides: {} });
+  const [savingStruct, setSavingStruct] = React.useState(false);
 
   // Load the org tree + data-sharing from the API (fallback to seed on failure).
   React.useEffect(() => {
@@ -233,7 +266,55 @@ export const GroupStructureView = () => {
     });
   };
 
-  const r = (key) => resolveSetting(path, key);
+  // Reset the edit draft whenever the selected node changes.
+  React.useEffect(() => {
+    setDraft({ name: node.name, overrides: { ...(node.overrides || {}) } });
+    setRenaming(false);
+  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const dirty =
+    draft.name !== node.name ||
+    JSON.stringify(draft.overrides || {}) !== JSON.stringify(node.overrides || {});
+
+  const patchNodeInTree = (id, patch) => {
+    setTree(prev => {
+      const clone = JSON.parse(JSON.stringify(prev));
+      const p = findPath(clone, id);
+      if (p) Object.assign(p[p.length - 1], patch);
+      return clone;
+    });
+  };
+
+  const editOverride = (key, value) =>
+    setDraft(d => ({ ...d, overrides: { ...d.overrides, [key]: value } }));
+  const revertOverride = (key) =>
+    setDraft(d => { const o = { ...d.overrides }; delete o[key]; return { ...d, overrides: o }; });
+
+  const saveStructChanges = async () => {
+    setSavingStruct(true);
+    const body = { name: draft.name, overrides: draft.overrides };
+    try {
+      const row = await api.patch('/admin/structure/' + node.id, body);
+      patchNodeInTree(node.id, {
+        name: row?.name ?? draft.name,
+        overrides: row?.overrides ?? draft.overrides,
+      });
+    } catch (e) {
+      console.error('Failed to save node', e);
+      // optimistic local apply so the UI still reflects the edit
+      patchNodeInTree(node.id, { name: draft.name, overrides: draft.overrides });
+    }
+    setSavingStruct(false);
+  };
+
+  // Resolved setting, accounting for any staged draft override on the selected node.
+  const r = (key) => {
+    if (draft.overrides && key in draft.overrides) {
+      return { value: draft.overrides[key], inherited: false, overridden: false, sourceName: null };
+    }
+    return resolveSetting(path, key);
+  };
+  const dv = (key) => (draft.overrides && key in draft.overrides ? draft.overrides[key] : undefined);
 
   return (
     <div className="viewWrap" style={{ maxWidth: 1240 }}>
@@ -242,7 +323,10 @@ export const GroupStructureView = () => {
           <h1>Group structure</h1>
           <div className="sub">The organizational tree — group, regions, countries and companies. Settings cascade down each level; any level can override the one above. Inherited values appear greyed.</div>
         </div>
-        <button className="cta ghost"><Icon name="download" size={12} strokeWidth={2} /> Export structure</button>
+        <button className="cta ghost" onClick={() => {
+          const url = URL.createObjectURL(new Blob([JSON.stringify(tree, null, 2)], { type: 'application/json' }));
+          const a = document.createElement('a'); a.href = url; a.download = 'org-structure.json'; a.click(); URL.revokeObjectURL(url);
+        }}><Icon name="download" size={12} strokeWidth={2} /> Export structure</button>
       </div>
 
       <div className="viewStats" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
@@ -279,11 +363,22 @@ export const GroupStructureView = () => {
           <div className="structPanelHead">
             <div>
               <div className="sphKind">{KIND_LABEL[node.kind]}{parent ? ` · in ${parent.name}` : ''}</div>
-              <h2>{node.name} <span className="sphCode">{node.code}</span></h2>
+              {renaming ? (
+                <h2>
+                  <input className="textInput" style={{ maxWidth: 320, fontSize: '1em' }} autoFocus
+                         value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
+                         onKeyDown={e => { if (e.key === 'Enter') setRenaming(false); }} />
+                  {' '}<span className="sphCode">{node.code}</span>
+                </h2>
+              ) : (
+                <h2>{draft.name || node.name} <span className="sphCode">{node.code}</span></h2>
+              )}
             </div>
             <div className="sphActions">
               {node.kind === 'company' && <span className="statusPill ok"><span className="d" /> Active</span>}
-              <button className="miniBtn"><Icon name="settings" size={11} /> Rename</button>
+              <button className="miniBtn" onClick={() => setRenaming(v => !v)}>
+                <Icon name="settings" size={11} /> {renaming ? 'Done' : 'Rename'}
+              </button>
             </div>
           </div>
 
@@ -300,26 +395,26 @@ export const GroupStructureView = () => {
           {/* Regulatory */}
           <div className="setGroup">
             <div className="setGroupHead">Regulatory</div>
-            <SettingRow label="VAT rate(s)" resolved={r('vat')} />
-            <SettingRow label="Currency" resolved={r('currency')} />
-            <SettingRow label="PEPPOL profile" resolved={r('peppol')} />
-            <SettingRow label="Language(s)" resolved={r('languages')} />
-            <SettingRow label="Fiscal year start" resolved={r('fiscalYear')} />
-            {node.kind === 'company' && <SettingRow label="Invoice number sequence" resolved={r('invoiceSeq')} />}
+            <EditableSettingRow label="VAT rate(s)" settingKey="vat" resolved={r('vat')} draftValue={dv('vat')} onEdit={editOverride} onRevert={revertOverride} />
+            <EditableSettingRow label="Currency" settingKey="currency" resolved={r('currency')} draftValue={dv('currency')} onEdit={editOverride} onRevert={revertOverride} />
+            <EditableSettingRow label="PEPPOL profile" settingKey="peppol" resolved={r('peppol')} draftValue={dv('peppol')} onEdit={editOverride} onRevert={revertOverride} />
+            <EditableSettingRow label="Language(s)" settingKey="languages" resolved={r('languages')} draftValue={dv('languages')} onEdit={editOverride} onRevert={revertOverride} />
+            <EditableSettingRow label="Fiscal year start" settingKey="fiscalYear" resolved={r('fiscalYear')} draftValue={dv('fiscalYear')} onEdit={editOverride} onRevert={revertOverride} />
+            {node.kind === 'company' && <EditableSettingRow label="Invoice number sequence" settingKey="invoiceSeq" resolved={r('invoiceSeq')} draftValue={dv('invoiceSeq')} onEdit={editOverride} onRevert={revertOverride} />}
           </div>
 
           {/* Operational */}
           <div className="setGroup">
             <div className="setGroupHead">Operational</div>
-            <SettingRow label="Service interval" resolved={r('serviceInterval')} />
-            <SettingRow label="Working hours" resolved={r('workingHours')} />
+            <EditableSettingRow label="Service interval" settingKey="serviceInterval" resolved={r('serviceInterval')} draftValue={dv('serviceInterval')} onEdit={editOverride} onRevert={revertOverride} />
+            <EditableSettingRow label="Working hours" settingKey="workingHours" resolved={r('workingHours')} draftValue={dv('workingHours')} onEdit={editOverride} onRevert={revertOverride} />
           </div>
 
           {/* Data sharing — only meaningful at group/country */}
           {(node.kind === 'group' || node.kind === 'country' || node.kind === 'region') && (
             <div className="setGroup">
-              <div className="setGroupHead">Data sharing
-                <span className="setGroupHint">defaults for {node.name}’s companies · most-restrictive wins at runtime</span>
+              <div className="setGroupHead">Data sharing <SimBadge label="Advisory" title="These modes are saved, but cross-company sharing is not yet enforced at runtime — row-level access is governed by user scope (see Users)." />
+                <span className="setGroupHint">defaults for {node.name}’s companies · saved, not yet runtime-enforced</span>
               </div>
               {sharingRows.map(d => (
                 <div className="shareRow" key={d.type}>
@@ -349,7 +444,9 @@ export const GroupStructureView = () => {
 
           <div className="structFoot">
             <span className="muted">Inherited settings are greyed. Override any field, then ↩ revert to fall back to the parent.</span>
-            <button className="cta"><Icon name="check" size={12} strokeWidth={2} /> Save changes</button>
+            <button className="cta" disabled={!dirty || savingStruct} onClick={saveStructChanges}>
+              <Icon name="check" size={12} strokeWidth={2} /> {savingStruct ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
+            </button>
           </div>
         </div>
       </div>

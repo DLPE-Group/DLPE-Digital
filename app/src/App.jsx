@@ -14,13 +14,14 @@ import { IntegrationsView, AuditView } from './views_part1.jsx';
 import { GroupStructureView } from './admin_structure.jsx';
 import { UsersView } from './admin_users.jsx';
 import { RolesView, RbacConfigurator } from './admin_rbac.jsx';
+import { DataModelView } from './data_model.jsx';
 import { ReportsView } from './reports.jsx';
 import {
   SALES_STAGES, OPS_STAGES, WORKSHOP_STAGES, FINANCE_STAGES,
   VEHICLE_TIMELINE,
 } from './data.js';
 import { ADMIN_USERS, ROLES } from './admin_data.js';
-import { api } from './api/client.js';
+import { api, setPreviewAs } from './api/client.js';
 import { useAuth } from './api/auth.jsx';
 
 // Map a card to the server action that drives it — mirrors resolveFlow().
@@ -117,12 +118,120 @@ const StubPanel = ({ icon, title, body }) => (
   </div>
 );
 
+// In-app notifications bell — derived from live DB state via /notifications.
+// "Read" state is per-browser (localStorage); there is no external delivery.
+const NotificationsBell = () => {
+  const [items, setItems] = React.useState([]);
+  const [open, setOpen] = React.useState(false);
+  const [dismissed, setDismissed] = React.useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('il_dismissed_notifs') || '[]')); }
+    catch { return new Set(); }
+  });
+  React.useEffect(() => {
+    api.get('/notifications').then(rows => { if (Array.isArray(rows)) setItems(rows); }).catch(() => {});
+  }, []);
+  const visible = items.filter(n => !dismissed.has(n.id));
+  const dismiss = (id) => setDismissed(prev => {
+    const next = new Set(prev); next.add(id);
+    localStorage.setItem('il_dismissed_notifs', JSON.stringify([...next]));
+    return next;
+  });
+  return (
+    <div className="notifWrap">
+      <button className="iconBtn notifBtn" title="Notifications" onClick={() => setOpen(o => !o)}>
+        <Icon name="bell" size={17} />
+        {visible.length > 0 && <span className="notifDot" />}
+      </button>
+      {open && (
+        <>
+          <div className="notifBackdrop" onClick={() => setOpen(false)} />
+          <div className="notifPopover">
+            <div className="notifHead"><span>Notifications</span><span className="notifCount">{visible.length}</span></div>
+            {visible.length === 0 && <div className="notifEmpty">All clear — nothing needs attention.</div>}
+            {visible.map(n => (
+              <div key={n.id} className={`notifItem ${n.kind}`}>
+                <span className="notifIcon"><Icon name={n.icon || 'bell'} size={14} /></span>
+                <div className="notifText">
+                  <div className="notifTitle">{n.title}</div>
+                  <div className="notifSub">{n.body}{n.when ? ` · ${n.when}` : ''}</div>
+                </div>
+                <button className="notifX" title="Dismiss" onClick={() => dismiss(n.id)}><Icon name="close" size={12} /></button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+// Global search over cards + vehicles via /search.
+const GlobalSearch = ({ onPick }) => {
+  const [q, setQ] = React.useState('');
+  const [results, setResults] = React.useState([]);
+  const [open, setOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (q.trim().length < 2) { setResults([]); return; }
+    const tid = setTimeout(() => {
+      api.get('/search?q=' + encodeURIComponent(q.trim()))
+        .then(d => { setResults(d.results || []); setOpen(true); })
+        .catch(() => {});
+    }, 250);
+    return () => clearTimeout(tid);
+  }, [q]);
+  return (
+    <div className="searchWrap" style={{ position: 'relative' }}>
+      <Icon name="search" size={15} />
+      <input placeholder="Search vehicles, customers, invoices…" value={q}
+             onChange={e => setQ(e.target.value)} onFocus={() => results.length && setOpen(true)} />
+      <span className="searchKbd">⌘K</span>
+      {open && results.length > 0 && (
+        <>
+          <div className="notifBackdrop" onClick={() => setOpen(false)} />
+          <div className="searchResults">
+            {results.map(r => (
+              <button key={r.type + r.id} className="searchResult"
+                      onClick={() => { onPick(r); setOpen(false); setQ(''); }}>
+                <span className={`srType ${r.type}`}>{r.type}</span>
+                <span className="srMain">{r.label}</span>
+                <span className="srSub">{r.sub}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 const App = () => {
   const { t } = useT();
   const { me, logout } = useAuth();
+  // "Admin" = group-admin (single source of truth, mirrors the server's
+  // requireAdmin). Gates the admin/integrations/audit nav + views and the
+  // admin-only preview-as capability.
+  const isAdmin = me?.roleId === 'group-admin';
+  const ADMIN_ONLY_VIEWS = ['structure', 'users', 'roles', 'datamodel', 'integrations', 'audit'];
   const [active, setActive] = React.useState('overview');
   const [timeline, setTimeline] = React.useState(null);
+  const [vehTimeline, setVehTimeline] = React.useState(null);
+  // Load the real vehicle lifecycle timeline from the API (fallback to seed).
+  React.useEffect(() => {
+    api.get('/vehicles/timeline')
+      .then((t) => { if (t && Array.isArray(t.events)) setVehTimeline(t); })
+      .catch(() => { /* keep VEHICLE_TIMELINE fallback */ });
+  }, []);
+  const openTimeline = () => setTimeline(vehTimeline || VEHICLE_TIMELINE);
   const [previewUser, setPreviewUser] = React.useState(null);
+  // Which tracks the *acting* user may view (role → track access). Re-runs when
+  // preview changes so the menu/scorecards reflect the previewed user.
+  const [allowedTracks, setAllowedTracks] = React.useState(null);
+  React.useEffect(() => {
+    setPreviewAs(previewUser?.id || null);
+    api.get('/me/permissions')
+      .then((p) => { setAllowedTracks(Array.isArray(p?.allowedTracks) ? p.allowedTracks : null); })
+      .catch(() => { /* show all on failure */ });
+  }, [previewUser]);
   const [rbacRole, setRbacRole] = React.useState(null);
   const [toast, setToast] = React.useState(null);
   const [flashIds, setFlashIds] = React.useState([]);
@@ -141,9 +250,11 @@ const App = () => {
 
   const trackSetters = { sales: setSales, operations: setOps, workshop: setWorkshop, finance: setFinance };
 
-  // Load all four pipelines from the API on mount.
+  // Load all four pipelines from the API on mount, and whenever the previewed
+  // user changes (so the live data reflects exactly what that user would see).
   React.useEffect(() => {
     let alive = true;
+    setPreviewAs(previewUser?.id || null);
     Promise.all([
       api.get('/cards?track=sales'),
       api.get('/cards?track=operations'),
@@ -154,7 +265,7 @@ const App = () => {
       setSales(s); setOps(o); setWorkshop(w); setFinance(f);
     }).catch(() => {});
     return () => { alive = false; };
-  }, []);
+  }, [previewUser]);
 
   // Apply / insert a card returned by the server into the right track.
   const applyCard = (card) => {
@@ -219,16 +330,23 @@ const App = () => {
   const moveStage = (trackId, stages, setter) => (itemId, newStageId) => {
     const stage = stages.find(s => s.id === newStageId);
     if (!stage) return;
-    setter(prev => prev.map(it =>
-      it.id === itemId
-        ? { ...it, stageId: newStageId, stageName: stage.label, daysLabel: 'moved now', days: 0 }
-        : it
-    ));
+    let snapshot = null;
+    setter(prev => {
+      snapshot = prev; // capture for revert if the server rejects the move
+      return prev.map(it =>
+        it.id === itemId
+          ? { ...it, stageId: newStageId, stageName: stage.label, daysLabel: 'moved now', days: 0 }
+          : it);
+    });
     setFlashIds([itemId]);
     setTimeout(() => setFlashIds([]), 1500);
     api.put(`/cards/${itemId}/stage`, { stageId: newStageId })
       .then(card => setter(prev => prev.map(it => it.id === itemId ? { ...it, ...card } : it)))
-      .catch(() => {});
+      .catch(err => {
+        if (snapshot) setter(snapshot); // revert optimistic move
+        setToast({ title: 'Move blocked', lines: [err?.message || 'Could not move this card'] });
+        setTimeout(() => setToast(null), 4500);
+      });
   };
 
   // counts for side menu
@@ -265,13 +383,20 @@ const App = () => {
 
   // ---- Render ----
   const renderMain = () => {
+    // Defense-in-depth: even if a non-admin reaches an admin-only view (deep
+    // link, stale state), don't render it — the API would 403 anyway.
+    if (!isAdmin && ADMIN_ONLY_VIEWS.includes(active)) {
+      return <StubPanel icon="lock" title="Admin access required"
+        body="This area is restricted to group administrators. Switch to an account with admin access to manage structure, users, roles, integrations, or the audit log." />;
+    }
     if (active === 'portal') return <CustomerPortal />;
     if (active === 'timeline' || active === 'vehicles') {
-      return <VehiclesView onOpenTimeline={() => setTimeline(VEHICLE_TIMELINE)} />;
+      return <VehiclesView onOpenTimeline={openTimeline} />;
     }
     if (active === 'integrations') return <IntegrationsView />;
+    if (active === 'datamodel') return <DataModelView />;
     if (active === 'structure') return <GroupStructureView />;
-    if (active === 'users') return <UsersView onPreviewAs={(u) => setPreviewUser(u)} />;
+    if (active === 'users') return <UsersView onPreviewAs={isAdmin ? ((u) => setPreviewUser(u)) : null} />;
     if (active === 'roles') return rbacRole
       ? <RbacConfigurator initialRole={rbacRole} onBack={() => setRbacRole(null)}
                           onPreviewRole={(rid) => {
@@ -311,6 +436,7 @@ const App = () => {
 
         <ScorecardRow sales={sales} ops={ops} workshop={workshop} finance={finance}
                       openTracks={openTracks} focused={focusTrack}
+                      allowedTracks={allowedTracks}
                       only={isDept ? active : null}
                       onClearFilter={() => setActive('overview')}
                       onToggle={toggleTrack} onAct={openFlow} />
@@ -323,7 +449,7 @@ const App = () => {
           <Track trackId="sales" title={t('track.sales')} owner="Eva de Vries"
                  stages={SALES_STAGES} items={sales}
                  isOpen={true} onToggle={() => toggleTrack('sales')}
-                 onOpenTimeline={() => setTimeline(VEHICLE_TIMELINE)}
+                 onOpenTimeline={openTimeline}
                  onAct={openFlow} onMoveStage={moveStage('sales', SALES_STAGES, setSales)}
                  flashIds={flashIds} />
         )}
@@ -332,7 +458,7 @@ const App = () => {
           <Track trackId="operations" title={t('track.operations')} owner="Tom Janssens"
                  stages={OPS_STAGES} items={ops}
                  isOpen={true} onToggle={() => toggleTrack('operations')}
-                 onOpenTimeline={() => setTimeline(VEHICLE_TIMELINE)}
+                 onOpenTimeline={openTimeline}
                  onAct={openFlow} onMoveStage={moveStage('operations', OPS_STAGES, setOps)}
                  flashIds={flashIds} />
         )}
@@ -341,7 +467,7 @@ const App = () => {
           <Track trackId="workshop" title={t('track.workshop')} owner="Lars Pieters"
                  stages={WORKSHOP_STAGES} items={workshop}
                  isOpen={true} onToggle={() => toggleTrack('workshop')}
-                 onOpenTimeline={() => setTimeline(VEHICLE_TIMELINE)}
+                 onOpenTimeline={openTimeline}
                  onAct={openFlow} onMoveStage={moveStage('workshop', WORKSHOP_STAGES, setWorkshop)}
                  flashIds={flashIds} />
         )}
@@ -350,7 +476,7 @@ const App = () => {
           <Track trackId="finance" title={t('track.finance')} owner="Ines Vandeput"
                  stages={FINANCE_STAGES} items={finance}
                  isOpen={true} onToggle={() => toggleTrack('finance')}
-                 onOpenTimeline={() => setTimeline(VEHICLE_TIMELINE)}
+                 onOpenTimeline={openTimeline}
                  onAct={openFlow} onMoveStage={moveStage('finance', FINANCE_STAGES, setFinance)}
                  flashIds={flashIds} />
         )}
@@ -373,7 +499,7 @@ const App = () => {
 
   return (
     <div className="app v1Shell">
-      <SideMenu active={active} setActive={setActive} counts={counts}
+      <SideMenu active={active} setActive={setActive} counts={counts} allowedTracks={allowedTracks} isAdmin={isAdmin}
                 onTrackSelect={() => setOpenTracks({ sales: false, operations: false, workshop: false, finance: false })} />
 
       <div className="v1Main">
@@ -387,18 +513,15 @@ const App = () => {
           </div>
         )}
         <header className="appHeader">
-          <div className="searchWrap">
-            <Icon name="search" size={15} />
-            <input placeholder="Search vehicles, customers, invoices…" />
-            <span className="searchKbd">⌘K</span>
-          </div>
+          <GlobalSearch onPick={(r) => {
+            if (r.type === 'vehicle') { openTimeline(); return; }
+            setActive('overview');
+            if (r.track) setOpenTracks(prev => ({ ...prev, [r.track]: true }));
+          }} />
           <div className="headerRight">
             <ThemeSwitcher />
             <LanguageSwitcher />
-            <button className="iconBtn notifBtn" title="Notifications">
-              <Icon name="bell" size={17} />
-              <span className="notifDot"></span>
-            </button>
+            <NotificationsBell />
             <button className="iconBtn" title="Help"><Icon name="document" size={16} /></button>
             <button className="iconBtn" title="Sign out" onClick={logout}><Icon name="close" size={16} /></button>
             <Avatar name={me?.name || 'Markus Weber'} size="" />
@@ -406,7 +529,11 @@ const App = () => {
         </header>
 
         <main className="main">
-          {renderMain()}
+          {/* Remount on preview change so views that fetch on mount (dashboard
+              charts, reports, track aggregations) reload as the previewed user. */}
+          <React.Fragment key={previewUser?.id || 'self'}>
+            {renderMain()}
+          </React.Fragment>
         </main>
       </div>
 

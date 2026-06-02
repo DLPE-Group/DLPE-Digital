@@ -59,7 +59,38 @@ function maskValue(fieldId, val) {
 /* ---------------- Roles list ---------------- */
 export const RolesView = ({ onConfigure }) => {
   const [q, setQ] = React.useState('');
-  const list = ROLES.filter(r => !q || `${r.name} ${r.desc}`.toLowerCase().includes(q.toLowerCase()));
+  const [roles, setRoles] = React.useState(ROLES);
+  const [creating, setCreating] = React.useState(false);
+  const [newName, setNewName] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+
+  const refresh = React.useCallback(() => {
+    return api.get('/admin/roles')
+      .then((rows) => { if (Array.isArray(rows) && rows.length) setRoles(rows); })
+      .catch(() => { /* keep ROLES fallback */ });
+  }, []);
+  React.useEffect(() => { refresh(); }, [refresh]);
+
+  const createRole = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    setBusy(true);
+    try {
+      await api.post('/admin/roles', { name, desc: 'Custom role', tracks: [] });
+      await refresh();
+      setCreating(false); setNewName('');
+    } catch (e) { console.error('Failed to create role', e); }
+    setBusy(false);
+  };
+
+  const cloneRole = async (id) => {
+    setBusy(true);
+    try { await api.post(`/admin/roles/${id}/clone`, {}); await refresh(); }
+    catch (e) { console.error('Failed to clone role', e); }
+    setBusy(false);
+  };
+
+  const list = roles.filter(r => !q || `${r.name} ${r.desc}`.toLowerCase().includes(q.toLowerCase()));
   return (
     <div className="viewWrap" style={{ maxWidth: 1100 }}>
       <div className="viewHero">
@@ -67,8 +98,18 @@ export const RolesView = ({ onConfigure }) => {
           <h1>Roles &amp; permissions</h1>
           <div className="sub">Roles bundle functional access (which tracks) with field-level rules (which fields are visible, editable or masked). Start from a system template, clone it, then tune fields in the configurator.</div>
         </div>
-        <button className="cta"><Icon name="plus" size={12} strokeWidth={2} /> New role</button>
+        <button className="cta" onClick={() => setCreating(v => !v)}><Icon name="plus" size={12} strokeWidth={2} /> New role</button>
       </div>
+
+      {creating && (
+        <div className="addScopeRow" style={{ marginBottom: 12 }}>
+          <input className="textInput" autoFocus placeholder="New role name…" value={newName}
+                 onChange={e => setNewName(e.target.value)}
+                 onKeyDown={e => { if (e.key === 'Enter') createRole(); }} />
+          <button className="cta" disabled={busy || !newName.trim()} onClick={createRole}>Create</button>
+          <button className="cta ghost" onClick={() => { setCreating(false); setNewName(''); }}>Cancel</button>
+        </div>
+      )}
 
       <div className="filterBar">
         <div className="searchInline">
@@ -76,7 +117,7 @@ export const RolesView = ({ onConfigure }) => {
           <input placeholder="Search roles…" value={q} onChange={e => setQ(e.target.value)} />
         </div>
         <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 11.5, color: 'var(--text-tertiary)' }}>{ROLES.filter(r => r.system).length} system · {ROLES.filter(r => !r.system).length} custom</span>
+        <span style={{ fontSize: 11.5, color: 'var(--text-tertiary)' }}>{roles.filter(r => r.system).length} system · {roles.filter(r => !r.system).length} custom</span>
       </div>
 
       <div className="roleGrid">
@@ -94,7 +135,7 @@ export const RolesView = ({ onConfigure }) => {
             </div>
             <div className="roleEdit"><span className="k">Edit rights</span> {r.edit}</div>
             <div className="roleActions">
-              <button className="cta ghost sm"><Icon name="document" size={11} /> Clone</button>
+              <button className="cta ghost sm" disabled={busy} onClick={() => cloneRole(r.id)}><Icon name="document" size={11} /> Clone</button>
               <button className="cta sm" onClick={() => onConfigure(r.id)}>
                 <Icon name="settings" size={11} strokeWidth={2} /> Edit field permissions
               </button>
@@ -268,6 +309,26 @@ export const RbacConfigurator = ({ initialRole, onBack, onPreviewRole }) => {
     }
   };
 
+  // Transactionally revert the whole field-rule set to a stored version,
+  // then reload versions + this role's rules from the server.
+  const revertVersion = async (v) => {
+    setSaving(true);
+    try {
+      await api.post(`/admin/rbac/versions/${v}/revert`, { actor: 'Console admin' });
+      const vs = await api.get('/admin/rbac/versions');
+      if (Array.isArray(vs) && vs.length) setVersions(vs);
+      const rows = await api.get(`/admin/field-rules?role=${encodeURIComponent(roleId)}`);
+      const loaded = rowsToRuleMap(rows);
+      setRules(prev => { const next = JSON.parse(JSON.stringify(prev)); next[roleId] = loaded[roleId] || {}; return next; });
+      setDirty(false);
+      refreshPreview();
+    } catch (e) {
+      console.error('Failed to revert version', e);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const cats = FIELD_CATEGORIES.filter(c => dt.fields.some(f => f.cat === c));
   const sample = SAMPLE_RECORDS[dtId];
 
@@ -337,7 +398,7 @@ export const RbacConfigurator = ({ initialRole, onBack, onPreviewRole }) => {
                 <span className={`vbVer ${v.v === version ? 'cur' : ''}`}>v{v.v}</span>
                 <div>
                   <div className="vbNote">{v.note}</div>
-                  <div className="vbMeta">{v.when} · {v.actor}{v.v === version ? ' · current' : <button className="revertLink"> · revert</button>}</div>
+                  <div className="vbMeta">{v.when} · {v.actor}{v.v === version ? ' · current' : <button className="revertLink" disabled={saving} onClick={() => revertVersion(v.v)}> · revert</button>}</div>
                 </div>
               </div>
             ))}

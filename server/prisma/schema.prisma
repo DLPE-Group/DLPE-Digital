@@ -71,6 +71,7 @@ model OrgNode {
   vehicles      Vehicle[]
   fleetOps      FleetOperator[]
   invoices      Invoice[]
+  entities      Entity[]
   usersPrimary  User[]          @relation("UserPrimaryScope")
   userScopes    UserScope[]
 
@@ -194,10 +195,13 @@ model FieldRule {
 }
 
 model RbacVersion {
-  v     Int    @id
-  when  String
-  actor String
-  note  String
+  v        Int    @id
+  when     String
+  actor    String
+  note     String
+  // Full snapshot of the effective FieldRule set at save time — enables
+  // transactional "revert to version".
+  snapshot Json?
 }
 
 // ---------------- Stage config + cross-track triggers ----------------
@@ -357,4 +361,114 @@ model DataSharing {
   type String      @unique
   mode SharingMode
   note String
+}
+
+// Per-user settings (the Settings → Notifications & rules toggles).
+model UserPreference {
+  userId    String   @id
+  prefs     Json
+  updatedAt DateTime @updatedAt
+}
+
+// Customer-portal messages to the account team.
+model PortalMessage {
+  id        String   @id @default(cuid())
+  operator  String?
+  author    String?
+  when      String
+  body      String
+  createdAt DateTime @default(now())
+}
+
+// ---------------- Generic entity meta-model (Phase 1a, parallel to Card/Vehicle) ----------------
+model TrackDef {
+  id      String       @id @default(cuid())
+  key     String       @unique
+  label   String
+  color   String?
+  icon    String?
+  order   Int          @default(0)
+  builtin Boolean      @default(false)
+  stages  StageDef[]
+  types   EntityType[]
+}
+
+model StageDef {
+  id      String   @id @default(cuid())
+  trackId String
+  track   TrackDef @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  order   Int
+  stageId String
+  label   String
+  sla     Int      @default(0)
+  lock    String?
+  cta     String   @default("")
+
+  @@unique([trackId, stageId])
+  @@index([trackId, order])
+}
+
+model EntityType {
+  id        String     @id @default(cuid())
+  key       String     @unique
+  label     String
+  kind      String // 'pipeline' | 'reference'
+  trackId   String?
+  track     TrackDef?  @relation(fields: [trackId], references: [id])
+  icon      String?
+  color     String?
+  order     Int        @default(0)
+  builtin   Boolean    @default(false)
+  fieldDefs FieldDef[]
+  entities  Entity[]
+}
+
+model FieldDef {
+  id           String     @id @default(cuid())
+  entityTypeId String
+  entityType   EntityType @relation(fields: [entityTypeId], references: [id], onDelete: Cascade)
+  key          String
+  label        String
+  category     String?
+  dataKind     String     @default("text") // text|money|date|select|number|bool
+  order        Int        @default(0)
+  builtin      Boolean    @default(false)
+
+  @@unique([entityTypeId, key])
+  @@index([entityTypeId, order])
+}
+
+model Entity {
+  id           String     @id
+  tenantId     String?
+  entityTypeId String
+  entityType   EntityType @relation(fields: [entityTypeId], references: [id])
+  companyId    String?
+  company      OrgNode?   @relation(fields: [companyId], references: [id])
+
+  // shared display envelope (indexed scalar columns)
+  title    String
+  value    Int?
+  owner    String?
+  status   String?
+  sub      String?
+  sources  String[]
+  fields   Json?
+  archived Boolean  @default(false)
+
+  // pipeline-kind only (null for reference)
+  trackId      String?
+  stageId      String?
+  stageName    String?
+  days         Int      @default(0)
+  daysLabel    String?
+  cta          String?
+  awaitingSign Boolean  @default(false)
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, companyId, entityTypeId, trackId, stageId])
+  @@index([tenantId, trackId, stageId, status])
 }

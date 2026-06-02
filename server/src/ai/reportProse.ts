@@ -25,9 +25,9 @@ function parseProseJSON(text: string | null | undefined): Prose | null {
 }
 
 // Build the prompt from computed aggregates → call Anthropic → parse → fall back.
-export async function generateProse(spec: ReportSpec): Promise<Prose> {
+export async function generateProse(spec: ReportSpec, userId?: string): Promise<Prose> {
   const computed: Record<string, TrackAggregate> = {};
-  for (const t of spec.scope) computed[t] = await computeTrack(t);
+  for (const t of spec.scope) computed[t] = await computeTrack(t, userId);
 
   // No key configured → scripted fallback.
   if (!anthropic) return scriptedProse(spec.scope, computed);

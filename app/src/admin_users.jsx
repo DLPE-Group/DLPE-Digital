@@ -14,15 +14,42 @@ const statusLabel = { active: 'Active', invited: 'Invited', disabled: 'Disabled'
 export const UserDetail = ({ user, onBack, onPreviewAs }) => {
   const [secondary, setSecondary] = React.useState(user.secondary);
   const [adding, setAdding] = React.useState(false);
-  const [summary, setSummary] = React.useState(user.summary);
+  const [summary] = React.useState(user.summary);
 
-  const addScope = (scope, role) => {
-    setSecondary(s => [...s, { scope, role }]);
-    setSummary(sum => ({
-      ...sum,
-      can: [...sum.can, `Read all Sales records in ${scope}`],
-    }));
+  // Load the real user's persisted secondary scopes (with server ids) on open.
+  React.useEffect(() => {
+    let cancelled = false;
+    api.get(`/admin/users/${user.id}`).then((u) => {
+      if (cancelled || !u || !Array.isArray(u.secondary)) return;
+      setSecondary(u.secondary.map((s) => ({
+        id: s.id,
+        scope: s.scopeLabel || s.scopeNode?.name || 'Scope',
+        role: s.roleLabel || s.role?.name || '—',
+      })));
+    }).catch(() => { /* keep seed-provided secondary */ });
+    return () => { cancelled = true; };
+  }, [user.id]);
+
+  const addScope = async (scope, role) => {
+    const roleId = (ROLES.find((r) => r.name === role) || {}).id || null;
+    let created;
+    try {
+      created = await api.post(`/admin/users/${user.id}/scopes`,
+        { scopeType: 'company', scopeLabel: scope, roleLabel: role, roleId });
+    } catch (e) {
+      console.error('Failed to add scope', e);
+      created = { id: 'tmp-' + Date.now() };
+    }
+    setSecondary((s) => [...s, { id: created.id, scope, role }]);
     setAdding(false);
+  };
+
+  const removeScope = async (i) => {
+    const row = secondary[i];
+    setSecondary((arr) => arr.filter((_, j) => j !== i));
+    if (row?.id && !String(row.id).startsWith('tmp-')) {
+      api.del(`/admin/users/${user.id}/scopes/${row.id}`).catch((e) => console.error('Failed to remove scope', e));
+    }
   };
 
   return (
@@ -41,9 +68,11 @@ export const UserDetail = ({ user, onBack, onPreviewAs }) => {
             <div className="sub">{user.email} · <span className={`statusPill ${statusPillClass[user.status]}`}><span className="d" /> {statusLabel[user.status]}</span></div>
           </div>
         </div>
-        <button className="cta" onClick={() => onPreviewAs(user)}>
-          <Icon name="eye" size={13} strokeWidth={2} /> Preview as {user.name.split(' ')[0]}
-        </button>
+        {onPreviewAs && (
+          <button className="cta" onClick={() => onPreviewAs(user)}>
+            <Icon name="eye" size={13} strokeWidth={2} /> Preview as {user.name.split(' ')[0]}
+          </button>
+        )}
       </div>
 
       <div className="settingsSection">
@@ -80,7 +109,7 @@ export const UserDetail = ({ user, onBack, onPreviewAs }) => {
                   <div className="scopeRole">Role · <strong>{s.role}</strong></div>
                 </div>
               </div>
-              <button className="miniBtn" onClick={() => setSecondary(arr => arr.filter((_, j) => j !== i))}>Remove</button>
+              <button className="miniBtn" onClick={() => removeScope(i)}>Remove</button>
             </div>
           ))}
           {adding && (
@@ -394,6 +423,9 @@ export const UsersView = ({ onPreviewAs }) => {
   const [q, setQ] = React.useState('');
   const [scopeFilter, setScopeFilter] = React.useState('all');
   const [creating, setCreating] = React.useState(false);
+  const [importing, setImporting] = React.useState(false);
+  const [csvText, setCsvText] = React.useState('name,email,roleId\nJane Doe,j.doe@group.eu,sales-rep');
+  const [importMsg, setImportMsg] = React.useState(null);
   const [flashId, setFlashId] = React.useState(null);
 
   // Load users from the API (fallback to seed import on failure).
@@ -435,6 +467,18 @@ export const UsersView = ({ onPreviewAs }) => {
     setTimeout(() => setFlashId(null), 2600);
   };
 
+  const runImport = async () => {
+    setImportMsg(null);
+    try {
+      const res = await api.post('/admin/users/import', { csv: csvText });
+      const rows = await api.get('/admin/users');
+      if (Array.isArray(rows)) setUsers(rows.map(adaptUser));
+      setImportMsg(`Imported ${res.created} user(s)${res.errors?.length ? ` · ${res.errors.length} error(s)` : ''}.`);
+    } catch (e) {
+      setImportMsg(e?.message || 'Import failed');
+    }
+  };
+
   const filtered = users.filter(u => {
     if (scopeFilter !== 'all' && u.scopeType !== scopeFilter) return false;
     if (q && !`${u.name} ${u.email} ${u.role} ${u.scopeLabel}`.toLowerCase().includes(q.toLowerCase())) return false;
@@ -449,7 +493,7 @@ export const UsersView = ({ onPreviewAs }) => {
           <div className="sub">Everyone with a login. Each user belongs to the group and is granted one primary scope plus optional secondary scopes — inviting, scoping and role assignment all happen on one page.</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="cta ghost"><Icon name="download" size={12} strokeWidth={2} /> Bulk import (CSV)</button>
+          <button className="cta ghost" onClick={() => { setImporting(true); setImportMsg(null); }}><Icon name="download" size={12} strokeWidth={2} /> Bulk import (CSV)</button>
           <button className="cta" onClick={() => setCreating(true)}><Icon name="plus" size={12} strokeWidth={2} /> Create user</button>
         </div>
       </div>
@@ -501,6 +545,27 @@ export const UsersView = ({ onPreviewAs }) => {
       </div>
 
       {creating && <CreateUserPanel onClose={() => setCreating(false)} onCreate={handleCreate} />}
+
+      {importing && (
+        <div className="overlay" onClick={() => setImporting(false)}>
+          <div className="sidePanel" onClick={e => e.stopPropagation()}>
+            <div className="sidePanelHead">
+              <div><h2>Bulk import users</h2>
+                <div className="sub">Paste CSV. Header row required: <code>name,email,roleId</code> (optional: scopeType, scopeLabel, status). Default password is <code>demo1234</code>.</div></div>
+              <button className="iconBtn" onClick={() => setImporting(false)}><Icon name="close" size={16} /></button>
+            </div>
+            <div className="sidePanelBody">
+              <textarea className="textInput" rows={8} value={csvText} onChange={e => setCsvText(e.target.value)}
+                        style={{ width: '100%', fontFamily: 'monospace', resize: 'vertical' }} />
+              {importMsg && <div className="prefillNote" style={{ marginTop: 10 }}><Icon name="check" size={13} /> {importMsg}</div>}
+            </div>
+            <div className="sidePanelFoot">
+              <button className="cta ghost" onClick={() => setImporting(false)}>Close</button>
+              <button className="cta" onClick={runImport}><Icon name="download" size={12} strokeWidth={2} /> Import</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
