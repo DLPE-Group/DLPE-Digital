@@ -1,10 +1,12 @@
 import type { Card, Prisma } from '@prisma/client';
 import { trackKeyToEnum } from './cards.service.js';
+import { entityToCardDTO, type EntityRow } from './projection.js';
+import { loadTenantResolver } from './tenancy.js';
 
 export interface RunTriggersInput {
   whenTrack: string; // lowercase track key e.g. 'sales'
   whenStageName: string; // e.g. 'Contract signed'
-  sourceCard: Card;
+  sourceCard: Card; // projected Card DTO of the source entity
   actor: { name: string; roleId: string };
 }
 
@@ -17,13 +19,21 @@ export interface RunTriggersResult {
 const BRUSSELS_OPS_ID = 'o1';
 const BRUSSELS_FIN_ID = 'f1';
 
-// Derive the downstream card payload for a given trigger row + source card.
-function buildCardForTrigger(
-  tx: Prisma.TransactionClient,
+interface TriggerCtx {
+  // pipeline EntityType id by track key (operations → 'operation', finance → 'invoice')
+  typeIdByTrack: Record<string, string>;
+  tenantFor: (companyId: string | null) => string | null;
+}
+
+// Build the downstream Entity create payload for a trigger row + source card.
+function buildEntityForTrigger(
   trigger: { thenTrack: string; thenStage: string; note: string },
   source: Card,
-): { id?: string; data: Prisma.CardCreateInput } | null {
+  ctx: TriggerCtx,
+): { id: string; data: Prisma.EntityCreateInput } | null {
   const then = trigger.thenTrack;
+  const tenantId = ctx.tenantFor(source.companyId ?? null);
+  const companyConnect = source.companyId ? { connect: { id: source.companyId } } : undefined;
 
   // --- Brussels cascade (sales · Contract signed) ---
   if (then === 'operations' && trigger.thenStage === 'Vehicle ordered') {
@@ -31,22 +41,23 @@ function buildCardForTrigger(
       id: BRUSSELS_OPS_ID,
       data: {
         id: BRUSSELS_OPS_ID,
-        track: 'OPERATIONS',
-        type: 'DELIVERY',
-        customer: source.customer,
+        tenantId,
+        entityType: { connect: { id: ctx.typeIdByTrack.operations } },
+        company: companyConnect,
+        title: source.customer,
         value: null,
-        vehicle: 'Fleet · 78 vehicles',
+        owner: 'Tom Janssens',
+        status: 'green',
         sub: 'Master order · auto-created on signature',
+        sources: ['API', 'Talend'],
+        fields: { type: 'DELIVERY', vehicle: 'Fleet · 78 vehicles', meta: null },
+        trackId: 'operations',
         stageId: 'ordered',
         stageName: 'Vehicle ordered',
         days: 0,
         daysLabel: 'day 0 of 90',
-        owner: 'Tom Janssens',
-        status: 'green',
         cta: 'Confirm with supplier',
-        sources: ['API', 'Talend'],
         awaitingSign: false,
-        company: source.companyId ? { connect: { id: source.companyId } } : undefined,
       },
     };
   }
@@ -55,22 +66,23 @@ function buildCardForTrigger(
       id: BRUSSELS_FIN_ID,
       data: {
         id: BRUSSELS_FIN_ID,
-        track: 'FINANCE',
-        type: 'INVOICE',
-        customer: source.customer,
+        tenantId,
+        entityType: { connect: { id: ctx.typeIdByTrack.finance } },
+        company: companyConnect,
+        title: source.customer,
         value: source.value ?? 2460000,
-        vehicle: null,
+        owner: 'Ines Vandeput',
+        status: 'amber',
         sub: 'Master invoice · first delivery',
+        sources: ['API'],
+        fields: { type: 'INVOICE', vehicle: null, meta: null },
+        trackId: 'finance',
         stageId: 'to_make',
         stageName: 'Invoice to create',
         days: 0,
         daysLabel: 'day 0',
-        owner: 'Ines Vandeput',
-        status: 'amber',
         cta: 'Generate invoice',
-        sources: ['API'],
         awaitingSign: false,
-        company: source.companyId ? { connect: { id: source.companyId } } : undefined,
       },
     };
   }
@@ -78,25 +90,26 @@ function buildCardForTrigger(
   // --- Workshop → Finance (approve PEPPOL supplier invoice) ---
   if (then === 'finance' && trigger.thenStage === 'Supplier invoice received') {
     return {
-      id: undefined, // generated id; not a fixed seed card
+      id: `f-${source.id}-supplier`,
       data: {
         id: `f-${source.id}-supplier`,
-        track: 'FINANCE',
-        type: 'SUPPLIER',
-        customer: source.customer,
+        tenantId,
+        entityType: { connect: { id: ctx.typeIdByTrack.finance } },
+        company: companyConnect,
+        title: source.customer,
         value: source.value ?? null,
-        vehicle: source.vehicle,
+        owner: 'Ines Vandeput',
+        status: 'green',
         sub: 'Approved supplier invoice · routed from workshop',
+        sources: ['PEPPOL'],
+        fields: { type: 'SUPPLIER', vehicle: source.vehicle ?? null, meta: null },
+        trackId: 'finance',
         stageId: 'supplier',
         stageName: 'Supplier invoice received',
         days: 0,
         daysLabel: 'received now',
-        owner: 'Ines Vandeput',
-        status: 'green',
         cta: 'Approve for payment',
-        sources: ['PEPPOL'],
         awaitingSign: false,
-        company: source.companyId ? { connect: { id: source.companyId } } : undefined,
       },
     };
   }
@@ -104,7 +117,7 @@ function buildCardForTrigger(
   return null;
 }
 
-// Config-driven: reads CrossTrigger rows and creates downstream cards.
+// Config-driven: reads CrossTrigger rows and creates downstream entities.
 export async function runTriggers(
   tx: Prisma.TransactionClient,
   input: RunTriggersInput,
@@ -113,17 +126,27 @@ export async function runTriggers(
     where: { whenTrack: input.whenTrack, whenStage: input.whenStageName },
   });
 
+  // Resolve the pipeline EntityType ids the cascades create into.
+  const types = await tx.entityType.findMany({ where: { key: { in: ['operation', 'invoice'] } } });
+  const typeIdByTrack: Record<string, string> = {};
+  for (const t of types) {
+    if (t.key === 'operation') typeIdByTrack.operations = t.id;
+    if (t.key === 'invoice') typeIdByTrack.finance = t.id;
+  }
+  const tenantFor = await loadTenantResolver(tx as unknown as Parameters<typeof loadTenantResolver>[0]);
+  const ctx: TriggerCtx = { typeIdByTrack, tenantFor };
+
   const createdCards: Card[] = [];
   const cascadeLines: { track: string; text: string }[] = [];
 
   for (const trigger of triggers) {
-    const spec = buildCardForTrigger(tx, trigger, input.sourceCard);
+    const spec = buildEntityForTrigger(trigger, input.sourceCard, ctx);
     if (!spec) continue;
 
-    const fixedId = spec.data.id as string;
-    // Guard: do not duplicate a deterministic card if it already exists.
-    const existing = await tx.card.findUnique({ where: { id: fixedId } });
-    const card = existing ?? (await tx.card.create({ data: spec.data }));
+    // Guard: do not duplicate a deterministic entity if it already exists.
+    const existing = await tx.entity.findUnique({ where: { id: spec.id } });
+    const row = existing ?? (await tx.entity.create({ data: spec.data }));
+    const card = entityToCardDTO(row as unknown as EntityRow) as unknown as Card;
     createdCards.push(card);
 
     cascadeLines.push({

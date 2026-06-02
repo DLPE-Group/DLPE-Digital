@@ -400,6 +400,27 @@ registry.registerPath({
   request: { body: { content: jsonContent(integrationAddSchema) } },
   responses: responses(Json),
 });
+registry.registerPath({
+  method: 'patch',
+  path: '/integrations/{id}',
+  tags: ['Integrations'],
+  summary: 'Edit an integration’s config fields',
+  security: secured,
+  request: {
+    params: idParam,
+    body: { content: jsonContent(z.object({ name: z.string(), kind: z.string(), direction: z.string(), desc: z.string(), status: z.string() }).partial().openapi('IntegrationPatchBody')) },
+  },
+  responses: responses(Json),
+});
+registry.registerPath({
+  method: 'post',
+  path: '/integrations/{id}/test',
+  tags: ['Integrations'],
+  summary: 'Test connection (marks healthy + bumps lastSync)',
+  security: secured,
+  request: { params: idParam },
+  responses: responses(Json),
+});
 
 // ===========================================================================
 // RECORDS  (server-side field-level RBAC demo endpoint)
@@ -500,6 +521,40 @@ registry.registerPath({
   security: secured,
   responses: responses(JsonArray),
 });
+registry.registerPath({
+  method: 'post',
+  path: '/admin/roles',
+  tags: ['Admin · Roles'],
+  summary: 'Create a new (custom) role',
+  security: secured,
+  request: {
+    body: {
+      content: jsonContent(
+        z.object({
+          id: z.string().optional(),
+          name: z.string(),
+          desc: z.string().optional(),
+          tracks: z.array(z.string()).optional(),
+          edit: z.string().optional(),
+          system: z.boolean().optional(),
+        }).openapi('RoleCreateBody'),
+      ),
+    },
+  },
+  responses: responses(Json),
+});
+registry.registerPath({
+  method: 'post',
+  path: '/admin/roles/{id}/clone',
+  tags: ['Admin · Roles'],
+  summary: 'Clone a role and all its field rules',
+  security: secured,
+  request: {
+    params: idParam,
+    body: { content: jsonContent(z.object({ id: z.string().optional(), name: z.string().optional() }).openapi('RoleCloneBody')) },
+  },
+  responses: responses(Json),
+});
 
 // ===========================================================================
 // ADMIN · USERS
@@ -593,6 +648,18 @@ registry.registerPath({
   security: secured,
   responses: responses(JsonArray),
 });
+registry.registerPath({
+  method: 'post',
+  path: '/admin/rbac/versions/{v}/revert',
+  tags: ['Admin · Field Rules'],
+  summary: 'Transactionally revert the field-rule set to a stored version',
+  security: secured,
+  request: {
+    params: z.object({ v: z.string() }),
+    body: { content: jsonContent(z.object({ actor: z.string().optional() }).openapi('RevertBody')) },
+  },
+  responses: responses(Json),
+});
 
 // ===========================================================================
 // ADMIN · STAGE CONFIG
@@ -675,6 +742,77 @@ registry.registerPath({
   tags: ['Me'],
   summary: 'Effective permissions for the current user',
   security: secured,
+  responses: responses(Json),
+});
+const PrefsBody = z.object({
+  enforceLocks: z.boolean(),
+  peppol: z.boolean(),
+  emailNotif: z.boolean(),
+  slackNotif: z.boolean(),
+  dailyDigest: z.boolean(),
+  autoEscalate: z.boolean(),
+}).partial().openapi('PrefsBody');
+registry.registerPath({
+  method: 'get',
+  path: '/me/preferences',
+  tags: ['Me'],
+  summary: 'Current user’s settings toggles (defaults if never saved)',
+  security: secured,
+  responses: responses(PrefsBody),
+});
+registry.registerPath({
+  method: 'put',
+  path: '/me/preferences',
+  tags: ['Me'],
+  summary: 'Update the current user’s settings toggles',
+  security: secured,
+  request: { body: { content: jsonContent(PrefsBody) } },
+  responses: responses(PrefsBody),
+});
+
+// ===========================================================================
+// FLEET / PORTAL
+// ===========================================================================
+registry.registerPath({
+  method: 'get',
+  path: '/vehicles',
+  tags: ['Fleet'],
+  summary: 'List fleet vehicles (filter by status / q)',
+  security: secured,
+  request: { query: z.object({ status: z.string().optional(), q: z.string().optional() }) },
+  responses: responses(JsonArray),
+});
+registry.registerPath({
+  method: 'get',
+  path: '/vehicles/timeline',
+  tags: ['Fleet'],
+  summary: 'The vehicle lifecycle drill-down (with ordered events)',
+  security: secured,
+  responses: responses(Json),
+});
+registry.registerPath({
+  method: 'get',
+  path: '/portal',
+  tags: ['Fleet'],
+  summary: 'Customer portal payload (operator + vehicles + invoices + messages)',
+  security: secured,
+  responses: responses(Json),
+});
+registry.registerPath({
+  method: 'get',
+  path: '/portal/messages',
+  tags: ['Fleet'],
+  summary: 'Recent messages to the account team',
+  security: secured,
+  responses: responses(JsonArray),
+});
+registry.registerPath({
+  method: 'post',
+  path: '/portal/messages',
+  tags: ['Fleet'],
+  summary: 'Send a message to the account team (persisted)',
+  security: secured,
+  request: { body: { content: jsonContent(z.object({ body: z.string(), operator: z.string().optional() }).openapi('PortalMessageBody')) } },
   responses: responses(Json),
 });
 

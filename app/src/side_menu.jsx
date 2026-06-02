@@ -4,14 +4,14 @@ import { useT } from './i18n.jsx';
 
 /* Side menu — primary navigation for the dashboard */
 
-export const SideMenu = ({ active, setActive, counts, onTrackSelect }) => {
+export const SideMenu = ({ active, setActive, counts, onTrackSelect, allowedTracks, isAdmin }) => {
   const { t } = useT();
   const tracks = [
     { id: 'sales',      label: t('track.sales'),      color: 'var(--track-sales)',    count: counts.sales },
     { id: 'operations', label: t('track.operations'), color: 'var(--track-ops)',      count: counts.operations },
     { id: 'workshop',   label: t('track.workshop'),   color: 'var(--track-workshop)', count: counts.workshop },
     { id: 'finance',    label: t('track.finance'),    color: 'var(--track-finance)',  count: counts.finance },
-  ];
+  ].filter((tr) => !allowedTracks || allowedTracks.includes(tr.id));
 
   const item = (id, icon, label, badge, badgeKind) => (
     <button key={id}
@@ -44,9 +44,6 @@ export const SideMenu = ({ active, setActive, counts, onTrackSelect }) => {
         <div className="navSection">
           <div className="navHead">
             <span>{t('nav.tracks')}</span>
-            <button className="iconBtn" style={{ width: 22, height: 22 }} title="Add track">
-              <Icon name="plus" size={11} />
-            </button>
           </div>
           {tracks.map(tr => (
             <button key={tr.id}
@@ -67,17 +64,22 @@ export const SideMenu = ({ active, setActive, counts, onTrackSelect }) => {
           {item('messages', 'mail', t('nav.messages'), null)}
         </div>
 
-        <div className="navSection">
-          <div className="navHead">Administration</div>
-          {item('structure', 'settings', 'Group structure')}
-          {item('users', 'user', 'Users')}
-          {item('roles', 'lock', 'Roles & permissions')}
-        </div>
+        {/* Administration + Integrations + Audit are group-admin only
+            (mirrors the server's requireAdmin guard). */}
+        {isAdmin && (
+          <div className="navSection">
+            <div className="navHead">Administration</div>
+            {item('structure', 'settings', 'Group structure')}
+            {item('users', 'user', 'Users')}
+            {item('roles', 'lock', 'Roles & permissions')}
+            {item('datamodel', 'document', 'Data model')}
+          </div>
+        )}
 
         <div className="navSection">
           <div className="navHead">{t('nav.system')}</div>
-          {item('integrations', 'bolt', t('nav.integrations'))}
-          {item('audit', 'document', t('nav.audit'))}
+          {isAdmin && item('integrations', 'bolt', t('nav.integrations'))}
+          {isAdmin && item('audit', 'document', t('nav.audit'))}
           {item('settings', 'settings', t('nav.settings'))}
         </div>
       </div>

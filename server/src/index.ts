@@ -8,6 +8,8 @@ import { dirname, resolve, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { env, isProd, serveStatic, corsOrigins } from './env.js';
 import { requireAuth } from './auth/middleware.js';
+import { requireAdmin } from './auth/preview.js';
+import { dataModelRouter } from './routes/dataModel.js';
 
 import { authRouter } from './routes/auth.js';
 import { cardsRouter } from './routes/cards.js';
@@ -23,6 +25,10 @@ import { stageConfigRouter } from './routes/stageConfig.js';
 import { triggersRouter } from './routes/triggers.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { permissionsRouter } from './routes/permissions.js';
+import { preferencesRouter } from './routes/preferences.js';
+import { fleetRouter } from './routes/fleet.js';
+import { notificationsRouter } from './routes/notifications.js';
+import { searchRouter } from './routes/search.js';
 import { recordsRouter } from './routes/records.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -63,7 +69,8 @@ const apiLimiter = rateLimit({
 });
 const loginLimiter = rateLimit({
   windowMs: 15 * 60_000,
-  limit: 10,
+  // Relaxed under test so the suite can log in repeatedly without tripping it.
+  limit: env.NODE_ENV === 'test' ? 100000 : 10,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Too many login attempts, please try again later.' },
@@ -90,17 +97,27 @@ app.use('/api', requireAuth);
 app.use('/api/cards', cardsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/aggregations', aggregationsRouter);
-app.use('/api/audit', auditRouter);
-app.use('/api/integrations', integrationsRouter);
+
+// Admin-only areas (group-admin): the full audit trail, integration config,
+// and every /api/admin/* surface. Enforced server-side in addition to the
+// hidden frontend nav.
+app.use('/api/audit', requireAdmin, auditRouter);
+app.use('/api/integrations', requireAdmin, integrationsRouter);
+app.use('/api/admin', requireAdmin);
+app.use('/api/admin', dataModelRouter);
 app.use('/api/admin', structureRouter);
 app.use('/api/admin', rolesRouter);
 app.use('/api/admin', usersRouter);
 app.use('/api/admin', fieldRulesRouter);
 app.use('/api/admin', stageConfigRouter);
 app.use('/api/admin', triggersRouter);
+app.use('/api', fleetRouter);
+app.use('/api', notificationsRouter);
+app.use('/api', searchRouter);
 app.use('/api/records', recordsRouter);
 app.use('/api/me', dashboardRouter);
 app.use('/api/me', permissionsRouter);
+app.use('/api/me', preferencesRouter);
 
 // --- Serve the built frontend (production / SERVE_STATIC) ---
 // Default to the app's built dist resolved relative to this file

@@ -7,80 +7,23 @@ import { api } from './api/client.js';
    ============================================================ */
 
 const dbMoney = (n) =>
-  n >= 1e6 ? '€' + (n / 1e6).toFixed(2).replace(/\.?0+$/, '') + 'M'
+  n == null ? '—'
+  : n >= 1e6 ? '€' + (n / 1e6).toFixed(2).replace(/\.?0+$/, '') + 'M'
   : n >= 1e3 ? '€' + Math.round(n / 1e3) + 'k'
   : '€' + Math.round(n);
 
-const rnd = (a, b) => a + Math.random() * (b - a);
-const push = (arr, v, cap = 26) => { const n = [...arr, v]; return n.length > cap ? n.slice(n.length - cap) : n; };
-const series = (n, lo, hi) => Array.from({ length: n }, () => Math.round(rnd(lo, hi)));
-
-/* ---- Metric catalogue — business follow-up KPIs (no infra). ---- */
+/* ---- Metric catalogue — metadata only; VALUES come from the server. ---- */
 export const METRICS = {
-  wonThisWeek: {
-    id: 'wonThisWeek', label: 'Closed-won this week', unit: '€', shape: 'money', color: 'var(--status-green)',
-    change: { dir: 'up', text: '+18% vs last week' },
-    init: () => ({ value: 1240000, delta: 0, series: series(22, 980, 1240).map(x => x / 1000) }),
-    tick: (p) => { const inc = Math.random() < 0.4 ? Math.round(rnd(20000, 90000)) : 0; const v = p.value + inc; return { value: v, delta: inc, series: push(p.series, v / 1e6) }; },
-  },
-  followupsDue: {
-    id: 'followupsDue', label: 'Follow-ups due today', unit: '', shape: 'counter', color: 'var(--track-ops)',
-    change: { dir: 'flat', text: 'incl. 6 overdue' },
-    init: () => ({ value: 18, delta: 0, series: series(20, 1, 4) }),
-    tick: (p) => { const done = Math.random() < 0.5 ? 1 : 0; const v = Math.max(0, p.value - done); return { value: v, delta: v - p.value, series: push(p.series, done) }; },
-  },
-  newLeads: {
-    id: 'newLeads', label: 'New leads today', unit: '', shape: 'counter', color: 'var(--track-sales)',
-    change: { dir: 'up', text: '+3 vs yesterday' },
-    init: () => ({ value: 12, delta: 0, series: series(20, 0, 3) }),
-    tick: (p) => { const inc = Math.random() < 0.45 ? Math.round(rnd(1, 3)) : 0; return { value: p.value + inc, delta: inc, series: push(p.series, inc) }; },
-  },
-  pipeline: {
-    id: 'pipeline', label: 'Open pipeline', unit: '€', shape: 'money', color: 'var(--track-sales)',
-    change: { dir: 'up', text: '+1.4% vs last month' },
-    init: () => ({ value: 8620000, delta: 0, series: series(22, 8500, 8720).map(x => x / 1000) }),
-    tick: (p) => { const v = 8620000 + Math.round(rnd(-40000, 60000)); return { value: v, delta: v - p.value, series: push(p.series, v / 1e6) }; },
-  },
-  atRisk: {
-    id: 'atRisk', label: 'At-risk pipeline', unit: '€', shape: 'money', color: 'var(--status-red)',
-    change: { dir: 'down', text: '3 deals at risk' },
-    init: () => ({ value: 2390000, delta: 0, series: series(20, 2.3, 2.45) }),
-    tick: (p) => { const v = 2390000 + Math.round(rnd(-30000, 30000)); return { value: v, delta: v - p.value, series: push(p.series, v / 1e6) }; },
-  },
-  ontime: {
-    id: 'ontime', label: 'On-time delivery', unit: '%', shape: 'segments', color: 'var(--status-green)',
-    init: () => ({ pct: 87, segments: [{ label: 'On-time', value: 87, color: 'var(--status-green)' }, { label: 'Late', value: 13, color: 'var(--status-amber)' }] }),
-    tick: (p) => { let v = Math.round(p.pct + rnd(-2, 2)); v = Math.max(80, Math.min(94, v)); return { pct: v, segments: [{ label: 'On-time', value: v, color: 'var(--status-green)' }, { label: 'Late', value: 100 - v, color: 'var(--status-amber)' }] }; },
-  },
-  receivables: {
-    id: 'receivables', label: 'Receivables split', unit: '€', shape: 'segments', color: 'var(--track-finance)',
-    init: () => ({ segments: [{ label: 'Current', value: 185, color: 'var(--track-finance)' }, { label: '31d+ overdue', value: 94, color: 'var(--status-red)' }] }),
-    tick: (p) => p, // stable
-  },
-  pipelineStage: {
-    id: 'pipelineStage', label: 'Pipeline by stage', unit: '€', shape: 'cats', color: 'var(--track-sales)',
-    init: () => ({ cats: [
-      { label: 'Meeting', value: 620000 }, { label: 'Offer', value: 1240000 }, { label: 'Contract', value: 6760000 },
-    ] }),
-    tick: (p) => ({ cats: p.cats.map(c => ({ ...c, value: Math.max(0, Math.round(c.value + rnd(-c.value * 0.01, c.value * 0.01))) })) }),
-  },
-  openByTrack: {
-    id: 'openByTrack', label: 'Open items by track', unit: '', shape: 'cats', color: 'var(--brand)',
-    init: () => ({ cats: [
-      { label: 'Sales', value: 5, color: 'var(--track-sales)' },
-      { label: 'Operations', value: 6, color: 'var(--track-ops)' },
-      { label: 'Workshop', value: 4, color: 'var(--track-workshop)' },
-      { label: 'Finance', value: 3, color: 'var(--track-finance)' },
-    ] }),
-    tick: (p) => p, // stable counts
-  },
-  workorders: {
-    id: 'workorders', label: 'Work orders by stage', unit: '', shape: 'cats', color: 'var(--track-workshop)',
-    init: () => ({ cats: [
-      { label: 'Parts', value: 1 }, { label: 'In repair', value: 1 }, { label: 'Released', value: 1 }, { label: 'Invoice in', value: 1 },
-    ] }),
-    tick: (p) => p,
-  },
+  wonThisWeek:  { id: 'wonThisWeek',  label: 'Closed-won this week',  unit: '€', shape: 'money',   color: 'var(--status-green)' },
+  followupsDue: { id: 'followupsDue', label: 'Follow-ups due today',  unit: '',  shape: 'counter', color: 'var(--track-ops)' },
+  newLeads:     { id: 'newLeads',     label: 'New leads today',       unit: '',  shape: 'counter', color: 'var(--track-sales)' },
+  pipeline:     { id: 'pipeline',     label: 'Open pipeline',         unit: '€', shape: 'money',   color: 'var(--track-sales)' },
+  atRisk:       { id: 'atRisk',       label: 'At-risk pipeline',      unit: '€', shape: 'money',   color: 'var(--status-red)' },
+  ontime:       { id: 'ontime',       label: 'On-time delivery',      unit: '%', shape: 'segments',color: 'var(--status-green)' },
+  receivables:  { id: 'receivables',  label: 'Receivables split',     unit: '€', shape: 'segments',color: 'var(--track-finance)' },
+  pipelineStage:{ id: 'pipelineStage',label: 'Pipeline by stage',     unit: '€', shape: 'cats',    color: 'var(--track-sales)' },
+  openByTrack:  { id: 'openByTrack',  label: 'Open items by track',   unit: '',  shape: 'cats',    color: 'var(--brand)' },
+  workorders:   { id: 'workorders',   label: 'Work orders by stage',  unit: '',  shape: 'cats',    color: 'var(--track-workshop)' },
 };
 
 const TYPES_FOR_SHAPE = {
@@ -90,14 +33,19 @@ const TYPES_FOR_SHAPE = {
   cats: ['bar'],
   segments: ['donut', 'bar'],
 };
-const fmtValue = (m, v) => m.shape === 'money' ? dbMoney(v) : (m.unit && m.unit !== '€' ? `${v}${m.unit === '%' ? '%' : ' ' + m.unit}` : v.toLocaleString());
+const fmtValue = (m, v) => v == null ? '—' : m.shape === 'money' ? dbMoney(v) : (m.unit && m.unit !== '€' ? `${v}${m.unit === '%' ? '%' : ' ' + m.unit}` : v.toLocaleString());
 
-/* ---- Snapshot data hook (static — computed once, no streaming) ---- */
+/* ---- Snapshot data hook — fetched once from the server, with manual refresh. ---- */
 const useLiveData = () => {
-  const [data] = React.useState(() => {
-    const o = {}; Object.values(METRICS).forEach(m => o[m.id] = m.init()); return o;
-  });
-  return { data };
+  const [data, setData] = React.useState(null);
+  const [asOf, setAsOf] = React.useState(null);
+  const load = React.useCallback(() => {
+    api.get('/aggregations/dashboard')
+      .then((res) => { setData(res.metrics); setAsOf(res.asOf); })
+      .catch((e) => console.error('Failed to load dashboard metrics', e));
+  }, []);
+  React.useEffect(() => { load(); }, [load]);
+  return { data, asOf, refresh: load };
 };
 
 /* ---- Chart primitives ---- */
@@ -124,8 +72,8 @@ const LiveBars = ({ cats, color }) => {
       {cats.map((c, i) => (
         <div className="dbBarRow" key={i}>
           <span className="lbl">{c.label}</span>
-          <div className="track"><i style={{ width: `${(c.value / max) * 100}%`, background: c.color || color }} /></div>
-          <span className="val">{c.value >= 1000 ? dbMoney(c.value) : c.value}</span>
+          <div className="track"><i style={{ width: `${((c.value || 0) / max) * 100}%`, background: c.color || color }} /></div>
+          <span className="val">{c.value == null ? '—' : c.value >= 1000 ? dbMoney(c.value) : c.value}</span>
         </div>
       ))}
     </div>
@@ -166,20 +114,12 @@ const LiveDonut = ({ segments }) => {
   );
 };
 
-const LiveStat = ({ m, d }) => {
-  const c = m.change;
-  return (
-    <div className="dbStat">
-      <div className="dbStatVal">{fmtValue(m, d.value)}</div>
-      {c && (
-        <div className={`dbStatDelta ${c.dir}`}>
-          {c.dir === 'up' ? '▲ ' : c.dir === 'down' ? '▼ ' : ''}{c.text}
-        </div>
-      )}
-      {d.series && <div className="dbStatSpark"><LiveLine pts={d.series} color={m.color} height={34} /></div>}
-    </div>
-  );
-};
+const LiveStat = ({ m, d }) => (
+  <div className="dbStat">
+    <div className="dbStatVal">{fmtValue(m, d.value)}</div>
+    {d.series && <div className="dbStatSpark"><LiveLine pts={d.series} color={m.color} height={34} /></div>}
+  </div>
+);
 
 const LiveChart = ({ type, metric, d }) => {
   if (!d) return null;
@@ -279,8 +219,11 @@ export const DEFAULT_CHARTS = [
 ];
 
 export const DashboardTab = () => {
-  const { data } = useLiveData();
-  const asOf = React.useMemo(() => new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }), []);
+  const { data, asOf: asOfIso, refresh } = useLiveData();
+  const asOf = React.useMemo(
+    () => asOfIso ? new Date(asOfIso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '…',
+    [asOfIso],
+  );
   const [charts, setCharts] = React.useState(DEFAULT_CHARTS);
   const [building, setBuilding] = React.useState(false);
 
@@ -304,9 +247,12 @@ export const DashboardTab = () => {
       <div className="dbBar">
         <div className="dbAsOf">Pipeline snapshot · as of {asOf}</div>
         <div style={{ flex: 1 }} />
+        <button className="cta ghost" onClick={refresh}><Icon name="arrow" size={12} strokeWidth={2} /> Refresh</button>
         <button className="cta" onClick={() => setBuilding(true)}><Icon name="plus" size={12} strokeWidth={2} /> Add chart</button>
       </div>
 
+      {!data && <div className="dbAsOf" style={{ padding: '24px 0' }}>Loading live metrics…</div>}
+      {data && (
       <div className="dbGrid">
         {charts.map(c => {
           const m = METRICS[c.metricId];
@@ -339,8 +285,9 @@ export const DashboardTab = () => {
           <span className="sub">Pick a metric & visual</span>
         </button>
       </div>
+      )}
 
-      {building && <ChartBuilder live={data} onClose={() => setBuilding(false)}
+      {data && building && <ChartBuilder live={data} onClose={() => setBuilding(false)}
         onAdd={(c) => { persist([...charts, c]); setBuilding(false); }} />}
     </div>
   );

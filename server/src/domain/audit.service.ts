@@ -101,18 +101,18 @@ export async function revertAudit(
     return prisma.$transaction(async (tx) => {
       const removedCardIds: string[] = [];
       for (const id of SIGN_CASCADE_CARD_IDS) {
-        const existing = await tx.card.findUnique({ where: { id } });
+        const existing = await tx.entity.findUnique({ where: { id } });
         if (existing) {
-          await tx.card.delete({ where: { id } });
+          await tx.entity.delete({ where: { id } });
           removedCardIds.push(id);
         }
       }
 
       // Reset the source deal (Brussels s5) back to the awaiting-signature state.
       let restoredCardId: string | null = null;
-      const source = await tx.card.findUnique({ where: { id: 's5' } });
+      const source = await tx.entity.findUnique({ where: { id: 's5' } });
       if (source) {
-        await tx.card.update({
+        await tx.entity.update({
           where: { id: 's5' },
           data: {
             stageId: 'contract',
@@ -154,9 +154,9 @@ export async function revertAudit(
       throw new RevertError('This stage move cannot be reverted (no prior stage recorded).');
     }
     return prisma.$transaction(async (tx) => {
-      const card = await tx.card.findUnique({ where: { id: meta.cardId } });
+      const card = await tx.entity.findUnique({ where: { id: meta.cardId } });
       if (!card) throw new RevertError('Card to revert no longer exists.');
-      await tx.card.update({
+      await tx.entity.update({
         where: { id: meta.cardId },
         data: {
           stageId: meta.prevStageId!,
@@ -170,7 +170,7 @@ export async function revertAudit(
           actor: actor.name,
           actorRole: actor.roleId,
           verb: 'reverted stage move',
-          target: `${card.customer} · → ${meta.prevStageName ?? meta.prevStageId}`,
+          target: `${card.title} · → ${meta.prevStageName ?? meta.prevStageId}`,
           track: full.track,
           kind: 'normal',
           icon: 'undo',

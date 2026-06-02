@@ -1,5 +1,6 @@
 import React from 'react';
 import { Icon } from './icons.jsx';
+import { SimBadge } from './primitives.jsx';
 
 /* ============================================================
    Intelligence Layer — AI field-mapping + prompt-defined logic.
@@ -228,7 +229,10 @@ export const AiMappingFlow = ({ provider, onClose, onComplete }) => {
         <div className="aimHead">
           <div className="aimSpark"><Icon name="flash" size={13} strokeWidth={2} /></div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="aimKind">Intelligence Layer · AI field mapping</div>
+            <div className="aimKind" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              Intelligence Layer · AI field mapping
+              <SimBadge title="Demo only — schema discovery & mapping are simulated, not read from a live source system" />
+            </div>
             <h2>Mapping {provider.name} → unified DataSource</h2>
           </div>
           <button className="iconBtn" onClick={onClose} title="Cancel"><Icon name="close" size={16} /></button>

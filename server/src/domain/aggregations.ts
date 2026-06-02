@@ -1,6 +1,43 @@
 import { prisma } from '../prisma.js';
-import { trackKeyToEnum } from './cards.service.js';
+import { userAllowedTracks, loadPipelineCards } from './cards.service.js';
+import { visibleCompanyIds } from '../rbac/scope.js';
+import { buildEffectiveForUser } from '../rbac/context.js';
+import { valueRestricted } from '../rbac/applyCardRules.js';
+import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
 import type { Card } from '@prisma/client';
+
+// Apply track-access (H3) + row-level scope (H4) to a card set for the caller.
+// Returns the scoped cards plus the caller's allowed track keys (null = all,
+// e.g. unauthenticated callers — no filtering).
+async function scopeCardsFor(
+  cards: Card[],
+  userId?: string,
+): Promise<{ cards: Card[]; allowed: string[] | null }> {
+  if (!userId) return { cards, allowed: null };
+  const allowed = await userAllowedTracks(userId);
+  let out = cards.filter((c) => allowed.includes(TRACK_KEY_FROM_ENUM[c.track]));
+  const visible = await visibleCompanyIds(userId);
+  if (visible) out = out.filter((c) => c.companyId != null && visible.has(c.companyId));
+  return { cards: out, allowed };
+}
+
+const MASK = '€XXX,XXX';
+// Per-type money restriction for the caller (e.g. 'contract', 'invoice',
+// 'workshop_order') — so aggregates follow per-EntityType field rules.
+async function callerValueRestricted(userId?: string, typeKey = 'contract'): Promise<boolean> {
+  if (!userId) return false;
+  try {
+    const { effective } = await buildEffectiveForUser(userId);
+    return valueRestricted(effective, typeKey);
+  } catch {
+    return false;
+  }
+}
+
+// The pipeline EntityType key whose money governs a given track's aggregates.
+const TYPE_KEY_BY_TRACK_KEY: Record<string, string> = {
+  sales: 'contract', operations: 'operation', workshop: 'workshop_order', finance: 'invoice',
+};
 
 // repMoney — ported verbatim from app/src/reports.jsx.
 export function repMoney(n: number): string {
@@ -33,10 +70,26 @@ export interface TrackAggregate {
 }
 
 // computeTrack — server twin of the frontend, reading live DB cards.
-export async function computeTrack(track: string): Promise<TrackAggregate> {
-  const trackEnum = trackKeyToEnum(track);
-  const items = await prisma.card.findMany({ where: { track: trackEnum } });
+// When the caller may not see contract values, money figures are masked.
+export async function computeTrack(track: string, userId?: string): Promise<TrackAggregate> {
+  const raw = await loadPipelineCards(track.toLowerCase());
   const key = track.toLowerCase();
+  // Track-access (H3) + scope (H4): if the caller can't view this track, the
+  // scoped set is empty and every metric computes to zero.
+  const { cards: items } = await scopeCardsFor(raw, userId);
+  const restricted = await callerValueRestricted(userId, TYPE_KEY_BY_TRACK_KEY[key] ?? 'contract');
+  const agg = await computeTrackInner(items, key);
+  if (!restricted) return agg;
+  // Mask any money-shaped string (starts with €) in metrics + chart displays.
+  const maskMoney = (s: string | number) => (typeof s === 'string' && s.startsWith('€') ? MASK : s);
+  return {
+    ...agg,
+    metrics: agg.metrics.map((m) => ({ ...m, value: maskMoney(m.value) })),
+    chart: { ...agg.chart, bars: agg.chart.bars.map((b) => ({ ...b, display: typeof b.display === 'string' && b.display.startsWith('€') ? MASK : b.display })) },
+  };
+}
+
+async function computeTrackInner(items: Card[], key: string): Promise<TrackAggregate> {
 
   if (key === 'sales') {
     const s = items;
@@ -156,49 +209,95 @@ export const DEFAULT_CHARTS = [
   { id: 'd6', metricId: 'openByTrack', type: 'bar', title: 'Open items by track' },
 ];
 
-export function dashboardSnapshot() {
+// Dashboard snapshot — computed from live DB cards. Returns render-ready shapes
+// matching what app/src/dashboard.jsx chart components consume.
+// NOTE: wonThisWeek / ontime / followupsDue / newLeads are documented approximations
+// (no first-class source columns exist for them).
+export async function dashboardSnapshot(userId?: string) {
+  // Track-access (H3) + scope (H4): the snapshot reflects only what the caller
+  // may see, so the overview matches the side menu and the per-track lists.
+  const { cards, allowed } = await scopeCardsFor(await loadPipelineCards(), userId);
+  // Per-type money gates: Sales money follows the contract rules, Finance money
+  // follows the invoice rules — so the dashboard reflects per-EntityType field
+  // governance ("aggregates follow").
+  const restricted = await callerValueRestricted(userId, 'contract');
+  const restrictedInvoice = await callerValueRestricted(userId, 'invoice');
+  const money = (v: number) => (restricted ? null : v); // Sales/contract money
+  const moneyInv = (v: number) => (restrictedInvoice ? null : v); // Finance/invoice money
+  const byTrack = (t: string) => cards.filter((c) => c.track === t);
+  const sumValue = (arr: Card[]) => arr.reduce((a, x) => a + (x.value ?? 0), 0);
+
+  const sales = byTrack('SALES');
+  const ops = byTrack('OPERATIONS');
+  const workshop = byTrack('WORKSHOP');
+  const finance = byTrack('FINANCE');
+
+  const stageVal = (arr: Card[], id: string) =>
+    sumValue(arr.filter((x) => x.stageId === id));
+  const stageCount = (arr: Card[], id: string) =>
+    arr.filter((x) => x.stageId === id).length;
+
+  // Approximations
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const wonThisWeek = sumValue(
+    sales.filter((x) => x.stageId === 'won' && x.updatedAt >= weekAgo),
+  );
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const newLeads = cards.filter((x) => x.createdAt >= startOfToday).length;
+  const followupsDue = sales.filter((x) => x.status === 'amber' || x.status === 'red').length;
+  const onGreen = ops.filter((x) => x.status === 'green').length;
+  const ontimePct = ops.length ? Math.round((onGreen / ops.length) * 100) : 0;
+
+  // Finance receivables
+  const receivable = finance.filter((x) => x.type === 'INVOICE');
+  const current = sumValue(receivable.filter((x) => x.stageId === 'awaiting'));
+  const overdue = sumValue(receivable.filter((x) => x.stageId === 'overdue'));
+
   return {
     asOf: new Date().toISOString(),
+    restricted,
     metrics: {
-      wonThisWeek: { value: 1240000, change: { dir: 'up', text: '+18% vs last week' } },
-      followupsDue: { value: 18, change: { dir: 'flat', text: 'incl. 6 overdue' } },
-      newLeads: { value: 12, change: { dir: 'up', text: '+3 vs yesterday' } },
-      pipeline: { value: 8620000, change: { dir: 'up', text: '+1.4% vs last month' } },
-      atRisk: { value: 2390000, change: { dir: 'down', text: '3 deals at risk' } },
+      pipeline: { value: money(sumValue(sales)) },
+      atRisk: { value: money(sumValue(sales.filter((x) => x.status === 'red'))) },
+      wonThisWeek: { value: money(wonThisWeek) },
+      followupsDue: { value: followupsDue },
+      newLeads: { value: newLeads },
       ontime: {
-        pct: 87,
+        pct: ontimePct,
         segments: [
-          { label: 'On-time', value: 87, color: 'var(--status-green)' },
-          { label: 'Late', value: 13, color: 'var(--status-amber)' },
+          { label: 'On-time', value: ontimePct, color: 'var(--status-green)' },
+          { label: 'Late', value: 100 - ontimePct, color: 'var(--status-amber)' },
         ],
       },
       receivables: {
         segments: [
-          { label: 'Current', value: 185, color: 'var(--track-finance)' },
-          { label: '31d+ overdue', value: 94, color: 'var(--status-red)' },
+          { label: 'Current', value: moneyInv(current), color: 'var(--track-finance)' },
+          { label: '31d+ overdue', value: moneyInv(overdue), color: 'var(--status-red)' },
         ],
       },
       pipelineStage: {
         cats: [
-          { label: 'Meeting', value: 620000 },
-          { label: 'Offer', value: 1240000 },
-          { label: 'Contract', value: 6760000 },
+          { label: 'Meeting', value: money(stageVal(sales, 'meeting')) },
+          { label: 'Offer', value: money(stageVal(sales, 'offer')) },
+          { label: 'Contract', value: money(stageVal(sales, 'contract')) },
         ],
       },
       openByTrack: {
+        // Only tracks the caller may view (null = all, for unauthenticated/admin-all).
         cats: [
-          { label: 'Sales', value: 5, color: 'var(--track-sales)' },
-          { label: 'Operations', value: 6, color: 'var(--track-ops)' },
-          { label: 'Workshop', value: 4, color: 'var(--track-workshop)' },
-          { label: 'Finance', value: 3, color: 'var(--track-finance)' },
-        ],
+          { key: 'sales', label: 'Sales', value: sales.length, color: 'var(--track-sales)' },
+          { key: 'operations', label: 'Operations', value: ops.length, color: 'var(--track-ops)' },
+          { key: 'workshop', label: 'Workshop', value: workshop.length, color: 'var(--track-workshop)' },
+          { key: 'finance', label: 'Finance', value: finance.length, color: 'var(--track-finance)' },
+        ].filter((c) => !allowed || allowed.includes(c.key)),
       },
       workorders: {
         cats: [
-          { label: 'Parts', value: 1 },
-          { label: 'In repair', value: 1 },
-          { label: 'Released', value: 1 },
-          { label: 'Invoice in', value: 1 },
+          { label: 'Parts', value: stageCount(workshop, 'parts') },
+          { label: 'In repair', value: stageCount(workshop, 'in_repair') },
+          { label: 'Released', value: stageCount(workshop, 'released') },
+          { label: 'Invoice in', value: stageCount(workshop, 'invoice_in') },
         ],
       },
     },
