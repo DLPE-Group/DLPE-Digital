@@ -320,6 +320,22 @@ Existing RBAC (`filterCard`/`CARD_FIELD_MAP`), scope (`visibleCompanyIds`), and
 auto-escalate logic are reused unchanged on projected DTOs. **48 API + 7 UI tests
 green; live smoke confirms reads serve from `Entity`.**
 
-**Still deferred:** per-EntityType field governance (replace `CARD_FIELD_MAP`),
-SQL `GROUP BY` aggregation, pagination → Phase 2. RLS → 1c. Partitioning → 1d.
-`Card`/`Vehicle` table drop → Phase 4 cleanup.
+**Still deferred:** SQL `GROUP BY` aggregation, pagination → Phase 2 (perf, when
+volume warrants). RLS → 1c. Partitioning → 1d. `Card`/`Vehicle` table drop →
+Phase 4 cleanup.
+
+---
+
+## Phase 2 status (per-type governance — implemented)
+
+Per-EntityType field governance is live (decision: per-type, **aggregates
+follow**). The hard-coded `CARD_FIELD_MAP` is replaced by per-type field maps
+(`contract`→contract_value/customer_name/sales_rep, `invoice`→amount/counterparty,
+`workshop_order`→labor_cost), derived from the card's track in
+`rbac/applyCardRules.ts`. Hiding a field masks only that type's cards and drops
+them from the matching dashboard totals (`aggregations.ts` gates Sales money by
+`contract`, Finance money by `invoice`). +3 tests; 54 API green.
+
+Read-only **Data model** admin view (Phase 3a) ships the no-code area's first
+slice. **Remaining:** SQL aggregation + pagination (perf), no-code authoring
+create/edit (Phase 3b), RLS (1c), partitioning (1d), Card/Vehicle drop (Phase 4).
