@@ -145,43 +145,47 @@ const EditableSettingRow = ({ label, settingKey, resolved, draftValue, onEdit, o
   );
 };
 
-const AddCompanyPanel = ({ country, onClose, onSave }) => {
+const AddCompanyPanel = ({ country, childKind = 'company', onClose, onSave }) => {
   const def = COUNTRY_DEFAULTS[country.code] || {};
   const [name, setName] = React.useState('');
   const [entity, setEntity] = React.useState('');
+  const kindCap = childKind.charAt(0).toUpperCase() + childKind.slice(1);
+  const isCompany = childKind === 'company';
   return (
     <div className="overlay" onClick={onClose}>
       <div className="sidePanel" onClick={e => e.stopPropagation()}>
         <div className="sidePanelHead">
           <div>
-            <h2>Add company</h2>
-            <div className="sub">Under {country.name} ({country.code}) · regulatory settings pre-fill from the country</div>
+            <h2>Add {childKind}</h2>
+            <div className="sub">Under {country.name} ({country.code}){isCompany ? ' · regulatory settings pre-fill from the country' : ''}</div>
           </div>
           <button className="iconBtn" onClick={onClose}><Icon name="close" size={16} /></button>
         </div>
         <div className="sidePanelBody">
           <label className="fieldBlock">
-            <span className="fl">Company name</span>
-            <input className="textInput" autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Ghent Branch" />
+            <span className="fl">{kindCap} name</span>
+            <input className="textInput" autoFocus value={name} onChange={e => setName(e.target.value)} placeholder={isCompany ? 'e.g. Ghent Branch' : `e.g. new ${childKind}`} />
           </label>
-          <label className="fieldBlock">
+          {isCompany && <label className="fieldBlock">
             <span className="fl">Legal entity number</span>
             <input className="textInput" value={entity} onChange={e => setEntity(e.target.value)} placeholder="BCE / KvK / HRB number" />
-          </label>
-          <div className="prefillNote">
-            <Icon name="check" size={13} /> Pre-filled from {country.name} — change only if this branch differs.
-          </div>
-          <div className="prefillGrid">
-            <div><div className="k">VAT</div><div className="v">{def.vat}</div></div>
-            <div><div className="k">Currency</div><div className="v">{def.currency}</div></div>
-            <div style={{ gridColumn: 'span 2' }}><div className="k">PEPPOL profile</div><div className="v">{def.peppol}</div></div>
-            <div style={{ gridColumn: 'span 2' }}><div className="k">Languages</div><div className="v">{def.languages}</div></div>
-          </div>
+          </label>}
+          {isCompany && (<>
+            <div className="prefillNote">
+              <Icon name="check" size={13} /> Pre-filled from {country.name} — change only if this branch differs.
+            </div>
+            <div className="prefillGrid">
+              <div><div className="k">VAT</div><div className="v">{def.vat}</div></div>
+              <div><div className="k">Currency</div><div className="v">{def.currency}</div></div>
+              <div style={{ gridColumn: 'span 2' }}><div className="k">PEPPOL profile</div><div className="v">{def.peppol}</div></div>
+              <div style={{ gridColumn: 'span 2' }}><div className="k">Languages</div><div className="v">{def.languages}</div></div>
+            </div>
+          </>)}
         </div>
         <div className="sidePanelFoot">
           <button className="cta ghost" onClick={onClose}>Cancel</button>
           <button className="cta" disabled={!name.trim()} onClick={() => onSave(name.trim())}>
-            <Icon name="plus" size={12} strokeWidth={2} /> Add company
+            <Icon name="plus" size={12} strokeWidth={2} /> Add {childKind}
           </button>
         </div>
       </div>
@@ -230,30 +234,55 @@ export const GroupStructureView = () => {
     return { countries, companies, regions };
   }, [tree]);
 
-  const addCompany = async (name) => {
-    const country = addUnder;
-    const code = country.code + '-' + name.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase();
-    const payload = {
-      name, code,
-      meta: { entity: 'New entity · pending registration', address: '—' },
-      overrides: { invoiceSeq: code + '-2026-####' },
-    };
+  // Add a child node of the appropriate kind under the selected parent:
+  // group → region, region → country, country → company.
+  const childKindOf = (parentKind) =>
+    parentKind === 'group' ? 'region' : parentKind === 'region' ? 'country' : 'company';
+
+  const addNodeUnder = async (name) => {
+    const par = addUnder;
+    const childKind = childKindOf(par.kind);
     let created = null;
     try {
-      const row = await api.post('/admin/structure/' + country.id + '/companies', payload);
-      created = { ...row, kind: String(row.kind || 'company').toLowerCase(), children: [] };
+      if (childKind === 'company') {
+        const code = (par.code || par.name).slice(0, 6) + '-' + name.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase();
+        const row = await api.post('/admin/structure/' + par.id + '/companies', {
+          name, code,
+          meta: { entity: 'New entity · pending registration', address: '—' },
+          overrides: { invoiceSeq: code + '-2026-####' },
+        });
+        created = { ...row, kind: 'company', children: [] };
+      } else {
+        const row = await api.post('/admin/structure/' + par.id + '/nodes', { kind: childKind.toUpperCase(), name });
+        created = { ...row, kind: childKind, children: [] };
+      }
     } catch (e) {
-      // optimistic local insert on failure so the UI still reflects the add
-      console.error('Failed to add company', e);
-      created = { id: 'cmp-' + Date.now(), kind: 'company', name, code,
-        meta: payload.meta, overrides: payload.overrides, children: [] };
+      window.alert(e.message || `Failed to add ${childKind}`);
+      return;
     }
     const clone = JSON.parse(JSON.stringify(tree));
-    const p = findPath(clone, country.id);
+    const p = findPath(clone, par.id);
     p[p.length - 1].children = [...(p[p.length - 1].children || []), created];
     setTree(clone);
     setAddUnder(null);
     setSelectedId(created.id);
+  };
+
+  // Delete the selected node (server enforces: no children / entities / scopes).
+  const deleteSelectedNode = async () => {
+    if (node.kind === 'group') return;
+    if (!window.confirm(`Delete ${node.kind} "${node.name}"? This cannot be undone.`)) return;
+    try {
+      await api.del('/admin/structure/' + node.id);
+      const clone = JSON.parse(JSON.stringify(tree));
+      const par = parent ? findPath(clone, parent.id) : null;
+      if (par) {
+        const pn = par[par.length - 1];
+        pn.children = (pn.children || []).filter((c) => c.id !== node.id);
+      }
+      setTree(clone);
+      setSelectedId(parent ? parent.id : tree.id);
+    } catch (e) { window.alert(e.message || 'Could not delete node'); }
   };
 
   // Persist a data-sharing mode change via PUT (most-restrictive set of rows).
@@ -345,10 +374,7 @@ export const GroupStructureView = () => {
           </div>
           <div className="treeScroll">
             <TreeNode node={tree} depth={0} selectedId={selectedId} onSelect={setSelectedId}
-                      expanded={expanded} toggle={toggle} onAdd={(n) => {
-                        if (n.kind === 'country') setAddUnder(n);
-                        else setSelectedId(n.id);
-                      }} />
+                      expanded={expanded} toggle={toggle} onAdd={(n) => setAddUnder(n)} />
           </div>
           <div className="treeLegend">
             <span><span className="treeDot k-group" /> Group</span>
@@ -379,6 +405,11 @@ export const GroupStructureView = () => {
               <button className="miniBtn" onClick={() => setRenaming(v => !v)}>
                 <Icon name="settings" size={11} /> {renaming ? 'Done' : 'Rename'}
               </button>
+              {node.kind !== 'group' && (
+                <button className="miniBtn" onClick={deleteSelectedNode} style={{ color: 'var(--status-red, #e05)' }}>
+                  <Icon name="close" size={11} /> Delete
+                </button>
+              )}
             </div>
           </div>
 
@@ -451,7 +482,7 @@ export const GroupStructureView = () => {
         </div>
       </div>
 
-      {addUnder && <AddCompanyPanel country={addUnder} onClose={() => setAddUnder(null)} onSave={addCompany} />}
+      {addUnder && <AddCompanyPanel country={addUnder} childKind={childKindOf(addUnder.kind)} onClose={() => setAddUnder(null)} onSave={addNodeUnder} />}
     </div>
   );
 };
