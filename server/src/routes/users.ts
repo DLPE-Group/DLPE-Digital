@@ -75,6 +75,9 @@ const patchSchema = z.object({
 usersRouter.patch('/users/:id', async (req, res) => {
   const parsed = patchSchema.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid patch' });
+  if (parsed.data.status === 'disabled' && req.params.id === req.user?.id) {
+    return res.status(400).json({ error: 'You cannot deactivate your own account.' });
+  }
   try {
     const user = await prisma.user.update({
       where: { id: req.params.id },

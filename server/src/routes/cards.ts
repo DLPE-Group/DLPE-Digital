@@ -1,19 +1,50 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { listCards, getCard, moveStage, patchCard } from '../domain/cards.service.js';
+import { listCards, getCard, moveStage, patchCard, createCard, deleteCard } from '../domain/cards.service.js';
 import { runAction, type ActionName } from '../domain/actions.js';
 import { actingUserId } from '../auth/preview.js';
 
 export const cardsRouter: Router = Router();
 
-function actor(req: { user?: { name: string; roleId: string } }) {
-  return { name: req.user?.name ?? 'Unknown', roleId: req.user?.roleId ?? 'unknown' };
+function actor(req: { user?: { name: string; roleId: string; id?: string } }) {
+  return { name: req.user?.name ?? 'Unknown', roleId: req.user?.roleId ?? 'unknown', userId: req.user?.id };
 }
 
 cardsRouter.get('/', async (req, res) => {
   const track = typeof req.query.track === 'string' ? req.query.track : undefined;
   try {
     res.json(await listCards(track, actingUserId(req)));
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+const createCardSchema = z.object({
+  track: z.string().min(1),
+  customer: z.string().min(1),
+  type: z.string().optional(),
+  value: z.number().nullable().optional(),
+  vehicle: z.string().nullable().optional(),
+  sub: z.string().optional(),
+  stageId: z.string().optional(),
+  owner: z.string().optional(),
+  status: z.string().optional(),
+  companyId: z.string().nullable().optional(),
+});
+cardsRouter.post('/', async (req, res) => {
+  const parsed = createCardSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  try {
+    res.json(await createCard(parsed.data, actor(req)));
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+cardsRouter.delete('/:id', async (req, res) => {
+  try {
+    await deleteCard(req.params.id, actor(req));
+    res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }

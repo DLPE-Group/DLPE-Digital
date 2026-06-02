@@ -6,6 +6,7 @@ import { buildEffectiveForUser } from '../rbac/context.js';
 import { filterCard } from '../rbac/applyCardRules.js';
 import { visibleCompanyIds } from '../rbac/scope.js';
 import { entityToCardDTO, type EntityRow } from './projection.js';
+import { loadTenantResolver } from './tenancy.js';
 
 // Phase 1b: Entity is the source of truth for pipeline items. Load pipeline
 // entities (optionally one track) and project them to the legacy Card shape so
@@ -208,4 +209,72 @@ export async function patchCard(id: string, patch: Partial<Card>): Promise<Card>
   const data = cardPatchToEntityData(patch, (row.fields ?? {}) as Record<string, unknown>);
   const updated = await prisma.entity.update({ where: { id }, data });
   return entityToCardDTO(updated as unknown as EntityRow) as unknown as Card;
+}
+
+const PIPELINE_TYPE_KEY: Record<string, string> = {
+  sales: 'contract', operations: 'operation', workshop: 'workshop_order', finance: 'invoice',
+};
+
+export interface CreateCardInput {
+  track: string; type?: string; customer: string; value?: number | null; vehicle?: string | null;
+  sub?: string; stageId?: string; owner?: string; status?: string; companyId?: string | null;
+}
+
+// Create a new pipeline entity (a deal/job/invoice/etc) from the UI.
+export async function createCard(
+  input: CreateCardInput,
+  actor: { name: string; roleId: string; userId?: string },
+): Promise<Card> {
+  const trackKey = input.track.toLowerCase();
+  const typeKey = PIPELINE_TYPE_KEY[trackKey];
+  if (!typeKey) throw new Error(`Unknown track: ${input.track}`);
+  const type = await prisma.entityType.findUnique({ where: { key: typeKey } });
+  if (!type) throw new Error(`No entity type for track ${trackKey}`);
+  if (!input.customer?.trim()) throw new Error('A title/customer is required');
+
+  const tenantFor = await loadTenantResolver(prisma);
+  const stages = await loadStages(trackKeyToEnum(trackKey));
+  const stage = stages.find((s) => s.id === input.stageId) ?? stages[0];
+  const id = `e-${Date.now().toString(36)}-${Math.round(Math.random() * 1e6).toString(36)}`;
+
+  const created = await prisma.entity.create({
+    data: {
+      id,
+      tenantId: tenantFor(input.companyId ?? null),
+      entityType: { connect: { id: type.id } },
+      company: input.companyId ? { connect: { id: input.companyId } } : undefined,
+      title: input.customer,
+      value: input.value ?? null,
+      owner: input.owner ?? actor.name,
+      status: input.status ?? 'green',
+      sub: input.sub ?? '',
+      sources: [],
+      fields: { type: input.type ?? 'NEW', vehicle: input.vehicle ?? null, meta: null },
+      trackId: trackKey,
+      stageId: stage?.id ?? 'lead',
+      stageName: stage?.label ?? '',
+      days: 0,
+      daysLabel: 'created now',
+      cta: stage?.cta ?? '',
+      awaitingSign: false,
+      createdById: actor.userId ?? null,
+    },
+  });
+  await writeAudit({
+    actor: actor.name, actorRole: actor.roleId, verb: 'created item',
+    target: `${created.title}${created.value ? ' · €' + created.value.toLocaleString() : ''}`,
+    track: trackKey, kind: 'normal', icon: 'plus',
+  });
+  return entityToCardDTO(created as unknown as EntityRow) as unknown as Card;
+}
+
+// Delete any entity (pipeline item or reference record).
+export async function deleteCard(id: string, actor: { name: string; roleId: string }): Promise<void> {
+  const row = await prisma.entity.findUnique({ where: { id } });
+  if (!row) throw new Error('Item not found');
+  await prisma.entity.delete({ where: { id } });
+  await writeAudit({
+    actor: actor.name, actorRole: actor.roleId, verb: 'deleted item',
+    target: row.title, track: row.trackId ?? 'sales', kind: 'normal', icon: 'close',
+  });
 }
