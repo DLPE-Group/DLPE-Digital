@@ -303,6 +303,16 @@ export const CrossTrackTriggerEditor = () => {
     }
   };
 
+  const editTrigger = async (tg) => {
+    if (!tg.id) return;
+    const note = window.prompt('Edit trigger note', tg.note || '');
+    if (note == null) return;
+    try {
+      const row = await api.patch('/admin/triggers/' + tg.id, { note });
+      setTriggers(prev => prev.map(t => t.uid === tg.uid ? { ...t, ...row, uid: t.uid } : t));
+    } catch (e) { window.alert(e.message || 'Edit failed'); }
+  };
+
   return (
     <div className="settingsSection">
       <div className="h">
@@ -358,6 +368,9 @@ export const CrossTrackTriggerEditor = () => {
               <div className="nodeStage">{tg.thenStage}</div>
               <div className="nodeNote">{tg.note}</div>
             </div>
+            <button className="tliDel" onClick={() => editTrigger(tg)} title="Edit note" style={{ marginRight: 4 }}>
+              <Icon name="settings" size={13} strokeWidth={2} />
+            </button>
             <button className="tliDel" onClick={() => removeTrigger(tg.uid)} title="Remove trigger">
               <Icon name="close" size={14} strokeWidth={2} />
             </button>
