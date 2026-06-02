@@ -18,6 +18,7 @@ async function toAuthUser(userId: string): Promise<AuthUser> {
     include: { secondary: true },
   });
   if (!user) throw new Error('User not found');
+  if (user.status === 'disabled') throw new Error('User is disabled');
   return {
     id: user.id,
     email: user.email,

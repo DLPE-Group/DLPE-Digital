@@ -110,6 +110,40 @@ export async function addCompany(
   });
 }
 
+const KIND_PREFIX: Record<string, string> = { REGION: 'reg-', COUNTRY: 'co-', COMPANY: 'cmp-' };
+
+// Add a child node of any kind (region/country/company) under a parent.
+export async function addNode(
+  parentId: string,
+  data: { kind: 'REGION' | 'COUNTRY' | 'COMPANY'; name: string; code?: string },
+) {
+  const parent = await prisma.orgNode.findUnique({ where: { id: parentId } });
+  if (!parent) throw new Error('Parent node not found');
+  const base = (data.code || data.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const id = (KIND_PREFIX[data.kind] ?? 'node-') + base;
+  return prisma.orgNode.create({
+    data: { id, kind: data.kind, name: data.name, code: data.code, parentId },
+  });
+}
+
+// Delete a node — blocked if it has children, scoped users, or (for companies)
+// any entities attached.
+export async function deleteNode(id: string): Promise<void> {
+  const node = await prisma.orgNode.findUnique({ where: { id } });
+  if (!node) throw new Error('Node not found');
+  if (node.kind === 'GROUP') throw new Error('The group root cannot be deleted.');
+  const children = await prisma.orgNode.count({ where: { parentId: id } });
+  if (children > 0) throw new Error(`Node has ${children} child node(s) — remove them first.`);
+  const entities = await prisma.entity.count({ where: { companyId: id } });
+  if (entities > 0) throw new Error(`Node has ${entities} item(s) attached — remove them first.`);
+  const [usersP, scopes] = await Promise.all([
+    prisma.user.count({ where: { scopeNodeId: id } }),
+    prisma.userScope.count({ where: { scopeNodeId: id } }),
+  ]);
+  if (usersP + scopes > 0) throw new Error(`Node is in ${usersP + scopes} user scope(s) — reassign them first.`);
+  await prisma.orgNode.delete({ where: { id } });
+}
+
 export async function updateNode(id: string, data: { name?: string; meta?: unknown; settings?: unknown; overrides?: unknown }) {
   return prisma.orgNode.update({
     where: { id },
