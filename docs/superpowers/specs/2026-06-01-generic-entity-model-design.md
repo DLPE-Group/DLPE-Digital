@@ -339,3 +339,18 @@ them from the matching dashboard totals (`aggregations.ts` gates Sales money by
 Read-only **Data model** admin view (Phase 3a) ships the no-code area's first
 slice. **Remaining:** SQL aggregation + pagination (perf), no-code authoring
 create/edit (Phase 3b), RLS (1c), partitioning (1d), Card/Vehicle drop (Phase 4).
+
+---
+
+## Phase 3b status (no-code authoring — implemented)
+
+The **Data model** admin area is now read/write. Backend: `POST/PATCH` tracks +
+types, `POST/DELETE` fields under `/admin/data-model/*` (group-admin only) with
+guardrails — key format, uniqueness (409), pipeline types require a track,
+built-in fields can't be deleted. Frontend: New track / New entity type forms +
+per-type Add field and field delete, with inline errors. +6 API tests, +1 UI
+assertion; **60 API + 8 UI green**; live create→verify→cleanup smoke passed.
+
+**Remaining (all optional / infra):** SQL `GROUP BY` aggregation + pagination
+(perf, when volume warrants), RLS (1c — needs non-superuser role decision),
+partitioning (1d), and the eventual `Card`/`Vehicle` table drop (Phase 4).
