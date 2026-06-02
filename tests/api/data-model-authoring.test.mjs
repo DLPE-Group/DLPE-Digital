@@ -34,6 +34,13 @@ describe('no-code authoring (data model)', () => {
     expect(r.body.label).toBe('Insurance claim');
   });
 
+  it('edits a field via PATCH', async () => {
+    const r = await patch('/admin/data-model/types/claim/fields/premium', { label: 'Annual premium', dataKind: 'number' }, ADMIN());
+    expect(r.status).toBe(200);
+    expect(r.body.label).toBe('Annual premium');
+    expect(r.body.dataKind).toBe('number');
+  });
+
   it('deletes a non-builtin field', async () => {
     expect((await del('/admin/data-model/types/claim/fields/premium', ADMIN())).status).toBe(200);
     const model = await get('/admin/data-model', ADMIN());
@@ -46,6 +53,27 @@ describe('no-code authoring (data model)', () => {
     // and it is still there
     const model = await get('/admin/data-model', ADMIN());
     expect(model.body.types.find((t) => t.key === 'contract').fields.map((f) => f.key)).toContain('contract_value');
+  });
+
+  it('refuses to delete a track that still has types, and built-in tracks', async () => {
+    // insurance still has the 'claim' type
+    expect((await del('/admin/data-model/tracks/insurance', ADMIN())).status).toBe(400);
+    // built-in track
+    expect((await del('/admin/data-model/tracks/sales', ADMIN())).status).toBe(400);
+  });
+
+  it('deletes an empty non-builtin type, then its now-empty track', async () => {
+    expect((await del('/admin/data-model/types/claim', ADMIN())).status).toBe(200);
+    expect((await del('/admin/data-model/tracks/insurance', ADMIN())).status).toBe(200);
+    const model = await get('/admin/data-model', ADMIN());
+    expect(model.body.types.map((t) => t.key)).not.toContain('claim');
+    expect(model.body.tracks.map((t) => t.key)).not.toContain('insurance');
+  });
+
+  it('refuses to delete a built-in type', async () => {
+    expect((await del('/admin/data-model/types/contract', ADMIN())).status).toBe(400);
+    const model = await get('/admin/data-model', ADMIN());
+    expect(model.body.types.map((t) => t.key)).toContain('contract');
   });
 
   it('rejects duplicate keys (409) and bad keys (400)', async () => {

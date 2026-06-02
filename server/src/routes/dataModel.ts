@@ -127,6 +127,22 @@ dataModelRouter.post('/data-model/types/:key/fields', async (req, res) => {
   res.json({ key: row.key, label: row.label, category: row.category, dataKind: row.dataKind });
 });
 
+const FieldPatch = z.object({
+  label: z.string().min(1).optional(),
+  category: z.string().optional(),
+  dataKind: z.enum(DATA_KINDS).optional(),
+});
+dataModelRouter.patch('/data-model/types/:key/fields/:fieldKey', async (req, res) => {
+  const p = FieldPatch.safeParse(req.body);
+  if (!p.success) return res.status(400).json({ error: p.error.issues[0].message });
+  const type = await prisma.entityType.findUnique({ where: { key: req.params.key }, include: { fieldDefs: true } });
+  if (!type) return res.status(404).json({ error: 'Type not found' });
+  const field = type.fieldDefs.find((f) => f.key === req.params.fieldKey);
+  if (!field) return res.status(404).json({ error: 'Field not found' });
+  const row = await prisma.fieldDef.update({ where: { id: field.id }, data: p.data });
+  res.json({ key: row.key, label: row.label, category: row.category, dataKind: row.dataKind });
+});
+
 dataModelRouter.delete('/data-model/types/:key/fields/:fieldKey', async (req, res) => {
   const type = await prisma.entityType.findUnique({ where: { key: req.params.key }, include: { fieldDefs: true } });
   if (!type) return res.status(404).json({ error: 'Type not found' });
@@ -134,5 +150,29 @@ dataModelRouter.delete('/data-model/types/:key/fields/:fieldKey', async (req, re
   if (!field) return res.status(404).json({ error: 'Field not found' });
   if (field.builtin) return res.status(400).json({ error: 'Built-in fields cannot be deleted (they govern existing data).' });
   await prisma.fieldDef.delete({ where: { id: field.id } });
+  res.json({ ok: true });
+});
+
+// Delete an entity type (non-builtin, and only when no entities use it).
+dataModelRouter.delete('/data-model/types/:key', async (req, res) => {
+  const type = await prisma.entityType.findUnique({ where: { key: req.params.key } });
+  if (!type) return res.status(404).json({ error: 'Type not found' });
+  if (type.builtin) return res.status(400).json({ error: 'Built-in types cannot be deleted.' });
+  const inUse = await prisma.entity.count({ where: { entityTypeId: type.id } });
+  if (inUse > 0) return res.status(400).json({ error: `Type has ${inUse} item(s) — delete or reassign them first.` });
+  await prisma.entityType.delete({ where: { id: type.id } }); // cascades fieldDefs
+  res.json({ ok: true });
+});
+
+// Delete a track (non-builtin, and only when no types/entities reference it).
+dataModelRouter.delete('/data-model/tracks/:key', async (req, res) => {
+  const track = await prisma.trackDef.findUnique({ where: { key: req.params.key } });
+  if (!track) return res.status(404).json({ error: 'Track not found' });
+  if (track.builtin) return res.status(400).json({ error: 'Built-in tracks cannot be deleted.' });
+  const types = await prisma.entityType.count({ where: { trackId: track.id } });
+  if (types > 0) return res.status(400).json({ error: `Track has ${types} entity type(s) — remove them first.` });
+  const ents = await prisma.entity.count({ where: { trackId: req.params.key } });
+  if (ents > 0) return res.status(400).json({ error: `Track has ${ents} item(s) — remove them first.` });
+  await prisma.trackDef.delete({ where: { id: track.id } }); // cascades stageDefs
   res.json({ ok: true });
 });
