@@ -7,11 +7,10 @@
    - The owner `prisma` client bypasses RLS (no withTenant/appPrisma).
    - Spec-level IDs (org nodes, roles) are prefixed with the tenant slug
      to avoid unique-constraint collisions in the shared schema.
-   - TrackDef.key / EntityType.key are namespaced as "<slug>:<key>".
+   - TrackDef.key / EntityType.key are namespaced as "<slug>-<key>".
    - StageConfig.@@unique([track,stageId]) is schema-scoped (no tenantId),
-     so we upsert to let a later tenant win on the same track+stage combo
-     (acceptable until that constraint is widened to include tenantId in a
-     future migration).
+     so we use createMany + skipDuplicates to never overwrite an existing row
+     (per-tenant stage config is a multi-tenant follow-up).
    - ProvisioningRun is written OUTSIDE the data transaction so that a
      rollback of the data does not erase the failure audit trail.
    ============================================================ */
@@ -38,6 +37,15 @@ export interface ProvisionTenantArgs {
   target: ProvisioningTarget;
   tenantId?: string;
   idempotencyKey?: string;
+  /**
+   * Controls how spec-local IDs are handled.
+   * - 'prefixed' (default): all spec IDs are prefixed with `<slug>-` to avoid
+   *   cross-tenant uniqueness clashes. TrackDef.key / EntityType.key are also
+   *   namespaced as `<slug>-<key>`. Admin user id is `<idPrefix>-<slug>`.
+   * - 'literal': the prefix is '' (empty). TrackDef.key / EntityType.key are
+   *   used verbatim. Admin/user ids are used verbatim.
+   */
+  idMode?: 'prefixed' | 'literal';
   /** Optional prisma client override — defaults to the owner (bypass-RLS) client.
    *  Useful in tests to point at the test database. */
   prismaClient?: PrismaClient;
@@ -101,6 +109,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
   const { blueprint, inputs, target, idempotencyKey } = args;
   const prisma = args.prismaClient ?? defaultPrisma;
   const spec = blueprint.spec;
+  const idMode = args.idMode ?? 'prefixed';
 
   // ------------------------------------------------------------------
   // 1. Validate inputs against spec.inputs
@@ -183,8 +192,9 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
       );
       const tenantId = ctx.tenantId;
 
-      // Prefix for all spec-local IDs to avoid unique clashes across tenants
-      const pfx = `${slug}-`;
+      // Prefix for all spec-local IDs to avoid unique clashes across tenants.
+      // In literal mode the prefix is empty so IDs are used verbatim.
+      const pfx = idMode === 'literal' ? '' : `${slug}-`;
 
       // 5b. Org tree (parents before children)
       const orgRows: Prisma.OrgNodeCreateManyInput[] = [];
@@ -228,7 +238,9 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
       // 5e. Tracks → TrackDef + StageDef + StageConfig
       const trackDefIdByKey: Record<string, string> = {};
       for (const track of spec.tracks) {
-        const tKey = `${pfx}${track.key}`; // namespaced key avoids TrackDef.key unique clash
+        // In prefixed mode key is namespaced as <slug>-<track.key> to avoid TrackDef.key unique clash.
+        // In literal mode the key is used verbatim.
+        const tKey = idMode === 'literal' ? track.key : `${pfx}${track.key}`;
 
         const td = await tx.trackDef.create({
           data: {
@@ -259,27 +271,23 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
           });
         }
 
-        // StageConfig — runtime stage-lock table.
-        // @@unique([track, stageId]) is not scoped to tenantId in the current schema,
-        // so we upsert to avoid duplicate-key errors when multiple tenants share a track+stage.
+        // StageConfig.@@unique is global (no tenantId) — skip duplicates rather than overwrite;
+        // per-tenant stage config is a multi-tenant follow-up (S0 read-scoping residual).
         const trackEnum = TRACK_ENUM[track.key];
         if (trackEnum) {
-          for (const s of track.stages) {
-            await tx.stageConfig.upsert({
-              where: { track_stageId: { track: trackEnum as Prisma.StageConfigCreateInput['track'], stageId: s.stageId } },
-              update: { label: s.label, sla: s.sla, lock: s.lock ?? null, cta: s.cta, tenantId },
-              create: {
-                track: trackEnum as Prisma.StageConfigCreateInput['track'],
-                order: s.order,
-                stageId: s.stageId,
-                label: s.label,
-                sla: s.sla,
-                lock: s.lock ?? null,
-                cta: s.cta,
-                tenantId,
-              },
-            });
-          }
+          await tx.stageConfig.createMany({
+            data: track.stages.map((s) => ({
+              track: trackEnum as Prisma.StageConfigCreateManyInput['track'],
+              order: s.order,
+              stageId: s.stageId,
+              label: s.label,
+              sla: s.sla,
+              lock: s.lock ?? null,
+              cta: s.cta,
+              tenantId,
+            })),
+            skipDuplicates: true,
+          });
         }
         // If no TRACK_ENUM mapping (custom track), we skip StageConfig — only builtin
         // Track enum values are supported by the current schema's Track enum.
@@ -301,7 +309,9 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
 
       // 5g. EntityTypes + FieldDefs
       for (const et of spec.entityTypes) {
-        const etKey = `${pfx}${et.key}`; // namespaced key avoids EntityType.key unique clash
+        // In prefixed mode key is namespaced as <slug>-<et.key> to avoid EntityType.key unique clash.
+        // In literal mode the key is used verbatim.
+        const etKey = idMode === 'literal' ? et.key : `${pfx}${et.key}`;
         const trackId =
           et.kind === 'pipeline' && et.trackKey
             ? (trackDefIdByKey[et.trackKey] ?? null)
@@ -357,34 +367,106 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
         }
       }
 
-      // 5i. Admin user
-      const adminUser = spec.adminUser;
-      let passwordHash: string;
-      let inviteToken: string | null = null;
+      // 5i. Users — spec.users[] + admin user
 
-      if (adminUser.password) {
-        passwordHash = await argon2.hash(adminUser.password);
-      } else {
-        inviteToken = randomUUID();
-        passwordHash = await argon2.hash(inviteToken); // store hashed token as placeholder
+      // Derive admin user id based on id mode.
+      // In prefixed mode: <idPrefix>-<slug>. In literal mode: idPrefix verbatim.
+      const adminUser = spec.adminUser;
+      const adminUserId = idMode === 'literal'
+        ? adminUser.idPrefix
+        : `${adminUser.idPrefix}-${slug}`;
+
+      // Collect the set of user ids to create from spec.users[] (after id-mode applied).
+      const specUsersById = new Map<string, NonNullable<BlueprintSpecType['users']>[number]>();
+      for (const u of spec.users ?? []) {
+        const uid = idMode === 'literal' ? u.id : `${pfx}${u.id}`;
+        specUsersById.set(uid, u);
       }
 
-      const userId = `${adminUser.idPrefix}-${slug}`;
-      await tx.user.create({
-        data: {
-          id: userId,
-          name: adminUser.name,
-          email: adminUser.email,
-          passwordHash,
-          roleId: `${pfx}${adminUser.roleId}`,
-          scopeType: adminUser.scopeType as Prisma.UserCreateInput['scopeType'],
-          status: 'active',
-          tenantId,
-        },
-      });
+      // Hash helper — argon2 hash password if provided, else use 'demo1234' as default
+      // for seeded demo users (matching seed.ts which hashes 'demo1234').
+      async function hashPassword(pw: string | undefined): Promise<string> {
+        return argon2.hash(pw ?? 'demo1234');
+      }
 
-      const adminLoginOrInviteLink = inviteToken
-        ? `/invite/${inviteToken}`
+      // Determine admin user status: 'invited' when no password, 'active' when password present.
+      // Invite redemption flow is deferred — inviteToken is stored as a placeholder hash for now.
+      let adminPasswordHash: string;
+      let adminInviteToken: string | null = null;
+      if (adminUser.password) {
+        adminPasswordHash = await argon2.hash(adminUser.password);
+      } else {
+        adminInviteToken = randomUUID();
+        adminPasswordHash = await argon2.hash(adminInviteToken); // placeholder; redeemed via invite flow
+      }
+      const adminStatus = adminUser.password ? 'active' : 'invited';
+
+      // Create spec.users[] first (may include a duplicate of admin — de-duplicated below).
+      const createdUserIds = new Set<string>();
+      for (const [uid, u] of specUsersById.entries()) {
+        // De-duplicate against adminUser: if ids match, skip here and let the admin block handle it.
+        if (uid === adminUserId) continue;
+
+        const userPasswordHash = await hashPassword(u.password);
+        // User status: explicit value from spec, or derive from password presence.
+        const userStatus = u.status ?? (u.password ? 'active' : 'invited');
+        const resolvedRoleId = idMode === 'literal' ? u.roleId : `${pfx}${u.roleId}`;
+        const resolvedScopeNodeId = u.scopeNodeId
+          ? (idMode === 'literal' ? u.scopeNodeId : `${pfx}${u.scopeNodeId}`)
+          : null;
+
+        await tx.user.create({
+          data: {
+            id: uid,
+            name: u.name,
+            email: u.email,
+            initials: u.initials ?? null,
+            passwordHash: userPasswordHash,
+            roleId: resolvedRoleId,
+            scopeType: u.scopeType as Prisma.UserCreateInput['scopeType'],
+            scopeLabel: u.scopeLabel ?? null,
+            scopeNodeId: resolvedScopeNodeId,
+            status: userStatus as Prisma.UserCreateInput['status'],
+            tenantId,
+            secondary: u.secondary && u.secondary.length > 0
+              ? {
+                  create: u.secondary.map((s) => ({
+                    roleId: s.roleId
+                      ? (idMode === 'literal' ? s.roleId : `${pfx}${s.roleId}`)
+                      : null,
+                    scopeType: s.scopeType as Prisma.UserScopeCreateInput['scopeType'],
+                    scopeLabel: s.scopeLabel ?? null,
+                    scopeNodeId: s.scopeNodeId
+                      ? (idMode === 'literal' ? s.scopeNodeId : `${pfx}${s.scopeNodeId}`)
+                      : null,
+                    roleLabel: s.roleLabel ?? null,
+                    tenantId,
+                  })),
+                }
+              : undefined,
+          },
+        });
+        createdUserIds.add(uid);
+      }
+
+      // Create admin user only if not already created via spec.users[].
+      if (!createdUserIds.has(adminUserId)) {
+        await tx.user.create({
+          data: {
+            id: adminUserId,
+            name: adminUser.name,
+            email: adminUser.email,
+            passwordHash: adminPasswordHash,
+            roleId: `${pfx}${adminUser.roleId}`,
+            scopeType: adminUser.scopeType as Prisma.UserCreateInput['scopeType'],
+            status: adminStatus as Prisma.UserCreateInput['status'],
+            tenantId,
+          },
+        });
+      }
+
+      const adminLoginOrInviteLink = adminInviteToken
+        ? `/invite/${adminInviteToken}`
         : `/login?email=${encodeURIComponent(adminUser.email)}`;
 
       return { tenantId, slug, adminLoginOrInviteLink };

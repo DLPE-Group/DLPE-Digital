@@ -132,6 +132,29 @@ const AdminUserSpec = z.object({
   password: z.string().optional(),
 });
 
+/** A user entry inside spec.users[] — seeded alongside the admin user. */
+export const UserSpec = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string().email(),
+  initials: z.string().optional(),
+  roleId: z.string(),
+  scopeType: z.string(),
+  scopeLabel: z.string().optional(),
+  scopeNodeId: z.string().optional(),
+  status: z.enum(['active', 'invited', 'disabled']).default('active'),
+  password: z.string().optional(),
+  secondary: z.array(z.object({
+    roleId: z.string().optional(),
+    scopeType: z.string(),
+    scopeLabel: z.string().optional(),
+    scopeNodeId: z.string().optional(),
+    roleLabel: z.string().optional(),
+  })).optional(),
+});
+
+export type UserSpec = z.infer<typeof UserSpec>;
+
 /* ---------- BlueprintSpec ---------- */
 
 export const BlueprintSpec = z.object({
@@ -147,6 +170,7 @@ export const BlueprintSpec = z.object({
   branding: BrandingSpec,
   integrations: IntegrationSpec,
   adminUser: AdminUserSpec,
+  users: z.array(UserSpec).optional(),
 });
 
 export type BlueprintSpec = z.infer<typeof BlueprintSpec>;

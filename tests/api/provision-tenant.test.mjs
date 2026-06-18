@@ -70,4 +70,65 @@ describe('provisionTenant', () => {
       prismaClient: prisma,
     })).rejects.toThrow(/customerName/);
   });
+
+  it('idMode literal: ids are unprefixed and spec.users[] are created', async () => {
+    const { provisionTenant } = await import('../../server/src/domain/provisioning/provisionTenant.ts');
+    const { SharedDbTarget } = await import('../../server/src/domain/provisioning/target.ts');
+
+    // Literal mode is designed for dedicated deployments where ids don't collide.
+    // In the shared test DB the demo seed already owns 'grp', 'group-admin', 'sales' etc.,
+    // so we use deliberately distinct literal ids that still prove verbatim id storage.
+    const LIT_SPEC = {
+      specVersion: SPEC_VERSION,
+      inputs: [{ key: 'customerName', label: 'Customer', type: 'string', required: true }],
+      orgStructure: { id: 'lit-grp', kind: 'group', name: 'Lit Group', code: 'LIT', children: [] },
+      roles: [{ id: 'lit-admin-role', name: 'Lit admin', system: true, tracks: ['All'], edit: 'all', desc: 'admin' }],
+      fieldRules: [],
+      tracks: [],
+      entityTypes: [],
+      crossTriggers: [],
+      adminUser: { idPrefix: 'u-lit-admin', name: 'Lit Admin', email: 'admin@lit.io', roleId: 'lit-admin-role', scopeType: 'group', password: 'demo1234' },
+      users: [
+        { id: 'u-lit', name: 'Lit', email: 'lit@x.io', roleId: 'lit-admin-role', scopeType: 'group', password: 'demo1234' },
+      ],
+    };
+
+    const res = await provisionTenant({
+      blueprint: { spec: LIT_SPEC },
+      inputs: { customerName: 'Lit Co' },
+      target: new SharedDbTarget(),
+      idMode: 'literal',
+      idempotencyKey: 'test-lit-1',
+      prismaClient: prisma,
+    });
+    expect(res.tenantId).toBeTruthy();
+    const tid = res.tenantId;
+
+    // Role id must be verbatim (not prefixed with slug — e.g. NOT 'lit-co-lit-admin-role')
+    const role = await prisma.role.findUnique({ where: { id: 'lit-admin-role' } });
+    expect(role).not.toBeNull();
+    expect(role.tenantId).toBe(tid);
+
+    // spec.users[] user must exist with literal id
+    const litUser = await prisma.user.findUnique({ where: { id: 'u-lit' } });
+    expect(litUser).not.toBeNull();
+    expect(litUser.tenantId).toBe(tid);
+
+    // admin user id is idPrefix verbatim (not idPrefix-slug — e.g. NOT 'u-lit-admin-lit-co')
+    const adminUser = await prisma.user.findUnique({ where: { id: 'u-lit-admin' } });
+    expect(adminUser).not.toBeNull();
+    expect(adminUser.tenantId).toBe(tid);
+
+    // cleanup
+    await prisma.userScope.deleteMany({ where: { tenantId: tid } });
+    await prisma.user.deleteMany({ where: { tenantId: tid } });
+    await prisma.stageDef.deleteMany({ where: { tenantId: tid } });
+    await prisma.stageConfig.deleteMany({ where: { tenantId: tid } });
+    await prisma.entityType.deleteMany({ where: { tenantId: tid } });
+    await prisma.trackDef.deleteMany({ where: { tenantId: tid } });
+    await prisma.role.deleteMany({ where: { tenantId: tid } });
+    await prisma.orgNode.deleteMany({ where: { tenantId: tid } });
+    await prisma.provisioningRun.deleteMany({ where: { tenantId: tid } });
+    await prisma.tenant.delete({ where: { id: tid } });
+  });
 });
