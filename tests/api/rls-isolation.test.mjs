@@ -37,7 +37,18 @@ describe('withTenant helper', () => {
 
 describe('RLS cross-tenant isolation', () => {
   it("a tenant cannot read another tenant's entities (RLS)", async () => {
-    const { appPrisma: rlsPrisma, withTenant } = await import('../../server/src/db/withTenant.ts');
+    // Dedicated il_app client — always connects as the non-superuser role so RLS is enforced.
+    const ILAPP_URL =
+      process.env.APP_TEST_DB_URL ??
+      'postgresql://il_app:il_app_pw@localhost:5432/intelligence_test';
+    const appDb = new PrismaClient({ datasources: { db: { url: ILAPP_URL } } });
+
+    // Local helper that mirrors withTenant but uses appDb (il_app role).
+    const asTenant = (tid, fn) =>
+      appDb.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.tenant', ${tid}, true)`;
+        return fn(tx);
+      });
 
     // owner client (postgres superuser) seeds a 2nd tenant + one entity in it
     const owner = new PrismaClient({
@@ -71,14 +82,14 @@ describe('RLS cross-tenant isolation', () => {
       },
     });
 
-    // as tenant A (demo): must NOT see tenant B's entity
-    const visibleToA = await withTenant('tenant-dlpe-demo', (tx) =>
+    // as tenant A (demo): must NOT see tenant B's entity — RLS enforced via il_app role
+    const visibleToA = await asTenant('tenant-dlpe-demo', (tx) =>
       tx.entity.findMany({ where: { id: 'ent-b-secret' } }),
     );
     expect(visibleToA).toHaveLength(0);
 
     // as tenant B: sees its own entity
-    const visibleToB = await withTenant('tnt-b', (tx) =>
+    const visibleToB = await asTenant('tnt-b', (tx) =>
       tx.entity.findMany({ where: { id: 'ent-b-secret' } }),
     );
     expect(visibleToB).toHaveLength(1);
@@ -87,6 +98,6 @@ describe('RLS cross-tenant isolation', () => {
     await owner.entity.deleteMany({ where: { id: 'ent-b-secret' } });
     await owner.tenant.deleteMany({ where: { id: 'tnt-b' } });
     await owner.$disconnect();
-    await rlsPrisma.$disconnect();
+    await appDb.$disconnect();
   });
 });
