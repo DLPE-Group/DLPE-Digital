@@ -29,6 +29,9 @@ const schema = z.object({
   // Force static SPA serving even outside NODE_ENV=production
   // (accepts "1"/"true"). In production static serving is on by default.
   SERVE_STATIC: z.string().optional().default(''),
+  // Non-superuser connection used to SERVE requests (RLS-enforced). Empty =>
+  // fall back to DATABASE_URL (no RLS isolation; fine for single-tenant dev).
+  APP_DATABASE_URL: z.string().optional().default(''),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -39,6 +42,8 @@ if (!parsed.success) {
 
 export const env = parsed.data;
 export type Env = typeof env;
+
+export const appDatabaseUrl = env.APP_DATABASE_URL || env.DATABASE_URL;
 
 export const isProd = env.NODE_ENV === 'production';
 export const serveStatic = isProd || env.SERVE_STATIC === '1' || env.SERVE_STATIC === 'true';
