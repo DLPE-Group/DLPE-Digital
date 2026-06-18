@@ -31,6 +31,8 @@ import { fleetRouter } from './routes/fleet.js';
 import { notificationsRouter } from './routes/notifications.js';
 import { searchRouter } from './routes/search.js';
 import { recordsRouter } from './routes/records.js';
+import { platformRouter } from './routes/platform.js';
+import { requirePlatformAdmin } from './auth/platform.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -95,6 +97,8 @@ app.use('/api/auth/login', loginLimiter);
 app.use('/api/auth', authRouter);
 app.use('/api', requireAuth);
 app.use('/api', tenantContext);
+
+app.use('/api/platform', requirePlatformAdmin, platformRouter);
 
 app.use('/api/cards', cardsRouter);
 app.use('/api/reports', reportsRouter);

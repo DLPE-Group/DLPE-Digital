@@ -9,6 +9,7 @@ export interface AuthUser {
   roleId: string;
   scopeType: string;
   scopeNodeId: string | null;
+  platformAdmin: boolean;
   secondaryScopes: {
     roleId: string | null;
     scopeType: string;

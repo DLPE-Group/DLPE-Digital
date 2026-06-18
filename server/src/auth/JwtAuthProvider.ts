@@ -28,6 +28,7 @@ async function toAuthUser(userId: string): Promise<AuthUser> {
     roleId: user.roleId,
     scopeType: user.scopeType,
     scopeNodeId: user.scopeNodeId,
+    platformAdmin: user.platformAdmin,
     secondaryScopes: user.secondary.map((s) => ({
       roleId: s.roleId,
       scopeType: s.scopeType,
