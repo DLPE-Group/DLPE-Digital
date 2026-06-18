@@ -8,6 +8,10 @@
     ".": "./index.ts",
     "./stages": "./stages.ts",
     "./dataTypes": "./dataTypes.ts",
-    "./types": "./types.ts"
+    "./types": "./types.ts",
+    "./blueprint": "./blueprint.ts"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
   }
 }
