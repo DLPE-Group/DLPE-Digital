@@ -9,14 +9,16 @@ afterAll(() => prisma.$disconnect());
 // Card/Vehicle are gone.
 describe('entity model integrity (post Card/Vehicle drop)', () => {
   it('seeds 18 pipeline + 4 reference entities, all tenant-stamped', async () => {
-    const [pipeline, reference, nullTenant] = await Promise.all([
+    // tenantId is NOT NULL post-Task-2; verify all rows are stamped via NOT empty string
+    const [pipeline, reference, total, stamped] = await Promise.all([
       prisma.entity.count({ where: { entityType: { kind: 'pipeline' } } }),
       prisma.entity.count({ where: { entityType: { kind: 'reference' } } }),
-      prisma.entity.count({ where: { tenantId: null } }),
+      prisma.entity.count(),
+      prisma.entity.count({ where: { tenantId: { not: '' } } }),
     ]);
     expect(pipeline).toBe(18);
     expect(reference).toBe(4);
-    expect(nullTenant).toBe(0);
+    expect(total - stamped).toBe(0); // all rows have a non-empty tenantId
   });
 
   it('every pipeline entity has a track + stage; reference entities have neither', async () => {

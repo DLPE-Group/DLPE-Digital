@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { TRACK_KEYS, STAGE_CONFIG, DATA_TYPES, TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
-import { loadTenantResolver } from './tenancy.js';
+import { loadTenantResolver, DEMO_TENANT_ID } from './tenancy.js';
 
 const TRACK_META: Record<string, { label: string; color: string; order: number }> = {
   sales: { label: 'Sales', color: 'var(--track-sales)', order: 0 },
@@ -27,20 +27,27 @@ const dataKindFor = (cat: string | undefined): string => (cat === 'Financial' ? 
 export interface MetaCtx {
   trackIdByKey: Record<string, string>;
   typeIdByKey: Record<string, string>;
-  tenantFor: (companyId: string | null) => string | null;
+  tenantFor: (companyId: string | null) => string;
+  tenantId: string;
 }
 
 // Create/refresh the data-driven meta-model (tracks, stages, entity types,
 // fields) from the shared catalogues. Idempotent. Returns lookups + the tenant
 // resolver so callers can build Entity rows.
 export async function seedMetaModel(prisma: PrismaClient): Promise<MetaCtx> {
+  // Derive the demo tenant id from the GROUP org node so meta rows are stamped.
+  const tenantForRaw = await loadTenantResolver(prisma);
+  const tenantId = tenantForRaw(null) ?? DEMO_TENANT_ID; // null companyId → falls back to GROUP's tenantId
+  // Wrap to always return a string (post-Task-2, all rows have a valid tenantId)
+  const tenantFor = (companyId: string | null): string => tenantForRaw(companyId) ?? DEMO_TENANT_ID;
+
   const trackIdByKey: Record<string, string> = {};
   for (const key of TRACK_KEYS) {
     const meta = TRACK_META[key];
     const row = await prisma.trackDef.upsert({
       where: { key },
-      update: { label: meta.label, color: meta.color, order: meta.order, builtin: true },
-      create: { key, label: meta.label, color: meta.color, order: meta.order, builtin: true },
+      update: { label: meta.label, color: meta.color, order: meta.order, builtin: true, tenantId },
+      create: { key, label: meta.label, color: meta.color, order: meta.order, builtin: true, tenantId },
     });
     trackIdByKey[key] = row.id;
   }
@@ -51,8 +58,8 @@ export async function seedMetaModel(prisma: PrismaClient): Promise<MetaCtx> {
       const s = stages[i];
       await prisma.stageDef.upsert({
         where: { trackId_stageId: { trackId: trackIdByKey[key], stageId: s.id } },
-        update: { order: i, label: s.label, sla: s.sla, lock: s.lock ?? null, cta: s.cta },
-        create: { trackId: trackIdByKey[key], order: i, stageId: s.id, label: s.label, sla: s.sla, lock: s.lock ?? null, cta: s.cta },
+        update: { order: i, label: s.label, sla: s.sla, lock: s.lock ?? null, cta: s.cta, tenantId },
+        create: { trackId: trackIdByKey[key], order: i, stageId: s.id, label: s.label, sla: s.sla, lock: s.lock ?? null, cta: s.cta, tenantId },
       });
     }
   }
@@ -63,8 +70,8 @@ export async function seedMetaModel(prisma: PrismaClient): Promise<MetaCtx> {
     const t = PIPELINE_TYPE[key];
     const row = await prisma.entityType.upsert({
       where: { key: t.key },
-      update: { label: t.label, kind: 'pipeline', trackId: trackIdByKey[key], order, builtin: true },
-      create: { key: t.key, label: t.label, kind: 'pipeline', trackId: trackIdByKey[key], order, builtin: true },
+      update: { label: t.label, kind: 'pipeline', trackId: trackIdByKey[key], order, builtin: true, tenantId },
+      create: { key: t.key, label: t.label, kind: 'pipeline', trackId: trackIdByKey[key], order, builtin: true, tenantId },
     });
     typeIdByKey[t.key] = row.id;
     order++;
@@ -72,8 +79,8 @@ export async function seedMetaModel(prisma: PrismaClient): Promise<MetaCtx> {
   for (const rt of REFERENCE_TYPES) {
     const row = await prisma.entityType.upsert({
       where: { key: rt.key },
-      update: { label: rt.label, kind: 'reference', trackId: null, order, builtin: true },
-      create: { key: rt.key, label: rt.label, kind: 'reference', trackId: null, order, builtin: true },
+      update: { label: rt.label, kind: 'reference', trackId: null, order, builtin: true, tenantId },
+      create: { key: rt.key, label: rt.label, kind: 'reference', trackId: null, order, builtin: true, tenantId },
     });
     typeIdByKey[rt.key] = row.id;
     order++;
@@ -87,14 +94,13 @@ export async function seedMetaModel(prisma: PrismaClient): Promise<MetaCtx> {
       const fd = defs[i];
       await prisma.fieldDef.upsert({
         where: { entityTypeId_key: { entityTypeId, key: fd.id } },
-        update: { label: fd.label, category: fd.cat, dataKind: dataKindFor(fd.cat), order: i, builtin: true },
-        create: { entityTypeId, key: fd.id, label: fd.label, category: fd.cat, dataKind: dataKindFor(fd.cat), order: i, builtin: true },
+        update: { label: fd.label, category: fd.cat, dataKind: dataKindFor(fd.cat), order: i, builtin: true, tenantId },
+        create: { entityTypeId, key: fd.id, label: fd.label, category: fd.cat, dataKind: dataKindFor(fd.cat), order: i, builtin: true, tenantId },
       });
     }
   }
 
-  const tenantFor = await loadTenantResolver(prisma);
-  return { trackIdByKey, typeIdByKey, tenantFor };
+  return { trackIdByKey, typeIdByKey, tenantFor, tenantId };
 }
 
 // A legacy card-shaped seed row (track may be the enum 'SALES' or key 'sales').

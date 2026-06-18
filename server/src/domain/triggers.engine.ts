@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import type { CardDTO as Card } from '@dlpe/shared';
 import { trackKeyToEnum } from './cards.service.js';
 import { entityToCardDTO, type EntityRow } from './projection.js';
-import { loadTenantResolver } from './tenancy.js';
+import { loadTenantResolver, DEMO_TENANT_ID } from './tenancy.js';
 
 export interface RunTriggersInput {
   whenTrack: string; // lowercase track key e.g. 'sales'
@@ -23,7 +23,7 @@ const BRUSSELS_FIN_ID = 'f1';
 interface TriggerCtx {
   // pipeline EntityType id by track key (operations → 'operation', finance → 'invoice')
   typeIdByTrack: Record<string, string>;
-  tenantFor: (companyId: string | null) => string | null;
+  tenantFor: (companyId: string | null) => string;
 }
 
 // Build the downstream Entity create payload for a trigger row + source card.
@@ -136,7 +136,8 @@ export async function runTriggers(
     if (t.key === 'operation') typeIdByTrack.operations = t.id;
     if (t.key === 'invoice') typeIdByTrack.finance = t.id;
   }
-  const tenantFor = await loadTenantResolver(tx as unknown as Parameters<typeof loadTenantResolver>[0]);
+  const tenantForRaw = await loadTenantResolver(tx as unknown as Parameters<typeof loadTenantResolver>[0]);
+  const tenantFor = (companyId: string | null): string => tenantForRaw(companyId) ?? DEMO_TENANT_ID;
   const ctx: TriggerCtx = { typeIdByTrack, tenantFor };
 
   const createdCards: Card[] = [];

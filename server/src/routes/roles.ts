@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma.js';
+import { DEMO_TENANT_ID } from '../domain/tenancy.js';
 
 export const rolesRouter: Router = Router();
 
@@ -29,7 +30,7 @@ rolesRouter.post('/roles', async (req, res) => {
   if (!id) return res.status(400).json({ error: 'Could not derive a role id from the name' });
   try {
     const role = await prisma.role.create({
-      data: { id, name: d.name, desc: d.desc, tracks: d.tracks, edit: d.edit, system: d.system, users: 0 },
+      data: { id, name: d.name, desc: d.desc, tracks: d.tracks, edit: d.edit, system: d.system, users: 0, tenantId: DEMO_TENANT_ID },
     });
     res.json(role);
   } catch (e) {
@@ -80,7 +81,7 @@ rolesRouter.post('/roles/:id/clone', async (req, res) => {
   try {
     const result = await prisma.$transaction(async (tx) => {
       const role = await tx.role.create({
-        data: { id: newId, name, desc: src.desc, tracks: src.tracks, edit: 'custom', system: false, users: 0 },
+        data: { id: newId, name, desc: src.desc, tracks: src.tracks, edit: 'custom', system: false, users: 0, tenantId: DEMO_TENANT_ID },
       });
       const srcRules = await tx.fieldRule.findMany({ where: { roleId: src.id } });
       if (srcRules.length) {
@@ -88,6 +89,7 @@ rolesRouter.post('/roles/:id/clone', async (req, res) => {
           data: srcRules.map((r) => ({
             roleId: newId, dataTypeId: r.dataTypeId, fieldId: r.fieldId, scope: r.scope,
             visible: r.visible, editable: r.editable, masked: r.masked, note: r.note,
+            tenantId: DEMO_TENANT_ID,
           })),
         });
       }

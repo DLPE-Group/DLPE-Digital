@@ -1,5 +1,8 @@
 import type { PrismaClient } from '@prisma/client';
 
+// Single demo-tenant id — used as the sole tenantId until multi-tenant provisioning lands.
+export const DEMO_TENANT_ID = 'tenant-dlpe-demo';
+
 // Resolve the Tenant.id for a given company by walking the OrgNode parent chain
 // to find the GROUP node, then looking up the Tenant whose OrgNode GROUP matches.
 // Returns null until tenants are backfilled (Task 2). Pure over preloaded maps

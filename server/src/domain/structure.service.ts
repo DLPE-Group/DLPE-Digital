@@ -1,5 +1,6 @@
 import { prisma } from '../prisma.js';
 import type { OrgNode } from '@prisma/client';
+import { DEMO_TENANT_ID } from './tenancy.js';
 
 export interface TreeNode extends OrgNode {
   children: TreeNode[];
@@ -106,6 +107,7 @@ export async function addCompany(
       meta: (data.meta as object) ?? undefined,
       overrides: (data.overrides as object) ?? undefined,
       parentId,
+      tenantId: DEMO_TENANT_ID,
     },
   });
 }
@@ -122,7 +124,7 @@ export async function addNode(
   const base = (data.code || data.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const id = (KIND_PREFIX[data.kind] ?? 'node-') + base;
   return prisma.orgNode.create({
-    data: { id, kind: data.kind, name: data.name, code: data.code, parentId },
+    data: { id, kind: data.kind, name: data.name, code: data.code, parentId, tenantId: DEMO_TENANT_ID },
   });
 }
 

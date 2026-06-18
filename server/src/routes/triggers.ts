@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma.js';
+import { DEMO_TENANT_ID } from '../domain/tenancy.js';
 
 export const triggersRouter: Router = Router();
 
@@ -20,7 +21,7 @@ const triggerSchema = z.object({
 triggersRouter.post('/triggers', async (req, res) => {
   const parsed = triggerSchema.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid trigger payload' });
-  const row = await prisma.crossTrigger.create({ data: parsed.data });
+  const row = await prisma.crossTrigger.create({ data: { ...parsed.data, tenantId: DEMO_TENANT_ID } });
   res.json(row);
 });
 

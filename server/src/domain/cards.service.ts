@@ -6,7 +6,7 @@ import { buildEffectiveForUser } from '../rbac/context.js';
 import { filterCard } from '../rbac/applyCardRules.js';
 import { visibleCompanyIds } from '../rbac/scope.js';
 import { entityToCardDTO, type EntityRow } from './projection.js';
-import { loadTenantResolver } from './tenancy.js';
+import { loadTenantResolver, DEMO_TENANT_ID } from './tenancy.js';
 
 // Phase 1b: Entity is the source of truth for pipeline items. Load pipeline
 // entities (optionally one track) and project them to the legacy Card shape so
@@ -232,7 +232,8 @@ export async function createCard(
   if (!type) throw new Error(`No entity type for track ${trackKey}`);
   if (!input.customer?.trim()) throw new Error('A title/customer is required');
 
-  const tenantFor = await loadTenantResolver(prisma);
+  const tenantForRaw = await loadTenantResolver(prisma);
+  const tenantFor = (companyId: string | null): string => tenantForRaw(companyId) ?? DEMO_TENANT_ID;
   const stages = await loadStages(trackKeyToEnum(trackKey));
   const stage = stages.find((s) => s.id === input.stageId) ?? stages[0];
   const id = `e-${Date.now().toString(36)}-${Math.round(Math.random() * 1e6).toString(36)}`;

@@ -4,6 +4,7 @@ import { prisma } from '../prisma.js';
 import type { Prisma } from '@prisma/client';
 import { generateProse } from '../ai/reportProse.js';
 import type { ReportSpec } from '@dlpe/shared';
+import { DEMO_TENANT_ID } from '../domain/tenancy.js';
 
 export const reportsRouter: Router = Router();
 
@@ -43,6 +44,7 @@ reportsRouter.post('/', async (req, res) => {
       prose: prose as unknown as Prisma.InputJsonValue,
       when: fmtWhen(now),
       createdById: req.user?.id ?? null,
+      tenantId: DEMO_TENANT_ID,
     },
   });
   res.json({ id: report.id, spec: report.spec, prose: report.prose, when: report.when });

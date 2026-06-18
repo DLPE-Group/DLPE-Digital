@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma.js';
+import { DEMO_TENANT_ID } from '../domain/tenancy.js';
 
 // GET /admin/data-model — the data-driven meta-model (tracks + entity types +
 // fields), plus no-code authoring (create/edit). Mounted under /api/admin, so
@@ -54,7 +55,7 @@ dataModelRouter.post('/data-model/tracks', async (req, res) => {
     return res.status(409).json({ error: `Track "${p.data.key}" already exists` });
   const order = await nextOrder(await prisma.trackDef.findMany());
   const row = await prisma.trackDef.create({
-    data: { key: p.data.key, label: p.data.label, color: p.data.color ?? null, order, builtin: false },
+    data: { key: p.data.key, label: p.data.label, color: p.data.color ?? null, order, builtin: false, tenantId: DEMO_TENANT_ID },
   });
   res.json({ key: row.key, label: row.label, color: row.color });
 });
@@ -91,7 +92,7 @@ dataModelRouter.post('/data-model/types', async (req, res) => {
   }
   const order = await nextOrder(await prisma.entityType.findMany());
   const row = await prisma.entityType.create({
-    data: { key: p.data.key, label: p.data.label, kind: p.data.kind, trackId, order, builtin: false },
+    data: { key: p.data.key, label: p.data.label, kind: p.data.kind, trackId, order, builtin: false, tenantId: DEMO_TENANT_ID },
   });
   res.json({ key: row.key, label: row.label, kind: row.kind });
 });
@@ -122,7 +123,7 @@ dataModelRouter.post('/data-model/types/:key/fields', async (req, res) => {
     return res.status(409).json({ error: `Field "${p.data.key}" already exists on this type` });
   const order = await nextOrder(type.fieldDefs);
   const row = await prisma.fieldDef.create({
-    data: { entityTypeId: type.id, key: p.data.key, label: p.data.label, category: p.data.category ?? null, dataKind: p.data.dataKind, order, builtin: false },
+    data: { entityTypeId: type.id, key: p.data.key, label: p.data.label, category: p.data.category ?? null, dataKind: p.data.dataKind, order, builtin: false, tenantId: DEMO_TENANT_ID },
   });
   res.json({ key: row.key, label: row.label, category: row.category, dataKind: row.dataKind });
 });

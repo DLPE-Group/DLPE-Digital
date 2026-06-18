@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma.js';
+import { DEMO_TENANT_ID } from '../domain/tenancy.js';
 
 export const preferencesRouter: Router = Router();
 
@@ -44,7 +45,7 @@ preferencesRouter.put('/preferences', async (req, res) => {
   const row = await prisma.userPreference.upsert({
     where: { userId },
     update: { prefs: merged },
-    create: { userId, prefs: merged },
+    create: { userId, prefs: merged, tenantId: DEMO_TENANT_ID },
   });
   res.json(row.prefs);
 });

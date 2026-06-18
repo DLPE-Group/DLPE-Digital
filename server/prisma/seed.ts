@@ -96,7 +96,7 @@ const ORG_KIND: Record<string, Prisma.OrgNodeCreateManyInput['kind']> = {
   group: 'GROUP', region: 'REGION', country: 'COUNTRY', company: 'COMPANY',
 };
 
-function flattenTree(node: RawNode, parentId: string | null, out: Prisma.OrgNodeCreateManyInput[]) {
+function flattenTree(node: RawNode, parentId: string | null, out: Prisma.OrgNodeCreateManyInput[], tenantId: string) {
   out.push({
     id: node.id,
     kind: ORG_KIND[node.kind],
@@ -106,8 +106,9 @@ function flattenTree(node: RawNode, parentId: string | null, out: Prisma.OrgNode
     settings: (node.settings as Prisma.InputJsonValue) ?? Prisma.JsonNull,
     overrides: (node.overrides as Prisma.InputJsonValue) ?? Prisma.JsonNull,
     parentId,
+    tenantId,
   });
-  (node.children ?? []).forEach((c) => flattenTree(c, node.id, out));
+  (node.children ?? []).forEach((c) => flattenTree(c, node.id, out, tenantId));
 }
 
 /* ---------------- Roles ---------------- */
@@ -464,13 +465,13 @@ async function main() {
   });
 
   // Org tree (parents before children — flatten emits in pre-order).
+  // tenantId is folded into each row at creation time (GROUP node gets it directly,
+  // all other nodes also get it so the whole tree is stamped in one pass).
   const orgRows: Prisma.OrgNodeCreateManyInput[] = [];
-  flattenTree(GROUP_TREE, null, orgRows);
+  flattenTree(GROUP_TREE, null, orgRows, DEMO_TENANT_ID);
   for (const row of orgRows) {
     await prisma.orgNode.create({ data: row });
   }
-  // Stamp the GROUP node with the demo tenant so tenantFor() returns a valid FK id.
-  await prisma.orgNode.update({ where: { id: 'grp' }, data: { tenantId: DEMO_TENANT_ID } });
 
   // Country defaults.
   for (const [code, d] of Object.entries(COUNTRY_DEFAULTS)) {
@@ -478,7 +479,7 @@ async function main() {
   }
 
   // Roles.
-  await prisma.role.createMany({ data: ROLES });
+  await prisma.role.createMany({ data: ROLES.map((r) => ({ ...r, tenantId: DEMO_TENANT_ID })) });
 
   // Users + secondary scopes.
   for (const u of ADMIN_USERS) {
@@ -497,6 +498,7 @@ async function main() {
         scopeLabel: u.scopeLabel,
         status: u.status as Prisma.UserCreateInput['status'],
         lastSeen: u.lastSeen,
+        tenantId: DEMO_TENANT_ID,
         secondary: {
           create: u.secondary.map((s) => ({
             roleId: ROLE_NAME_TO_ID[s.role] ?? null,
@@ -504,6 +506,7 @@ async function main() {
             scopeNodeId: SCOPE_LABEL_TO_NODE[s.scope] ?? null,
             scopeLabel: s.scope,
             roleLabel: s.role,
+            tenantId: DEMO_TENANT_ID,
           })),
         },
       },
@@ -515,26 +518,26 @@ async function main() {
   for (const [roleId, byType] of Object.entries(FIELD_RULES)) {
     for (const [dataTypeId, byField] of Object.entries(byType)) {
       for (const [fieldId, rule] of Object.entries(byField)) {
-        ruleRows.push({ roleId, dataTypeId, fieldId, scope: 'ANY', visible: rule.visible, editable: rule.editable, masked: rule.masked, note: rule.note ?? null });
+        ruleRows.push({ roleId, dataTypeId, fieldId, scope: 'ANY', visible: rule.visible, editable: rule.editable, masked: rule.masked, note: rule.note ?? null, tenantId: DEMO_TENANT_ID });
       }
     }
   }
   await prisma.fieldRule.createMany({ data: ruleRows });
 
   // RBAC versions.
-  await prisma.rbacVersion.createMany({ data: RBAC_VERSIONS });
+  await prisma.rbacVersion.createMany({ data: RBAC_VERSIONS.map((v) => ({ ...v, tenantId: DEMO_TENANT_ID })) });
 
   // Stage config (ordered per track).
   const stageRows: Prisma.StageConfigCreateManyInput[] = [];
   for (const [track, stages] of Object.entries(STAGE_CONFIG)) {
     stages.forEach((s, i) => {
-      stageRows.push({ track: TRACK_ENUM[track] as Prisma.StageConfigCreateManyInput['track'], order: i, stageId: s.id, label: s.label, sla: s.sla, lock: s.lock, cta: s.cta });
+      stageRows.push({ track: TRACK_ENUM[track] as Prisma.StageConfigCreateManyInput['track'], order: i, stageId: s.id, label: s.label, sla: s.sla, lock: s.lock, cta: s.cta, tenantId: DEMO_TENANT_ID });
     });
   }
   await prisma.stageConfig.createMany({ data: stageRows });
 
   // Cross-track triggers (incl. Brussels rows).
-  await prisma.crossTrigger.createMany({ data: CROSS_TRIGGERS });
+  await prisma.crossTrigger.createMany({ data: CROSS_TRIGGERS.map((t) => ({ ...t, tenantId: DEMO_TENANT_ID })) });
 
   // Data-driven meta-model (tracks, stages, entity types, fields).
   const meta = await seedMetaModel(prisma);
@@ -558,16 +561,18 @@ async function main() {
       vehicle: VEHICLE_TIMELINE.vehicle,
       contractValue: VEHICLE_TIMELINE.contractValue,
       account: VEHICLE_TIMELINE.account,
+      tenantId: DEMO_TENANT_ID,
       events: {
         create: VEHICLE_TIMELINE.events.map((e, i) => ({
           order: i, track: e.track, stage: e.stage, detail: e.detail, date: e.date, owner: e.owner, state: e.state, docs: e.docs ?? [],
+          tenantId: DEMO_TENANT_ID,
         })),
       },
     },
   });
 
   // Portal fleet → FleetOperator + Vehicles + Invoices.
-  await prisma.fleetOperator.create({ data: { name: PORTAL_FLEET.operator, contact: PORTAL_FLEET.contact, companyId: brusselsCompany === 'cmp-brussels' ? 'cmp-rotterdam' : companyFor(PORTAL_FLEET.operator), meta: { messages: 3 } } });
+  await prisma.fleetOperator.create({ data: { name: PORTAL_FLEET.operator, contact: PORTAL_FLEET.contact, companyId: brusselsCompany === 'cmp-brussels' ? 'cmp-rotterdam' : companyFor(PORTAL_FLEET.operator), meta: { messages: 3 }, tenantId: DEMO_TENANT_ID } });
   for (const v of PORTAL_FLEET.vehicles) {
     await prisma.entity.create({
       data: vehicleToEntityCreate(
@@ -577,15 +582,15 @@ async function main() {
     });
   }
   for (const inv of PORTAL_FLEET.invoices) {
-    await prisma.invoice.create({ data: { ref: inv.ref, value: inv.value, due: inv.due, status: inv.status, companyId: companyFor(PORTAL_FLEET.operator) } });
+    await prisma.invoice.create({ data: { ref: inv.ref, value: inv.value, due: inv.due, status: inv.status, companyId: companyFor(PORTAL_FLEET.operator), tenantId: DEMO_TENANT_ID } });
   }
 
   // Sample contract counterparty as an extra fleet operator (SAMPLE_RECORDS context).
-  await prisma.fleetOperator.create({ data: { name: 'Düsseldorf Bau B.V.', contact: 'J. Bakker', companyId: 'cmp-dusseldorf', meta: { vat: 'DE 811 204 119', creditLimit: '€2,000,000' } } });
+  await prisma.fleetOperator.create({ data: { name: 'Düsseldorf Bau B.V.', contact: 'J. Bakker', companyId: 'cmp-dusseldorf', meta: { vat: 'DE 811 204 119', creditLimit: '€2,000,000' }, tenantId: DEMO_TENANT_ID } });
 
   // Integrations.
   await prisma.integration.createMany({
-    data: INTEGRATIONS.map((i) => ({ ...i, nango: false, transforms: 0 })),
+    data: INTEGRATIONS.map((i) => ({ ...i, nango: false, transforms: 0, tenantId: DEMO_TENANT_ID })),
   });
 
   // Audit log (incl. the historical Brussels cascade entry, with children).
@@ -594,7 +599,8 @@ async function main() {
       data: {
         day: a.day, time: a.time, actor: a.actor, actorRole: a.actorRole, verb: a.verb, target: a.target,
         track: a.track, kind: a.kind ?? 'normal', icon: a.icon, isSystem: a.isSystem ?? false,
-        cascades: a.cascades ? { create: a.cascades.map((c, i) => ({ order: i, track: c.track, text: c.text })) } : undefined,
+        tenantId: DEMO_TENANT_ID,
+        cascades: a.cascades ? { create: a.cascades.map((c, i) => ({ order: i, track: c.track, text: c.text, tenantId: DEMO_TENANT_ID })) } : undefined,
       },
     });
   }
@@ -603,13 +609,13 @@ async function main() {
   const primary = ADMIN_USERS.find((u) => u.id === 'u-markus');
   for (const r of SEED_REPORTS) {
     await prisma.report.create({
-      data: { title: r.title, spec: r.spec as Prisma.InputJsonValue, prose: r.prose as Prisma.InputJsonValue, when: r.when, createdById: primary?.id ?? null },
+      data: { title: r.title, spec: r.spec as Prisma.InputJsonValue, prose: r.prose as Prisma.InputJsonValue, when: r.when, createdById: primary?.id ?? null, tenantId: DEMO_TENANT_ID },
     });
   }
 
   // Default dashboard for the primary user (Markus).
   if (primary) {
-    await prisma.dashboardLayout.create({ data: { userId: primary.id, charts: DEFAULT_CHARTS as Prisma.InputJsonValue } });
+    await prisma.dashboardLayout.create({ data: { userId: primary.id, charts: DEFAULT_CHARTS as Prisma.InputJsonValue, tenantId: DEMO_TENANT_ID } });
   }
 
   // Sanity: ensure DATA_TYPES catalogue is referenced (kept for parity with shared).

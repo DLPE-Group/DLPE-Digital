@@ -14,9 +14,17 @@ describe('Tenant foundation', () => {
     expect(demo).toBeTruthy();
 
     // spot-check representative scoped tables are all stamped
-    const orphanEntities = await prisma.entity.count({ where: { tenantId: null } });
-    const orphanUsers = await prisma.user.count({ where: { tenantId: null } });
-    const orphanRoles = await prisma.role.count({ where: { tenantId: null } });
+    // tenantId is now NOT NULL; confirm every row belongs to the demo tenant.
+    const demoId = demo.id;
+    const totalEntities = await prisma.entity.count();
+    const stampedEntities = await prisma.entity.count({ where: { tenantId: demoId } });
+    const totalUsers = await prisma.user.count();
+    const stampedUsers = await prisma.user.count({ where: { tenantId: demoId } });
+    const totalRoles = await prisma.role.count();
+    const stampedRoles = await prisma.role.count({ where: { tenantId: demoId } });
+    const orphanEntities = totalEntities - stampedEntities;
+    const orphanUsers = totalUsers - stampedUsers;
+    const orphanRoles = totalRoles - stampedRoles;
     expect(orphanEntities + orphanUsers + orphanRoles).toBe(0);
   });
 });

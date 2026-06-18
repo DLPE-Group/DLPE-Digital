@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import argon2 from 'argon2';
 import { prisma } from '../prisma.js';
+import { DEMO_TENANT_ID } from '../domain/tenancy.js';
 
 export const usersRouter: Router = Router();
 
@@ -52,6 +53,7 @@ usersRouter.post('/users', async (req, res) => {
         scopeNodeId: d.scopeNodeId ?? null,
         scopeLabel: d.scopeLabel ?? null,
         status: d.status,
+        tenantId: DEMO_TENANT_ID,
       },
       include: userInclude,
     });
@@ -110,6 +112,7 @@ usersRouter.post('/users/:id/scopes', async (req, res) => {
         scopeNodeId: parsed.data.scopeNodeId ?? null,
         scopeLabel: parsed.data.scopeLabel ?? null,
         roleLabel: parsed.data.roleLabel ?? null,
+        tenantId: DEMO_TENANT_ID,
       },
       include: { role: true, scopeNode: true },
     });
@@ -149,6 +152,7 @@ usersRouter.post('/users/import', async (req, res) => {
           scopeType: (col(cells, 'scopetype') as never) ?? 'company',
           scopeLabel: col(cells, 'scopelabel') ?? null,
           status: (col(cells, 'status') as never) ?? 'active',
+          tenantId: DEMO_TENANT_ID,
         },
       });
       created.push(email);

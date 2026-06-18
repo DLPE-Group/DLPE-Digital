@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../prisma.js';
 import { entityToVehicleDTO, type EntityRow } from '../domain/projection.js';
+import { DEMO_TENANT_ID } from '../domain/tenancy.js';
 
 // Exposes fleet data. Vehicles are now reference Entities (entityType=vehicle),
 // projected to the legacy Vehicle shape; Invoice / FleetOperator / PortalMessage
@@ -76,6 +77,7 @@ fleetRouter.post('/portal/messages', async (req, res) => {
       author: req.user?.name ?? null,
       when: `Today · ${when}`,
       body,
+      tenantId: DEMO_TENANT_ID,
     },
   });
   res.json(row);

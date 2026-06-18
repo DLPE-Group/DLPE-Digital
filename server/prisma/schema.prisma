@@ -118,8 +118,8 @@ model OrgNode {
   parentId  String?
   parent    OrgNode?  @relation("OrgChildren", fields: [parentId], references: [id])
   children  OrgNode[] @relation("OrgChildren")
-  tenantId  String?
-  tenant    Tenant?   @relation(fields: [tenantId], references: [id])
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   fleetOps      FleetOperator[]
   invoices      Invoice[]
@@ -149,8 +149,8 @@ model Role {
   users    Int     @default(0)
   edit     String
   desc     String
-  tenantId String?
-  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+  tenantId String
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   usersWithRole User[]      @relation("UserRole")
   scopes        UserScope[]
@@ -178,8 +178,8 @@ model User {
   reports      Report[]
   dashboard    DashboardLayout?
   createdAt    DateTime   @default(now())
-  tenantId     String?
-  tenant       Tenant?    @relation(fields: [tenantId], references: [id])
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
 }
@@ -196,8 +196,8 @@ model UserScope {
   scopeNode   OrgNode?   @relation(fields: [scopeNodeId], references: [id])
   scopeLabel  String?
   roleLabel   String?
-  tenantId    String?
-  tenant      Tenant?    @relation(fields: [tenantId], references: [id])
+  tenantId    String
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([userId])
   @@index([tenantId])
@@ -211,8 +211,8 @@ model Session {
   expiresAt        DateTime
   createdAt        DateTime @default(now())
   revoked          Boolean  @default(false)
-  tenantId         String?
-  tenant           Tenant?  @relation(fields: [tenantId], references: [id])
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([userId])
   @@index([tenantId])
@@ -229,8 +229,8 @@ model FieldRule {
   editable   Boolean
   masked     Boolean
   note       String?
-  tenantId   String?
-  tenant     Tenant?   @relation(fields: [tenantId], references: [id])
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@id([roleId, dataTypeId, fieldId, scope])
   @@index([tenantId])
@@ -244,8 +244,8 @@ model RbacVersion {
   // Full snapshot of the effective FieldRule set at save time — enables
   // transactional "revert to version".
   snapshot Json?
-  tenantId String?
-  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+  tenantId String
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
 }
@@ -261,8 +261,8 @@ model StageConfig {
   sla      Int
   lock     String?
   cta      String
-  tenantId String?
-  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+  tenantId String
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@unique([track, stageId])
   @@index([track, order])
@@ -276,8 +276,8 @@ model CrossTrigger {
   thenTrack String
   thenStage String
   note      String
-  tenantId  String?
-  tenant    Tenant? @relation(fields: [tenantId], references: [id])
+  tenantId  String
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([whenTrack, whenStage])
   @@index([tenantId])
@@ -291,8 +291,8 @@ model FleetOperator {
   companyId String?
   company   OrgNode? @relation(fields: [companyId], references: [id])
   meta      Json?
-  tenantId  String?
-  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
 }
@@ -306,8 +306,8 @@ model Invoice {
   companyId String?
   company   OrgNode? @relation(fields: [companyId], references: [id])
   meta      Json?
-  tenantId  String?
-  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
 }
@@ -319,8 +319,8 @@ model VehicleTimeline {
   contractValue Int?
   account       String?
   events        TimelineEvent[]
-  tenantId      String?
-  tenant        Tenant?         @relation(fields: [tenantId], references: [id])
+  tenantId      String
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
 }
@@ -337,8 +337,8 @@ model TimelineEvent {
   owner      String?
   state      String?
   docs       String[]
-  tenantId   String?
-  tenant     Tenant?         @relation(fields: [tenantId], references: [id])
+  tenantId   String
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([timelineId, order])
   @@index([tenantId])
@@ -359,8 +359,8 @@ model Integration {
   nango      Boolean @default(false)
   transforms Int     @default(0)
   meta       Json?
-  tenantId   String?
-  tenant     Tenant? @relation(fields: [tenantId], references: [id])
+  tenantId   String
+  tenant     Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
 }
@@ -380,8 +380,8 @@ model AuditEntry {
   cascades  AuditCascade[]
   createdAt DateTime        @default(now())
   meta      Json?
-  tenantId  String?
-  tenant    Tenant?         @relation(fields: [tenantId], references: [id])
+  tenantId  String
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([track])
   @@index([tenantId])
@@ -394,8 +394,8 @@ model AuditCascade {
   order    Int        @default(0)
   track    String
   text     String
-  tenantId String?
-  tenant   Tenant?    @relation(fields: [tenantId], references: [id])
+  tenantId String
+  tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([auditId, order])
   @@index([tenantId])
@@ -410,8 +410,8 @@ model Report {
   createdById String?
   createdBy   User?    @relation(fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
-  tenantId    String?
-  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
 }
@@ -421,8 +421,8 @@ model DashboardLayout {
   userId   String  @unique
   user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   charts   Json
-  tenantId String?
-  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+  tenantId String
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
 }
@@ -432,8 +432,8 @@ model DataSharing {
   type     String      @unique
   mode     SharingMode
   note     String
-  tenantId String?
-  tenant   Tenant?     @relation(fields: [tenantId], references: [id])
+  tenantId String
+  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
 }
@@ -443,8 +443,8 @@ model UserPreference {
   userId    String   @id
   prefs     Json
   updatedAt DateTime @updatedAt
-  tenantId  String?
-  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
 }
@@ -457,8 +457,8 @@ model PortalMessage {
   when      String
   body      String
   createdAt DateTime @default(now())
-  tenantId  String?
-  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
 }
@@ -474,8 +474,8 @@ model TrackDef {
   builtin  Boolean      @default(false)
   stages   StageDef[]
   types    EntityType[]
-  tenantId String?
-  tenant   Tenant?      @relation(fields: [tenantId], references: [id])
+  tenantId String
+  tenant   Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
 }
@@ -490,8 +490,8 @@ model StageDef {
   sla      Int      @default(0)
   lock     String?
   cta      String   @default("")
-  tenantId String?
-  tenant   Tenant?  @relation(fields: [tenantId], references: [id])
+  tenantId String
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@unique([trackId, stageId])
   @@index([trackId, order])
@@ -511,8 +511,8 @@ model EntityType {
   builtin   Boolean    @default(false)
   fieldDefs FieldDef[]
   entities  Entity[]
-  tenantId  String?
-  tenant    Tenant?    @relation(fields: [tenantId], references: [id])
+  tenantId  String
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
 }
@@ -527,8 +527,8 @@ model FieldDef {
   dataKind     String     @default("text") // text|money|date|select|number|bool
   order        Int        @default(0)
   builtin      Boolean    @default(false)
-  tenantId     String?
-  tenant       Tenant?    @relation(fields: [tenantId], references: [id])
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@unique([entityTypeId, key])
   @@index([entityTypeId, order])
@@ -537,8 +537,8 @@ model FieldDef {
 
 model Entity {
   id           String     @id
-  tenantId     String?
-  tenant       Tenant?    @relation(fields: [tenantId], references: [id])
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   entityTypeId String
   entityType   EntityType @relation(fields: [entityTypeId], references: [id])
   companyId    String?

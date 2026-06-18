@@ -1,5 +1,6 @@
 import { prisma } from '../prisma.js';
 import type { Prisma } from '@prisma/client';
+import { DEMO_TENANT_ID } from './tenancy.js';
 
 export interface CascadeLine {
   track: string;
@@ -44,8 +45,9 @@ export async function writeAudit(input: WriteAuditInput, tx?: Prisma.Transaction
       icon: input.icon,
       isSystem: input.isSystem ?? false,
       meta: input.meta ?? undefined,
+      tenantId: DEMO_TENANT_ID,
       cascades: input.cascades
-        ? { create: input.cascades.map((c, i) => ({ order: i, track: c.track, text: c.text })) }
+        ? { create: input.cascades.map((c, i) => ({ order: i, track: c.track, text: c.text, tenantId: DEMO_TENANT_ID })) }
         : undefined,
     },
     include: { cascades: { orderBy: { order: 'asc' } } },

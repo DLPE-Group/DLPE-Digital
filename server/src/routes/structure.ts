@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma.js';
 import { getTree, resolveSettingsFor, addCompany, updateNode, addNode, deleteNode } from '../domain/structure.service.js';
+import { DEMO_TENANT_ID } from '../domain/tenancy.js';
 
 export const structureRouter: Router = Router();
 
@@ -95,7 +96,7 @@ structureRouter.put('/data-sharing', async (req, res) => {
       await prisma.dataSharing.upsert({
         where: { type: row.type },
         update: { mode: row.mode, note: row.note },
-        create: { type: row.type, mode: row.mode, note: row.note },
+        create: { type: row.type, mode: row.mode, note: row.note, tenantId: DEMO_TENANT_ID },
       }),
     );
   }

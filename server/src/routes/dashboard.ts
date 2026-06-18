@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma.js';
 import { DEFAULT_CHARTS } from '../domain/aggregations.js';
+import { DEMO_TENANT_ID } from '../domain/tenancy.js';
 
 export const dashboardRouter: Router = Router();
 
@@ -25,7 +26,7 @@ dashboardRouter.put('/dashboard', async (req, res) => {
   const layout = await prisma.dashboardLayout.upsert({
     where: { userId },
     update: { charts },
-    create: { userId, charts },
+    create: { userId, charts, tenantId: DEMO_TENANT_ID },
   });
   res.json({ charts: layout.charts });
 });
