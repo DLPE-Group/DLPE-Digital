@@ -205,11 +205,23 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
   let result: ProvisioningResult;
   try {
     result = await prisma.$transaction(async (tx) => {
-      // 5a. Create the Tenant
-      const ctx = await target.prepare(
-        { slug, name, region, tenantId: args.tenantId },
-        tx,
-      );
+      // 5a. Create the Tenant — guard slug uniqueness with a structured error so
+      //     callers can distinguish "slug taken by another key" from other failures.
+      let ctx: { tenantId: string; slug: string };
+      try {
+        ctx = await target.prepare(
+          { slug, name, region, tenantId: args.tenantId },
+          tx,
+        );
+      } catch (prepErr) {
+        if (
+          prepErr instanceof Prisma.PrismaClientKnownRequestError &&
+          prepErr.code === 'P2002'
+        ) {
+          throw new Error(`slug already in use: ${slug}`);
+        }
+        throw prepErr;
+      }
       const tenantId = ctx.tenantId;
 
       // Prefix for all spec-local IDs to avoid unique clashes across tenants.
