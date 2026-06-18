@@ -32,6 +32,42 @@ describe('provisioning idempotency', () => {
     await prisma.tenant.delete({ where: { id: r1.tenantId } });
   });
 
+  it('retries a FAILED run with the same idempotencyKey without crashing', async () => {
+    const { provisionTenant } = await import('../../server/src/domain/provisioning/provisionTenant.ts');
+    const { SharedDbTarget } = await import('../../server/src/domain/provisioning/target.ts');
+    const iKey = 'retry-failed-key-1';
+    // Seed a blueprint so we have a valid blueprintId for the failed run
+    const bp = await prisma.blueprint.create({
+      data: { key: `auto-${iKey}`, name: 'Test retry blueprint', version: 1, status: 'DRAFT', spec: {} },
+    });
+    // Seed a prior FAILED run with this key
+    await prisma.provisioningRun.create({
+      data: { idempotencyKey: iKey, blueprintId: bp.id, slug: 'retry-co', status: 'FAILED', error: 'simulated failure' },
+    });
+    // Now call provisionTenant with the same key — must succeed and NOT crash
+    const args = {
+      blueprint: { id: bp.id, spec: SPEC },
+      inputs: { slug: 'retry-co' },
+      target: new SharedDbTarget(),
+      idempotencyKey: iKey,
+      prismaClient: prisma,
+    };
+    const result = await provisionTenant(args);
+    expect(result.tenantId).toBeTruthy();
+    expect(result.slug).toBe('retry-co');
+    // Verify SUCCEEDED run was recorded
+    const run = await prisma.provisioningRun.findUnique({ where: { idempotencyKey: iKey } });
+    expect(run?.status).toBe('SUCCEEDED');
+    // cleanup
+    const tid = result.tenantId;
+    await prisma.user.deleteMany({ where: { tenantId: tid } });
+    await prisma.role.deleteMany({ where: { tenantId: tid } });
+    await prisma.orgNode.deleteMany({ where: { tenantId: tid } });
+    await prisma.provisioningRun.deleteMany({ where: { idempotencyKey: iKey } });
+    await prisma.blueprint.delete({ where: { id: bp.id } });
+    await prisma.tenant.delete({ where: { id: tid } });
+  });
+
   it('slug collision from a different idempotencyKey throws structured error', async () => {
     const { provisionTenant } = await import('../../server/src/domain/provisioning/provisionTenant.ts');
     const { SharedDbTarget } = await import('../../server/src/domain/provisioning/target.ts');

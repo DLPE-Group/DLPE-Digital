@@ -144,10 +144,14 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
   if (idempotencyKey) {
     const existing = await prisma.provisioningRun.findUnique({ where: { idempotencyKey: iKey } });
     if (existing?.status === 'SUCCEEDED' && existing.tenantId) {
+      const savedSteps = existing.steps as Record<string, unknown> | null;
+      const savedLink = typeof savedSteps?.adminLoginOrInviteLink === 'string'
+        ? savedSteps.adminLoginOrInviteLink
+        : `/login?email=${encodeURIComponent(spec.adminUser.email)}`;
       return {
         tenantId: existing.tenantId,
         slug: existing.slug,
-        adminLoginOrInviteLink: `/login?email=${encodeURIComponent(spec.adminUser.email)}`,
+        adminLoginOrInviteLink: savedLink,
       };
     }
   }
@@ -169,14 +173,11 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
     blueprintId = bp.id;
   }
 
-  // Create a PENDING ProvisioningRun BEFORE the data transaction
-  const run = await prisma.provisioningRun.create({
-    data: {
-      idempotencyKey: iKey,
-      blueprintId,
-      slug,
-      status: 'PENDING',
-    },
+  // Upsert a PENDING ProvisioningRun — handles both new and PENDING/FAILED retries
+  const run = await prisma.provisioningRun.upsert({
+    where: { idempotencyKey: iKey },
+    create: { idempotencyKey: iKey, blueprintId, slug, status: 'PENDING' },
+    update: { status: 'PENDING', error: null, finishedAt: null, blueprintId, slug },
   });
 
   // ------------------------------------------------------------------
@@ -497,7 +498,12 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
     // ------------------------------------------------------------------
     await prisma.provisioningRun.update({
       where: { id: run.id },
-      data: { status: 'SUCCEEDED', tenantId: result.tenantId, finishedAt: new Date() },
+      data: {
+        status: 'SUCCEEDED',
+        tenantId: result.tenantId,
+        finishedAt: new Date(),
+        steps: { adminLoginOrInviteLink: result.adminLoginOrInviteLink },
+      },
     });
 
     return result;
