@@ -61,6 +61,18 @@ enum TenantStatus {
   ARCHIVED
 }
 
+enum BlueprintStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ProvisioningStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
 enum TenancyMode {
   SHARED
   DEDICATED
@@ -171,15 +183,16 @@ model User {
   scopeNodeId  String?
   scopeNode    OrgNode?   @relation("UserPrimaryScope", fields: [scopeNodeId], references: [id])
   scopeLabel   String?
-  status       UserStatus @default(active)
-  lastSeen     String?
-  secondary    UserScope[]
-  sessions     Session[]
-  reports      Report[]
-  dashboard    DashboardLayout?
-  createdAt    DateTime   @default(now())
-  tenantId     String
-  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  status        UserStatus @default(active)
+  lastSeen      String?
+  platformAdmin Boolean    @default(false)
+  secondary     UserScope[]
+  sessions      Session[]
+  reports       Report[]
+  dashboard     DashboardLayout?
+  createdAt     DateTime   @default(now())
+  tenantId      String
+  tenant        Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
 }
@@ -569,4 +582,35 @@ model Entity {
 
   @@index([tenantId, companyId, entityTypeId, trackId, stageId])
   @@index([tenantId, trackId, stageId, status])
+}
+
+// ---------------- Platform-level provisioning (no tenantId, no RLS) ----------------
+model Blueprint {
+  id             String          @id @default(cuid())
+  key            String          @unique
+  name           String
+  version        Int             @default(1)
+  status         BlueprintStatus @default(DRAFT)
+  spec           Json
+  sourceTenantId String?
+  description    String?
+  createdById    String?
+  createdAt      DateTime        @default(now())
+  runs           ProvisioningRun[]
+}
+
+model ProvisioningRun {
+  id             String             @id @default(cuid())
+  idempotencyKey String             @unique
+  blueprintId    String
+  blueprint      Blueprint          @relation(fields: [blueprintId], references: [id])
+  tenantId       String?
+  slug           String
+  status         ProvisioningStatus @default(PENDING)
+  steps          Json?
+  error          String?
+  createdAt      DateTime           @default(now())
+  finishedAt     DateTime?
+
+  @@index([blueprintId])
 }
