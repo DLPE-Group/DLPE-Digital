@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma.js';
-import { DEMO_TENANT_ID } from '../domain/tenancy.js';
 
 export const integrationsRouter: Router = Router();
 
@@ -38,7 +37,7 @@ integrationsRouter.post('/', async (req, res) => {
       desc: d.desc,
       nango: true,
       transforms: 0,
-      tenantId: DEMO_TENANT_ID,
+      tenantId: req.tenantId!,
     },
   });
   res.json(row);

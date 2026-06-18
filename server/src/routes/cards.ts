@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { listCards, getCard, moveStage, patchCard, createCard, deleteCard } from '../domain/cards.service.js';
 import { runAction, type ActionName } from '../domain/actions.js';
 import { actingUserId } from '../auth/preview.js';
+import { withTenant } from '../db/withTenant.js';
 
 export const cardsRouter: Router = Router();
 
@@ -13,7 +14,9 @@ function actor(req: { user?: { name: string; roleId: string; id?: string } }) {
 cardsRouter.get('/', async (req, res) => {
   const track = typeof req.query.track === 'string' ? req.query.track : undefined;
   try {
-    res.json(await listCards(track, actingUserId(req)));
+    const userId = actingUserId(req);
+    const cards = await withTenant(req.tenantId!, (tx) => listCards(track, userId, tx));
+    res.json(cards);
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }

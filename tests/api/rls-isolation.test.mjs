@@ -1,11 +1,20 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
+import { get, ADMIN } from '../helpers.mjs';
 
 const APP_URL =
   process.env.APP_TEST_DB_URL ??
   'postgresql://il_app:il_app_pw@localhost:5432/intelligence_test';
 const appPrisma = new PrismaClient({ datasources: { db: { url: APP_URL } } });
 afterAll(() => appPrisma.$disconnect());
+
+describe('HTTP tenant contract', () => {
+  it('GET /cards returns 200 with an array for an authenticated admin', async () => {
+    const r = await get('/cards?track=sales', ADMIN());
+    expect(r.status).toBe(200);
+    expect(Array.isArray(r.body)).toBe(true);
+  });
+});
 
 describe('il_app role', () => {
   it('can connect and read as a non-superuser', async () => {

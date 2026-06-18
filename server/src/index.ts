@@ -9,6 +9,7 @@ import { existsSync } from 'node:fs';
 import { env, isProd, serveStatic, corsOrigins } from './env.js';
 import { requireAuth } from './auth/middleware.js';
 import { requireAdmin } from './auth/preview.js';
+import { tenantContext } from './auth/tenantContext.js';
 import { dataModelRouter } from './routes/dataModel.js';
 
 import { authRouter } from './routes/auth.js';
@@ -93,6 +94,7 @@ app.use('/api', apiLimiter);
 app.use('/api/auth/login', loginLimiter);
 app.use('/api/auth', authRouter);
 app.use('/api', requireAuth);
+app.use('/api', tenantContext);
 
 app.use('/api/cards', cardsRouter);
 app.use('/api/reports', reportsRouter);

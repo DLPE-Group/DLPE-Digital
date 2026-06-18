@@ -11,10 +11,10 @@ import { loadTenantResolver, DEMO_TENANT_ID } from './tenancy.js';
 // Phase 1b: Entity is the source of truth for pipeline items. Load pipeline
 // entities (optionally one track) and project them to the legacy Card shape so
 // the rest of this module keeps operating on Card-shaped objects unchanged.
-export async function loadPipelineCards(trackKey?: string): Promise<Card[]> {
+export async function loadPipelineCards(trackKey?: string, tx: Prisma.TransactionClient | typeof prisma = prisma): Promise<Card[]> {
   const where: Prisma.EntityWhereInput = { entityType: { kind: 'pipeline' } };
   if (trackKey) where.trackId = trackKey;
-  const rows = await prisma.entity.findMany({ where, orderBy: { id: 'asc' } });
+  const rows = await tx.entity.findMany({ where, orderBy: { id: 'asc' } });
   return rows.map((e) => entityToCardDTO(e as unknown as EntityRow) as unknown as Card);
 }
 
@@ -61,8 +61,8 @@ export async function loadStages(trackEnum: Track): Promise<StageDef[]> {
   return ((STAGE_CONFIG[key] ?? []) as unknown) as StageDef[];
 }
 
-export async function listCards(track?: string, userId?: string): Promise<Card[]> {
-  let cards = await loadPipelineCards(track);
+export async function listCards(track?: string, userId?: string, tx: Prisma.TransactionClient | typeof prisma = prisma): Promise<Card[]> {
+  let cards = await loadPipelineCards(track, tx);
   if (!userId) return cards;
 
   // Functional access: hide tracks the caller's role(s) cannot view.
