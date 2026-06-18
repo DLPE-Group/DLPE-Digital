@@ -14,9 +14,14 @@ describe('Blueprint + ProvisioningRun tables', () => {
     expect(bp.id).toBeTruthy();
     await prisma.blueprint.delete({ where: { id: bp.id } });
   });
-  it('User has a platformAdmin flag defaulting false', async () => {
-    const u = await prisma.user.findUnique({ where: { id: 'u-robert' } });
+  it('User has a platformAdmin flag (defaults false; seeded demo admin is true)', async () => {
+    // Verify the column exists and is boolean by checking a non-admin user
+    const u = await prisma.user.findUnique({ where: { id: 'u-markus' } });
+    expect(typeof u.platformAdmin).toBe('boolean');
     expect(u.platformAdmin).toBe(false);
+    // u-robert is seeded as platformAdmin: true in the dlpe-demo blueprint
+    const r = await prisma.user.findUnique({ where: { id: 'u-robert' } });
+    expect(r.platformAdmin).toBe(true);
   });
 });
 

@@ -1,13 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { get, post, req, token, TEST_DB_URL } from '../helpers.mjs';
 const prisma = new PrismaClient({ datasources: { db: { url: TEST_DB_URL } } });
 
-// a platform-admin principal + a normal (tenant) admin
+// u-robert is seeded as platformAdmin: true in dlpe-demo blueprint — no setup/teardown needed
 const PLATFORM = () => token('u-robert', 'r.mertens@group.eu', 'group-admin');
-beforeAll(async () => { await prisma.user.update({ where: { id: 'u-robert' }, data: { platformAdmin: true } }); });
 afterAll(async () => {
-  await prisma.user.update({ where: { id: 'u-robert' }, data: { platformAdmin: false } });
   await prisma.$disconnect();
 });
 
