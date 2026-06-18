@@ -10,6 +10,12 @@ export const ControlPlaneView = () => {
   const [blueprints, setBlueprints] = React.useState([]);
   const [err, setErr] = React.useState(null);
 
+  // Provision form state
+  const [bpKey, setBpKey] = React.useState('');
+  const [inputs, setInputs] = React.useState({});
+  const [result, setResult] = React.useState(null);
+  const [provisioning, setProvisioning] = React.useState(false);
+
   const reload = React.useCallback(() => {
     Promise.all([api.get('/platform/tenants'), api.get('/platform/blueprints')])
       .then(([t, b]) => { setTenants(t); setBlueprints(b); })
@@ -22,6 +28,57 @@ export const ControlPlaneView = () => {
     try { await api.patch(`/platform/tenants/${id}`, { status }); reload(); }
     catch (e) { setErr(e.message); }
   };
+
+  // Derived: selected blueprint object and its spec.inputs
+  const selectedBp = blueprints.find((b) => b.key === bpKey) || null;
+  const specInputs = selectedBp?.spec?.inputs || [];
+
+  const handleBpChange = (e) => {
+    setBpKey(e.target.value);
+    setInputs({});
+    setResult(null);
+    setErr(null);
+  };
+
+  const handleInputChange = (key, value) => {
+    setInputs((prev) => ({ ...prev, [key]: value }));
+  };
+
+  // Guard: required inputs must be non-empty
+  const requiredFilled = bpKey && specInputs
+    .filter((i) => i.required)
+    .every((i) => (inputs[i.key] || '').trim() !== '');
+
+  // idempotency key: use slug or customerName provided by user; disable if neither available and no other inputs
+  const idempotencySuffix = inputs.slug || inputs.customerName || '';
+  const canSubmit = requiredFilled && idempotencySuffix.trim() !== '';
+
+  const provision = async (e) => {
+    e.preventDefault();
+    setErr(null);
+    setResult(null);
+    setProvisioning(true);
+    try {
+      const r = await api.post('/platform/tenants', {
+        blueprintKey: bpKey,
+        inputs,
+        idempotencyKey: `cp-${bpKey}-${idempotencySuffix}`,
+      });
+      setResult(r);
+      reload();
+    } catch (ex) {
+      setErr(ex.message);
+    } finally {
+      setProvisioning(false);
+    }
+  };
+
+  // Sort blueprints: PUBLISHED first
+  const sortedBlueprints = [...blueprints].sort((a, b) => {
+    if (a.status === 'PUBLISHED' && b.status !== 'PUBLISHED') return -1;
+    if (a.status !== 'PUBLISHED' && b.status === 'PUBLISHED') return 1;
+    return 0;
+  });
 
   return (
     <>
@@ -39,6 +96,89 @@ export const ControlPlaneView = () => {
 
       {tenants && (
         <div style={{ display: 'grid', gap: 24, marginTop: 8 }}>
+
+          {/* ── Provision new customer ── */}
+          <section>
+            <SectionHead icon="plus" label="Provision new customer" />
+            <div style={card}>
+              <form onSubmit={provision} style={{ display: 'grid', gap: 14 }}>
+                {/* Blueprint picker */}
+                <label style={fieldLabel}>
+                  Blueprint
+                  <select
+                    value={bpKey}
+                    onChange={handleBpChange}
+                    style={selectStyle}
+                  >
+                    <option value="">— select a blueprint —</option>
+                    {sortedBlueprints.map((b) => (
+                      <option key={b.key} value={b.key}>
+                        {b.name} ({b.key}) · v{b.version}
+                        {b.status !== 'PUBLISHED' ? ` [${b.status}]` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {/* Dynamic inputs from spec */}
+                {specInputs.length > 0 && (
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {specInputs.map((inp) => (
+                      <label key={inp.key} style={fieldLabel}>
+                        {inp.label}
+                        {inp.required && <span style={{ color: 'var(--status-red, #e05)', marginLeft: 2 }}>*</span>}
+                        <input
+                          type="text"
+                          value={inputs[inp.key] || ''}
+                          onChange={(e) => handleInputChange(inp.key, e.target.value)}
+                          placeholder={inp.default != null ? String(inp.default) : ''}
+                          style={inputStyle}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                {/* Uniqueness hint when slug/customerName not in spec */}
+                {specInputs.length > 0 && !specInputs.some((i) => i.key === 'slug' || i.key === 'customerName') && (
+                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                    Provide a <code style={codeChip}>slug</code> or <code style={codeChip}>customerName</code> input in the blueprint spec to enable submission.
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <button
+                    type="submit"
+                    disabled={!canSubmit || provisioning}
+                    style={canSubmit && !provisioning ? primaryBtn : disabledBtn}
+                  >
+                    {provisioning ? 'Provisioning…' : 'Provision'}
+                  </button>
+                  {!canSubmit && bpKey && (
+                    <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                      Fill all required fields (marked *) including a unique slug or customer name.
+                    </span>
+                  )}
+                </div>
+
+                {/* Success result */}
+                {result && (
+                  <div style={successBar}>
+                    <strong>Provisioned:</strong> <code style={codeChip}>{result.slug}</code>
+                    {result.adminLoginOrInviteLink && (
+                      <>
+                        {' — '}
+                        <a href={result.adminLoginOrInviteLink} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--status-green, #0a0)' }}>
+                          Admin invite link
+                        </a>
+                      </>
+                    )}
+                  </div>
+                )}
+              </form>
+            </div>
+          </section>
+
           <section>
             <SectionHead icon="user" label="Tenants" count={tenants.length} />
             <div style={{ display: 'grid', gap: 10 }}>
@@ -111,3 +251,9 @@ const verBadge = { fontSize: 11, padding: '1px 6px', borderRadius: 3, background
 const miniBtn = { fontSize: 12, padding: '3px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-secondary)', cursor: 'pointer' };
 const warnBtn = { fontSize: 12, padding: '3px 8px', borderRadius: 5, border: '1px solid var(--status-red, #e05)', background: 'var(--bg)', color: 'var(--status-red, #e05)', cursor: 'pointer' };
 const errBar = { margin: '10px 0', padding: '8px 12px', borderRadius: 6, background: 'var(--bg-muted)', border: '1px solid var(--status-red, #e05)', color: 'var(--status-red, #e05)', fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' };
+const fieldLabel = { display: 'flex', flexDirection: 'column', gap: 5, fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 };
+const selectStyle = { fontSize: 13, padding: '5px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-primary)', cursor: 'pointer', marginTop: 2 };
+const inputStyle = { fontSize: 13, padding: '5px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-primary)', marginTop: 2 };
+const primaryBtn = { fontSize: 13, padding: '5px 14px', borderRadius: 5, border: '1px solid var(--accent, #0070f3)', background: 'var(--accent, #0070f3)', color: '#fff', cursor: 'pointer', fontWeight: 500 };
+const disabledBtn = { fontSize: 13, padding: '5px 14px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg-muted)', color: 'var(--text-tertiary)', cursor: 'not-allowed', fontWeight: 500 };
+const successBar = { padding: '8px 12px', borderRadius: 6, background: 'rgba(0,160,80,0.08)', border: '1px solid rgba(0,160,80,0.25)', color: 'var(--status-green, #0a0)', fontSize: 13 };
