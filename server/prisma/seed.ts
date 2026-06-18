@@ -448,6 +448,20 @@ async function main() {
   await prisma.role.deleteMany();
   await prisma.countryDefaults.deleteMany();
   await prisma.orgNode.deleteMany();
+  await prisma.tenant.deleteMany();
+
+  // Tenant (single demo tenant — Task 1 foundation; backfill of existing rows in Task 2).
+  const DEMO_TENANT_ID = 'tenant-dlpe-demo';
+  await prisma.tenant.create({
+    data: {
+      id: DEMO_TENANT_ID,
+      slug: 'dlpe-demo',
+      name: 'DLPE Demo',
+      status: 'ACTIVE',
+      tenancyMode: 'SHARED',
+      region: 'eu',
+    },
+  });
 
   // Org tree (parents before children — flatten emits in pre-order).
   const orgRows: Prisma.OrgNodeCreateManyInput[] = [];
@@ -455,6 +469,8 @@ async function main() {
   for (const row of orgRows) {
     await prisma.orgNode.create({ data: row });
   }
+  // Stamp the GROUP node with the demo tenant so tenantFor() returns a valid FK id.
+  await prisma.orgNode.update({ where: { id: 'grp' }, data: { tenantId: DEMO_TENANT_ID } });
 
   // Country defaults.
   for (const [code, d] of Object.entries(COUNTRY_DEFAULTS)) {

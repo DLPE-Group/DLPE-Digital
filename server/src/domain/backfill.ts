@@ -120,14 +120,16 @@ export interface CardSeed {
 }
 
 // Map a card-shaped seed row to an Entity create payload (pipeline kind).
-export function cardToEntityCreate(c: CardSeed, ctx: MetaCtx): Prisma.EntityCreateInput {
+// Uses EntityUncheckedCreateInput so that tenantId can be passed as a raw scalar
+// (the checked type requires `tenant: { connect: ... }` once the relation exists).
+export function cardToEntityCreate(c: CardSeed, ctx: MetaCtx): Prisma.EntityUncheckedCreateInput {
   const trackKey = TRACK_KEY_FROM_ENUM[c.track] ?? c.track.toLowerCase();
   const typeKey = PIPELINE_TYPE[trackKey]?.key ?? 'operation';
   return {
     id: c.id,
     tenantId: ctx.tenantFor(c.companyId ?? null),
-    entityType: { connect: { id: ctx.typeIdByKey[typeKey] } },
-    company: c.companyId ? { connect: { id: c.companyId } } : undefined,
+    entityTypeId: ctx.typeIdByKey[typeKey],
+    companyId: c.companyId ?? null,
     title: c.customer,
     value: c.value ?? null,
     owner: c.owner,
@@ -158,12 +160,13 @@ export interface VehicleSeed {
 }
 
 // Map a vehicle-shaped seed row to an Entity create payload (reference kind).
-export function vehicleToEntityCreate(v: VehicleSeed, ctx: MetaCtx): Prisma.EntityCreateInput {
+// Uses EntityUncheckedCreateInput so that tenantId can be passed as a raw scalar.
+export function vehicleToEntityCreate(v: VehicleSeed, ctx: MetaCtx): Prisma.EntityUncheckedCreateInput {
   return {
     id: v.id ?? `veh-${v.plate.replace(/[^A-Za-z0-9]/g, '')}`,
     tenantId: ctx.tenantFor(v.companyId ?? null),
-    entityType: { connect: { id: ctx.typeIdByKey['vehicle'] } },
-    company: v.companyId ? { connect: { id: v.companyId } } : undefined,
+    entityTypeId: ctx.typeIdByKey['vehicle'],
+    companyId: v.companyId ?? null,
     title: v.plate,
     status: v.status ?? null,
     sources: [],

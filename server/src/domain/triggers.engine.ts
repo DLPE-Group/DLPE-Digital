@@ -27,14 +27,16 @@ interface TriggerCtx {
 }
 
 // Build the downstream Entity create payload for a trigger row + source card.
+// Uses EntityUncheckedCreateInput so that tenantId can be passed as a raw scalar
+// (the checked type requires `tenant: { connect: ... }` once the relation exists).
 function buildEntityForTrigger(
   trigger: { thenTrack: string; thenStage: string; note: string },
   source: Card,
   ctx: TriggerCtx,
-): { id: string; data: Prisma.EntityCreateInput } | null {
+): { id: string; data: Prisma.EntityUncheckedCreateInput } | null {
   const then = trigger.thenTrack;
   const tenantId = ctx.tenantFor(source.companyId ?? null);
-  const companyConnect = source.companyId ? { connect: { id: source.companyId } } : undefined;
+  const companyId = source.companyId ?? null;
 
   // --- Brussels cascade (sales · Contract signed) ---
   if (then === 'operations' && trigger.thenStage === 'Vehicle ordered') {
@@ -43,8 +45,8 @@ function buildEntityForTrigger(
       data: {
         id: BRUSSELS_OPS_ID,
         tenantId,
-        entityType: { connect: { id: ctx.typeIdByTrack.operations } },
-        company: companyConnect,
+        entityTypeId: ctx.typeIdByTrack.operations,
+        companyId,
         title: source.customer,
         value: null,
         owner: 'Tom Janssens',
@@ -68,8 +70,8 @@ function buildEntityForTrigger(
       data: {
         id: BRUSSELS_FIN_ID,
         tenantId,
-        entityType: { connect: { id: ctx.typeIdByTrack.finance } },
-        company: companyConnect,
+        entityTypeId: ctx.typeIdByTrack.finance,
+        companyId,
         title: source.customer,
         value: source.value ?? 2460000,
         owner: 'Ines Vandeput',
@@ -95,8 +97,8 @@ function buildEntityForTrigger(
       data: {
         id: `f-${source.id}-supplier`,
         tenantId,
-        entityType: { connect: { id: ctx.typeIdByTrack.finance } },
-        company: companyConnect,
+        entityTypeId: ctx.typeIdByTrack.finance,
+        companyId,
         title: source.customer,
         value: source.value ?? null,
         owner: 'Ines Vandeput',

@@ -54,6 +54,58 @@ enum RuleScope {
   ROTTERDAM
 }
 
+enum TenantStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum TenancyMode {
+  SHARED
+  DEDICATED
+}
+
+// ---------------- Tenant (multi-tenancy foundation) ----------------
+model Tenant {
+  id          String       @id @default(cuid())
+  slug        String       @unique // subdomain-safe
+  name        String
+  status      TenantStatus @default(ACTIVE)
+  tenancyMode TenancyMode  @default(SHARED)
+  region      String       @default("eu")
+  settings    Json?
+  createdAt   DateTime     @default(now())
+
+  // back-relations (one tenant → many rows in each scoped model)
+  orgNodes        OrgNode[]
+  roles           Role[]
+  users           User[]
+  userScopes      UserScope[]
+  sessions        Session[]
+  fieldRules      FieldRule[]
+  rbacVersions    RbacVersion[]
+  stageConfigs    StageConfig[]
+  crossTriggers   CrossTrigger[]
+  fleetOperators  FleetOperator[]
+  invoices        Invoice[]
+  vehicleTimelines VehicleTimeline[]
+  timelineEvents  TimelineEvent[]
+  integrations    Integration[]
+  auditEntries    AuditEntry[]
+  auditCascades   AuditCascade[]
+  reports         Report[]
+  dashboardLayouts DashboardLayout[]
+  dataSharings    DataSharing[]
+  userPreferences UserPreference[]
+  portalMessages  PortalMessage[]
+  trackDefs       TrackDef[]
+  stageDefs       StageDef[]
+  entityTypes     EntityType[]
+  fieldDefs       FieldDef[]
+  entities        Entity[]
+}
+
 // ---------------- Org tree (group → region → country → company) ----------------
 model OrgNode {
   id        String    @id
@@ -66,6 +118,8 @@ model OrgNode {
   parentId  String?
   parent    OrgNode?  @relation("OrgChildren", fields: [parentId], references: [id])
   children  OrgNode[] @relation("OrgChildren")
+  tenantId  String?
+  tenant    Tenant?   @relation(fields: [tenantId], references: [id])
 
   fleetOps      FleetOperator[]
   invoices      Invoice[]
@@ -74,6 +128,7 @@ model OrgNode {
   userScopes    UserScope[]
 
   @@index([parentId])
+  @@index([tenantId])
 }
 
 model CountryDefaults {
@@ -87,17 +142,21 @@ model CountryDefaults {
 
 // ---------------- Roles + users ----------------
 model Role {
-  id     String  @id
-  name   String
-  system Boolean @default(true)
-  tracks String[]
-  users  Int     @default(0)
-  edit   String
-  desc   String
+  id       String  @id
+  name     String
+  system   Boolean @default(true)
+  tracks   String[]
+  users    Int     @default(0)
+  edit     String
+  desc     String
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
 
   usersWithRole User[]      @relation("UserRole")
   scopes        UserScope[]
   fieldRules    FieldRule[]
+
+  @@index([tenantId])
 }
 
 model User {
@@ -119,6 +178,10 @@ model User {
   reports      Report[]
   dashboard    DashboardLayout?
   createdAt    DateTime   @default(now())
+  tenantId     String?
+  tenant       Tenant?    @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
 }
 
 // Secondary scopes for a user (each is a role/scope pair).
@@ -133,8 +196,11 @@ model UserScope {
   scopeNode   OrgNode?   @relation(fields: [scopeNodeId], references: [id])
   scopeLabel  String?
   roleLabel   String?
+  tenantId    String?
+  tenant      Tenant?    @relation(fields: [tenantId], references: [id])
 
   @@index([userId])
+  @@index([tenantId])
 }
 
 model Session {
@@ -145,8 +211,11 @@ model Session {
   expiresAt        DateTime
   createdAt        DateTime @default(now())
   revoked          Boolean  @default(false)
+  tenantId         String?
+  tenant           Tenant?  @relation(fields: [tenantId], references: [id])
 
   @@index([userId])
+  @@index([tenantId])
 }
 
 // ---------------- RBAC field rules (diffs from DEFAULT_RULE) ----------------
@@ -160,18 +229,25 @@ model FieldRule {
   editable   Boolean
   masked     Boolean
   note       String?
+  tenantId   String?
+  tenant     Tenant?   @relation(fields: [tenantId], references: [id])
 
   @@id([roleId, dataTypeId, fieldId, scope])
+  @@index([tenantId])
 }
 
 model RbacVersion {
-  v        Int    @id
+  v        Int     @id
   when     String
   actor    String
   note     String
   // Full snapshot of the effective FieldRule set at save time — enables
   // transactional "revert to version".
   snapshot Json?
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
 }
 
 // ---------------- Stage config + cross-track triggers ----------------
@@ -180,25 +256,31 @@ model StageConfig {
   track Track
   order Int
   // stage definition
-  stageId String
-  label   String
-  sla     Int
-  lock    String?
-  cta     String
+  stageId  String
+  label    String
+  sla      Int
+  lock     String?
+  cta      String
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
 
   @@unique([track, stageId])
   @@index([track, order])
+  @@index([tenantId])
 }
 
 model CrossTrigger {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   whenTrack String
   whenStage String
   thenTrack String
   thenStage String
   note      String
+  tenantId  String?
+  tenant    Tenant? @relation(fields: [tenantId], references: [id])
 
   @@index([whenTrack, whenStage])
+  @@index([tenantId])
 }
 
 // ---------------- Domain mock-shape models ----------------
@@ -209,6 +291,10 @@ model FleetOperator {
   companyId String?
   company   OrgNode? @relation(fields: [companyId], references: [id])
   meta      Json?
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
 }
 
 model Invoice {
@@ -220,6 +306,10 @@ model Invoice {
   companyId String?
   company   OrgNode? @relation(fields: [companyId], references: [id])
   meta      Json?
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
 }
 
 model VehicleTimeline {
@@ -229,6 +319,10 @@ model VehicleTimeline {
   contractValue Int?
   account       String?
   events        TimelineEvent[]
+  tenantId      String?
+  tenant        Tenant?         @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
 }
 
 model TimelineEvent {
@@ -243,8 +337,11 @@ model TimelineEvent {
   owner      String?
   state      String?
   docs       String[]
+  tenantId   String?
+  tenant     Tenant?         @relation(fields: [tenantId], references: [id])
 
   @@index([timelineId, order])
+  @@index([tenantId])
 }
 
 // ---------------- Integrations / audit / reports / dashboard ----------------
@@ -262,6 +359,10 @@ model Integration {
   nango      Boolean @default(false)
   transforms Int     @default(0)
   meta       Json?
+  tenantId   String?
+  tenant     Tenant? @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
 }
 
 model AuditEntry {
@@ -279,19 +380,25 @@ model AuditEntry {
   cascades  AuditCascade[]
   createdAt DateTime        @default(now())
   meta      Json?
+  tenantId  String?
+  tenant    Tenant?         @relation(fields: [tenantId], references: [id])
 
   @@index([track])
+  @@index([tenantId])
 }
 
 model AuditCascade {
-  id      String     @id @default(cuid())
-  auditId String
-  audit   AuditEntry @relation(fields: [auditId], references: [id], onDelete: Cascade)
-  order   Int        @default(0)
-  track   String
-  text    String
+  id       String     @id @default(cuid())
+  auditId  String
+  audit    AuditEntry @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  order    Int        @default(0)
+  track    String
+  text     String
+  tenantId String?
+  tenant   Tenant?    @relation(fields: [tenantId], references: [id])
 
   @@index([auditId, order])
+  @@index([tenantId])
 }
 
 model Report {
@@ -303,20 +410,32 @@ model Report {
   createdById String?
   createdBy   User?    @relation(fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
 }
 
 model DashboardLayout {
-  id     String @id @default(cuid())
-  userId String @unique
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  charts Json
+  id       String  @id @default(cuid())
+  userId   String  @unique
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  charts   Json
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
 }
 
 model DataSharing {
-  id   String      @id @default(cuid())
-  type String      @unique
-  mode SharingMode
-  note String
+  id       String      @id @default(cuid())
+  type     String      @unique
+  mode     SharingMode
+  note     String
+  tenantId String?
+  tenant   Tenant?     @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
 }
 
 // Per-user settings (the Settings → Notifications & rules toggles).
@@ -324,6 +443,10 @@ model UserPreference {
   userId    String   @id
   prefs     Json
   updatedAt DateTime @updatedAt
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
 }
 
 // Customer-portal messages to the account team.
@@ -334,34 +457,45 @@ model PortalMessage {
   when      String
   body      String
   createdAt DateTime @default(now())
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
 }
 
 // ---------------- Generic entity meta-model (Phase 1a, parallel to Card/Vehicle) ----------------
 model TrackDef {
-  id      String       @id @default(cuid())
-  key     String       @unique
-  label   String
-  color   String?
-  icon    String?
-  order   Int          @default(0)
-  builtin Boolean      @default(false)
-  stages  StageDef[]
-  types   EntityType[]
+  id       String       @id @default(cuid())
+  key      String       @unique
+  label    String
+  color    String?
+  icon     String?
+  order    Int          @default(0)
+  builtin  Boolean      @default(false)
+  stages   StageDef[]
+  types    EntityType[]
+  tenantId String?
+  tenant   Tenant?      @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
 }
 
 model StageDef {
-  id      String   @id @default(cuid())
-  trackId String
-  track   TrackDef @relation(fields: [trackId], references: [id], onDelete: Cascade)
-  order   Int
-  stageId String
-  label   String
-  sla     Int      @default(0)
-  lock    String?
-  cta     String   @default("")
+  id       String   @id @default(cuid())
+  trackId  String
+  track    TrackDef @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  order    Int
+  stageId  String
+  label    String
+  sla      Int      @default(0)
+  lock     String?
+  cta      String   @default("")
+  tenantId String?
+  tenant   Tenant?  @relation(fields: [tenantId], references: [id])
 
   @@unique([trackId, stageId])
   @@index([trackId, order])
+  @@index([tenantId])
 }
 
 model EntityType {
@@ -377,6 +511,10 @@ model EntityType {
   builtin   Boolean    @default(false)
   fieldDefs FieldDef[]
   entities  Entity[]
+  tenantId  String?
+  tenant    Tenant?    @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
 }
 
 model FieldDef {
@@ -389,14 +527,18 @@ model FieldDef {
   dataKind     String     @default("text") // text|money|date|select|number|bool
   order        Int        @default(0)
   builtin      Boolean    @default(false)
+  tenantId     String?
+  tenant       Tenant?    @relation(fields: [tenantId], references: [id])
 
   @@unique([entityTypeId, key])
   @@index([entityTypeId, order])
+  @@index([tenantId])
 }
 
 model Entity {
   id           String     @id
   tenantId     String?
+  tenant       Tenant?    @relation(fields: [tenantId], references: [id])
   entityTypeId String
   entityType   EntityType @relation(fields: [entityTypeId], references: [id])
   companyId    String?

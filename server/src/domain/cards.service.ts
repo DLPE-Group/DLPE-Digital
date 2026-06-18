@@ -241,8 +241,8 @@ export async function createCard(
     data: {
       id,
       tenantId: tenantFor(input.companyId ?? null),
-      entityType: { connect: { id: type.id } },
-      company: input.companyId ? { connect: { id: input.companyId } } : undefined,
+      entityTypeId: type.id,
+      companyId: input.companyId ?? null,
       title: input.customer,
       value: input.value ?? null,
       owner: input.owner ?? actor.name,
