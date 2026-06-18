@@ -1,7 +1,7 @@
 // tests/api/tenant-foundation.test.mjs
 import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import { TEST_DB_URL } from '../helpers.mjs';
+import { TEST_DB_URL, get, ADMIN } from '../helpers.mjs';
 
 const prisma = new PrismaClient({ datasources: { db: { url: TEST_DB_URL } } });
 afterAll(() => prisma.$disconnect());
@@ -26,5 +26,12 @@ describe('Tenant foundation', () => {
     const orphanUsers = totalUsers - stampedUsers;
     const orphanRoles = totalRoles - stampedRoles;
     expect(orphanEntities + orphanUsers + orphanRoles).toBe(0);
+  });
+
+  it('exposes the tenant on /me/permissions principal', async () => {
+    const r = await get('/me/permissions', ADMIN());
+    expect(r.status).toBe(200);
+    // permissions endpoint echoes the principal; tenantId must be present
+    expect(r.body.tenantId ?? r.body.user?.tenantId).toBe('tenant-dlpe-demo');
   });
 });

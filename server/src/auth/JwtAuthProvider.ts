@@ -22,6 +22,7 @@ async function toAuthUser(userId: string): Promise<AuthUser> {
   if (user.status === 'disabled') throw new Error('User is disabled');
   return {
     id: user.id,
+    tenantId: user.tenantId,
     email: user.email,
     name: user.name,
     roleId: user.roleId,

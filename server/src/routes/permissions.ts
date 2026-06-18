@@ -27,6 +27,7 @@ permissionsRouter.get('/permissions', async (req, res) => {
   const allowedTracks = await userAllowedTracks(actingId);
 
   res.json({
+    tenantId: req.user?.tenantId,
     roleIds,
     scopeType: actingUser.scopeType,
     scopeNodeId: actingUser.scopeNodeId,
