@@ -142,7 +142,7 @@ export const UserSpec = z.object({
   scopeType: z.string(),
   scopeLabel: z.string().optional(),
   scopeNodeId: z.string().optional(),
-  status: z.enum(['active', 'invited', 'disabled']).default('active'),
+  status: z.enum(['active', 'invited', 'disabled']).optional(),
   password: z.string().optional(),
   secondary: z.array(z.object({
     roleId: z.string().optional(),

@@ -180,6 +180,26 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
   });
 
   // ------------------------------------------------------------------
+  // 4b. Pre-compute argon2 hashes OUTSIDE the transaction (CPU-slow ~64ms each)
+  // ------------------------------------------------------------------
+
+  // Admin user hash
+  let adminPasswordHashPre: string;
+  let adminInviteTokenPre: string | null = null;
+  if (spec.adminUser.password) {
+    adminPasswordHashPre = await argon2.hash(spec.adminUser.password);
+  } else {
+    adminInviteTokenPre = randomUUID();
+    adminPasswordHashPre = await argon2.hash(adminInviteTokenPre); // placeholder; redeemed via invite flow
+  }
+
+  // spec.users[] hashes: users with no password get 'demo1234' default (matching seed.ts)
+  const precomputedUserHashes = new Map<string, string>();
+  for (const u of spec.users ?? []) {
+    precomputedUserHashes.set(u.id, await argon2.hash(u.password ?? 'demo1234'));
+  }
+
+  // ------------------------------------------------------------------
   // 5. Atomic data transaction
   // ------------------------------------------------------------------
   let result: ProvisioningResult;
@@ -383,22 +403,9 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
         specUsersById.set(uid, u);
       }
 
-      // Hash helper — argon2 hash password if provided, else use 'demo1234' as default
-      // for seeded demo users (matching seed.ts which hashes 'demo1234').
-      async function hashPassword(pw: string | undefined): Promise<string> {
-        return argon2.hash(pw ?? 'demo1234');
-      }
-
-      // Determine admin user status: 'invited' when no password, 'active' when password present.
-      // Invite redemption flow is deferred — inviteToken is stored as a placeholder hash for now.
-      let adminPasswordHash: string;
-      let adminInviteToken: string | null = null;
-      if (adminUser.password) {
-        adminPasswordHash = await argon2.hash(adminUser.password);
-      } else {
-        adminInviteToken = randomUUID();
-        adminPasswordHash = await argon2.hash(adminInviteToken); // placeholder; redeemed via invite flow
-      }
+      // Use pre-computed hashes (computed outside the tx to avoid holding it open).
+      const adminPasswordHash = adminPasswordHashPre;
+      const adminInviteToken = adminInviteTokenPre;
       const adminStatus = adminUser.password ? 'active' : 'invited';
 
       // Create spec.users[] first (may include a duplicate of admin — de-duplicated below).
@@ -407,7 +414,8 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
         // De-duplicate against adminUser: if ids match, skip here and let the admin block handle it.
         if (uid === adminUserId) continue;
 
-        const userPasswordHash = await hashPassword(u.password);
+        // Look up pre-computed hash (key is original spec id before prefix).
+        const userPasswordHash = precomputedUserHashes.get(u.id)!;
         // User status: explicit value from spec, or derive from password presence.
         const userStatus = u.status ?? (u.password ? 'active' : 'invited');
         const resolvedRoleId = idMode === 'literal' ? u.roleId : `${pfx}${u.roleId}`;
