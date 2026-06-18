@@ -376,6 +376,16 @@ const PORTAL_FLEET = {
   operatorCompanyId: companyFor('Rotterdam Logistics B.V.'),
 };
 
+/* ---- Additional fleet operators (non-portal) ---- */
+const FLEET_OPERATORS = [
+  {
+    name: 'Düsseldorf Bau B.V.',
+    contact: 'J. Bakker',
+    companyId: 'cmp-dusseldorf',
+    meta: { vat: 'DE 811 204 119', creditLimit: '€2,000,000' },
+  },
+];
+
 /* ---- Integrations ---- */
 const INTEGRATIONS = [
   { id: 'sf', name: 'Salesforce CRM', kind: 'CRM · inbound leads & deal sync', direction: 'inbound', logo: 'SF', status: 'healthy', lastSync: '2 min ago', throughput: '124 leads / day · 38 deals updated', latency: 'p95 · 280 ms', desc: 'Inbound leads land in the Sales track. Deal stage and contact updates flow both ways for active opportunities.' },
@@ -467,6 +477,7 @@ export const dlpeDemoBlueprint = {
       extras: {
         vehicleTimeline: VEHICLE_TIMELINE,
         portalFleet: PORTAL_FLEET,
+        fleetOperators: FLEET_OPERATORS,
         integrations: INTEGRATIONS,
         audit: AUDIT,
         reports: REPORTS,

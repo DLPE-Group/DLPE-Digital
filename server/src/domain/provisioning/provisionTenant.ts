@@ -536,16 +536,20 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
           }
         }
 
-        // Sample extra fleet operator (SAMPLE_RECORDS context)
-        await tx.fleetOperator.create({
-          data: {
-            name: 'Düsseldorf Bau B.V.',
-            contact: 'J. Bakker',
-            companyId: 'cmp-dusseldorf',
-            meta: { vat: 'DE 811 204 119', creditLimit: '€2,000,000' },
-            tenantId,
-          },
-        });
+        // Additional fleet operators from payload (blueprint-defined, not hardcoded)
+        if (Array.isArray(extras.fleetOperators)) {
+          for (const fo of extras.fleetOperators as Array<Record<string, unknown>>) {
+            await tx.fleetOperator.create({
+              data: {
+                name: String(fo.name ?? ''),
+                contact: typeof fo.contact === 'string' ? fo.contact : null,
+                companyId: typeof fo.companyId === 'string' ? fo.companyId : null,
+                meta: (fo.meta as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+                tenantId,
+              },
+            });
+          }
+        }
 
         // Integrations
         if (Array.isArray(extras.integrations)) {
