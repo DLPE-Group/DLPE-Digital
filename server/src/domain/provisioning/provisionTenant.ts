@@ -20,8 +20,10 @@ import { randomUUID } from 'node:crypto';
 import argon2 from 'argon2';
 import { prisma as defaultPrisma } from '../../prisma.js';
 import type { BlueprintSpec as BlueprintSpecType } from '@dlpe/shared';
+import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
 import type { ProvisioningTarget } from './target.js';
 import { Prisma, PrismaClient } from '@prisma/client';
+import { cardToEntityCreate, vehicleToEntityCreate, type CardSeed, type VehicleSeed, type MetaCtx } from '../backfill.js';
 
 // ---------- public types ----------
 
@@ -380,24 +382,223 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
         }
       }
 
-      // 5h. Seed — optional generic entities
-      // Task 8 extends seed writing (timeline/portal/integrations/audit/reports/dashboard)
+      // 5h. Seed — pipeline + reference entities + rich demo extras
+      // Build a MetaCtx from the just-created rows so cardToEntityCreate / vehicleToEntityCreate
+      // can resolve track IDs and entity type IDs.
+      const metaCtx: MetaCtx = {
+        trackIdByKey: trackDefIdByKey,
+        typeIdByKey: (() => {
+          // Collect entity type rows created in 5g: spec.entityTypes entries keyed by their
+          // original spec key (before prefix). We need to re-fetch them from the tx.
+          // Since we already wrote them, we can build a reverse map from what we know.
+          // In literal mode: etKey = et.key. In prefixed mode: etKey = `${pfx}${et.key}`.
+          // We re-query the DB to get the actual UUIDs (they were created with cuid()).
+          return {}; // populated async below
+        })(),
+        tenantFor: (_companyId: string | null) => tenantId,
+        tenantId,
+      };
+
+      // Populate typeIdByKey from the just-inserted EntityType rows
+      for (const et of spec.entityTypes) {
+        const etKey = idMode === 'literal' ? et.key : `${pfx}${et.key}`;
+        const row = await tx.entityType.findUnique({ where: { key: etKey } });
+        if (row) metaCtx.typeIdByKey[et.key] = row.id;
+      }
+
+      // Pipeline + reference entities (CardSeed-shaped objects in spec.seed.entities)
       if (spec.seed?.entities && spec.seed.entities.length > 0) {
-        // Generic entity seed — treat each element as a pre-formed Entity descriptor.
-        // The rich demo seed payload (vehicle timeline, portal fleet, integrations,
-        // audit, reports, dashboard) is handled in Task 8.
         for (const e of spec.seed.entities as Array<Record<string, unknown>>) {
-          await tx.entity.create({
-            data: {
-              id: typeof e.id === 'string' ? `${pfx}${e.id}` : randomUUID(),
-              tenantId,
-              entityTypeId: typeof e.entityTypeId === 'string' ? e.entityTypeId : '',
-              title: typeof e.title === 'string' ? e.title : 'Untitled',
+          const track = typeof e.track === 'string' ? e.track : '';
+          const trackKey: string = TRACK_KEY_FROM_ENUM[track] ?? track.toLowerCase();
+          const isVehicle = trackKey === 'vehicle' || (typeof e.plate === 'string');
+
+          if (isVehicle) {
+            // Reference entity (vehicle)
+            const v: VehicleSeed = {
+              id: typeof e.id === 'string' ? (idMode === 'literal' ? e.id : `${pfx}${e.id}`) : undefined,
+              plate: typeof e.plate === 'string' ? e.plate : String(e.id ?? ''),
+              model: typeof e.model === 'string' ? e.model : null,
+              vin: typeof e.vin === 'string' ? e.vin : null,
+              operator: typeof e.operator === 'string' ? e.operator : null,
               status: typeof e.status === 'string' ? e.status : null,
+              statusLabel: typeof e.statusLabel === 'string' ? e.statusLabel : null,
+              note: typeof e.note === 'string' ? e.note : null,
+              companyId: typeof e.companyId === 'string' ? e.companyId : null,
+            };
+            const data = vehicleToEntityCreate(v, metaCtx);
+            if (idMode === 'literal' && typeof e.id === 'string') data.id = e.id;
+            await tx.entity.create({ data });
+          } else {
+            // Pipeline entity (CardSeed-shaped)
+            const c: CardSeed = {
+              id: typeof e.id === 'string' ? (idMode === 'literal' ? e.id : `${pfx}${e.id}`) : randomUUID(),
+              companyId: typeof e.companyId === 'string' ? e.companyId : null,
+              track,
+              type: typeof e.type === 'string' ? e.type : 'UNKNOWN',
+              customer: typeof e.customer === 'string' ? e.customer : '',
+              value: typeof e.value === 'number' ? e.value : null,
+              vehicle: typeof e.vehicle === 'string' ? e.vehicle : null,
+              sub: typeof e.sub === 'string' ? e.sub : '',
+              stageId: typeof e.stageId === 'string' ? e.stageId : '',
+              stageName: typeof e.stageName === 'string' ? e.stageName : '',
+              days: typeof e.days === 'number' ? e.days : 0,
+              daysLabel: typeof e.daysLabel === 'string' ? e.daysLabel : null,
+              owner: typeof e.owner === 'string' ? e.owner : '',
+              status: typeof e.status === 'string' ? e.status : 'normal',
+              cta: typeof e.cta === 'string' ? e.cta : '',
               sources: Array.isArray(e.sources) ? (e.sources as string[]) : [],
+              awaitingSign: e.awaitingSign === true,
+            };
+            const data = cardToEntityCreate(c, metaCtx);
+            // In literal mode, id from CardSeed is already verbatim; in prefixed it is prefixed above
+            await tx.entity.create({ data });
+          }
+        }
+      }
+
+      // 5h-extras: rich demo business data from spec.seed.extras
+      const extras = spec.seed?.extras as Record<string, unknown> | undefined;
+      if (extras) {
+        // Vehicle timeline
+        if (extras.vehicleTimeline) {
+          const vt = extras.vehicleTimeline as Record<string, unknown>;
+          await tx.vehicleTimeline.create({
+            data: {
+              customer: String(vt.customer ?? ''),
+              vehicle: String(vt.vehicle ?? ''),
+              contractValue: typeof vt.contractValue === 'number' ? vt.contractValue : null,
+              account: typeof vt.account === 'string' ? vt.account : null,
+              tenantId,
+              events: Array.isArray(vt.events) ? {
+                create: (vt.events as Array<Record<string, unknown>>).map((ev, i) => ({
+                  order: i,
+                  track: String(ev.track ?? ''),
+                  stage: String(ev.stage ?? ''),
+                  detail: typeof ev.detail === 'string' ? ev.detail : null,
+                  date: typeof ev.date === 'string' ? ev.date : null,
+                  owner: typeof ev.owner === 'string' ? ev.owner : null,
+                  state: typeof ev.state === 'string' ? ev.state : null,
+                  docs: Array.isArray(ev.docs) ? (ev.docs as string[]) : [],
+                  tenantId,
+                })),
+              } : undefined,
             },
           });
         }
+
+        // Portal fleet (FleetOperator + vehicle entities + invoices)
+        if (extras.portalFleet) {
+          const pf = extras.portalFleet as Record<string, unknown>;
+          const operatorCompanyId = typeof pf.operatorCompanyId === 'string' ? pf.operatorCompanyId : null;
+
+          // Primary fleet operator
+          await tx.fleetOperator.create({
+            data: {
+              name: String(pf.operator ?? ''),
+              contact: typeof pf.contact === 'string' ? pf.contact : null,
+              companyId: operatorCompanyId,
+              meta: { messages: 3 },
+              tenantId,
+            },
+          });
+
+          // Portal vehicles as Entity reference rows
+          if (Array.isArray(pf.vehicles)) {
+            for (const v of pf.vehicles as Array<Record<string, unknown>>) {
+              const vs: VehicleSeed = {
+                plate: String(v.plate ?? ''),
+                model: typeof v.model === 'string' ? v.model : null,
+                operator: String(pf.operator ?? ''),
+                status: typeof v.status === 'string' ? v.status : null,
+                statusLabel: typeof v.statusLabel === 'string' ? v.statusLabel : null,
+                note: typeof v.note === 'string' ? v.note : null,
+                companyId: typeof v.companyId === 'string' ? v.companyId : operatorCompanyId,
+              };
+              await tx.entity.create({ data: vehicleToEntityCreate(vs, metaCtx) });
+            }
+          }
+
+          // Invoices
+          if (Array.isArray(pf.invoices)) {
+            for (const inv of pf.invoices as Array<Record<string, unknown>>) {
+              await tx.invoice.create({
+                data: {
+                  ref: String(inv.ref ?? randomUUID()),
+                  value: typeof inv.value === 'number' ? inv.value : null,
+                  due: typeof inv.due === 'string' ? inv.due : null,
+                  status: typeof inv.status === 'string' ? inv.status : null,
+                  companyId: operatorCompanyId,
+                  tenantId,
+                },
+              });
+            }
+          }
+        }
+
+        // Sample extra fleet operator (SAMPLE_RECORDS context)
+        await tx.fleetOperator.create({
+          data: {
+            name: 'Düsseldorf Bau B.V.',
+            contact: 'J. Bakker',
+            companyId: 'cmp-dusseldorf',
+            meta: { vat: 'DE 811 204 119', creditLimit: '€2,000,000' },
+            tenantId,
+          },
+        });
+
+        // Integrations
+        if (Array.isArray(extras.integrations)) {
+          for (const integ of extras.integrations as Array<Record<string, unknown>>) {
+            await tx.integration.create({
+              data: {
+                id: String(integ.id ?? randomUUID()),
+                name: String(integ.name ?? ''),
+                kind: String(integ.kind ?? ''),
+                direction: String(integ.direction ?? 'inbound'),
+                logo: String(integ.logo ?? ''),
+                status: String(integ.status ?? 'idle'),
+                lastSync: typeof integ.lastSync === 'string' ? integ.lastSync : null,
+                throughput: typeof integ.throughput === 'string' ? integ.throughput : null,
+                latency: typeof integ.latency === 'string' ? integ.latency : null,
+                desc: typeof integ.desc === 'string' ? integ.desc : null,
+                nango: false,
+                transforms: 0,
+                tenantId,
+              },
+            });
+          }
+        }
+
+        // Audit entries + cascades
+        if (Array.isArray(extras.audit)) {
+          for (const a of extras.audit as Array<Record<string, unknown>>) {
+            await tx.auditEntry.create({
+              data: {
+                day: typeof a.day === 'string' ? a.day : null,
+                time: typeof a.time === 'string' ? a.time : null,
+                actor: String(a.actor ?? ''),
+                actorRole: typeof a.actorRole === 'string' ? a.actorRole : null,
+                verb: String(a.verb ?? ''),
+                target: typeof a.target === 'string' ? a.target : null,
+                track: String(a.track ?? ''),
+                kind: typeof a.kind === 'string' ? a.kind : 'normal',
+                icon: typeof a.icon === 'string' ? a.icon : null,
+                isSystem: a.isSystem === true,
+                tenantId,
+                cascades: Array.isArray(a.cascades) && (a.cascades as unknown[]).length > 0 ? {
+                  create: (a.cascades as Array<Record<string, unknown>>).map((c, i) => ({
+                    order: i,
+                    track: String(c.track ?? ''),
+                    text: String(c.text ?? ''),
+                    tenantId,
+                  })),
+                } : undefined,
+              },
+            });
+          }
+        }
+
       }
 
       // 5i. Users — spec.users[] + admin user
@@ -489,6 +690,55 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
       const adminLoginOrInviteLink = adminInviteToken
         ? `/invite/${adminInviteToken}`
         : `/login?email=${encodeURIComponent(adminUser.email)}`;
+
+      // 5j. User-dependent extras (reports, dashboard, rbacVersions) — written after users exist
+      const extrasForUsers = spec.seed?.extras as Record<string, unknown> | undefined;
+      if (extrasForUsers) {
+        // Reports (FK: createdById → User)
+        if (Array.isArray(extrasForUsers.reports)) {
+          for (const r of extrasForUsers.reports as Array<Record<string, unknown>>) {
+            const createdById = typeof r.createdById === 'string' ? r.createdById : null;
+            await tx.report.create({
+              data: {
+                title: String(r.title ?? ''),
+                spec: r.spec as Prisma.InputJsonValue,
+                prose: r.prose as Prisma.InputJsonValue,
+                when: String(r.when ?? ''),
+                createdById,
+                tenantId,
+              },
+            });
+          }
+        }
+
+        // Dashboard layout (FK: userId → User)
+        if (extrasForUsers.dashboard) {
+          const dash = extrasForUsers.dashboard as Record<string, unknown>;
+          const dashUserId = typeof dash.userId === 'string' ? dash.userId : null;
+          if (dashUserId) {
+            await tx.dashboardLayout.create({
+              data: {
+                userId: dashUserId,
+                charts: dash.charts as Prisma.InputJsonValue,
+                tenantId,
+              },
+            });
+          }
+        }
+
+        // RBAC versions (tenant-scoped, no user FK)
+        if (Array.isArray(extrasForUsers.rbacVersions)) {
+          await tx.rbacVersion.createMany({
+            data: (extrasForUsers.rbacVersions as Array<Record<string, unknown>>).map((rv) => ({
+              v: typeof rv.v === 'number' ? rv.v : 0,
+              when: String(rv.when ?? ''),
+              actor: String(rv.actor ?? ''),
+              note: String(rv.note ?? ''),
+              tenantId,
+            })),
+          });
+        }
+      }
 
       return { tenantId, slug, adminLoginOrInviteLink };
     });
