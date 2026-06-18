@@ -15,6 +15,7 @@ import { GroupStructureView } from './admin_structure.jsx';
 import { UsersView } from './admin_users.jsx';
 import { RolesView, RbacConfigurator } from './admin_rbac.jsx';
 import { DataModelView } from './data_model.jsx';
+import { ControlPlaneView } from './admin_platform.jsx';
 import { ReportsView } from './reports.jsx';
 import {
   SALES_STAGES, OPS_STAGES, WORKSHOP_STAGES, FINANCE_STAGES,
@@ -211,6 +212,7 @@ const App = () => {
   // requireAdmin). Gates the admin/integrations/audit nav + views and the
   // admin-only preview-as capability.
   const isAdmin = me?.roleId === 'group-admin';
+  const isPlatformAdmin = !!me?.platformAdmin;
   const ADMIN_ONLY_VIEWS = ['structure', 'users', 'roles', 'datamodel', 'integrations', 'audit'];
   const [active, setActive] = React.useState('overview');
   const [timeline, setTimeline] = React.useState(null);
@@ -412,6 +414,11 @@ const App = () => {
       return <StubPanel icon="lock" title="Admin access required"
         body="This area is restricted to group administrators. Switch to an account with admin access to manage structure, users, roles, integrations, or the audit log." />;
     }
+    if (active === 'platform' && !isPlatformAdmin) {
+      return <StubPanel icon="lock" title="Platform admin access required"
+        body="The Control Plane is restricted to platform administrators." />;
+    }
+    if (active === 'platform') return <ControlPlaneView />;
     if (active === 'portal') return <CustomerPortal />;
     if (active === 'timeline' || active === 'vehicles') {
       return <VehiclesView onOpenTimeline={openTimeline} />;
@@ -526,7 +533,7 @@ const App = () => {
 
   return (
     <div className="app v1Shell">
-      <SideMenu active={active} setActive={setActive} counts={counts} allowedTracks={allowedTracks} isAdmin={isAdmin}
+      <SideMenu active={active} setActive={setActive} counts={counts} allowedTracks={allowedTracks} isAdmin={isAdmin} isPlatformAdmin={isPlatformAdmin}
                 onTrackSelect={() => setOpenTracks({ sales: false, operations: false, workshop: false, finance: false })} />
 
       <div className="v1Main">
