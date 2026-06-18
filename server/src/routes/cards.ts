@@ -38,7 +38,7 @@ cardsRouter.post('/', async (req, res) => {
   const parsed = createCardSchema.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   try {
-    res.json(await createCard(parsed.data, actor(req)));
+    res.json(await createCard(parsed.data, actor(req), req.tenantId!));
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }
@@ -46,7 +46,7 @@ cardsRouter.post('/', async (req, res) => {
 
 cardsRouter.delete('/:id', async (req, res) => {
   try {
-    await deleteCard(req.params.id, actor(req));
+    await deleteCard(req.params.id, actor(req), req.tenantId!);
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
@@ -64,7 +64,7 @@ cardsRouter.put('/:id/stage', async (req, res) => {
   const parsed = stageSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'stageId required' });
   try {
-    res.json(await moveStage(req.params.id, parsed.data.stageId, actor(req), req.user?.id));
+    res.json(await moveStage(req.params.id, parsed.data.stageId, actor(req), req.user?.id, req.tenantId!));
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }
