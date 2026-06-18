@@ -1,5 +1,5 @@
 -- Task 2: Backfill demo tenant + flip tenantId to NOT NULL (contract).
--- Safe to re-run: INSERT ON CONFLICT DO NOTHING; UPDATE WHERE IS NULL is idempotent once all rows are set.
+-- NOT safe to re-run by hand; `prisma migrate deploy` applies each migration exactly once.
 
 -- 1) Ensure the demo tenant exists (idempotent).
 INSERT INTO "Tenant" ("id","slug","name","status","tenancyMode","region","createdAt")

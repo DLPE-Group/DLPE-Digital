@@ -5,7 +5,8 @@ export const DEMO_TENANT_ID = 'tenant-dlpe-demo';
 
 // Resolve the Tenant.id for a given company by walking the OrgNode parent chain
 // to find the GROUP node, then looking up the Tenant whose OrgNode GROUP matches.
-// Returns null until tenants are backfilled (Task 2). Pure over preloaded maps
+// Returns null for nodes with no resolvable GROUP; callers fall back to `?? DEMO_TENANT_ID`
+// until multi-tenant provisioning (S1) replaces this. Pure over preloaded maps
 // for O(depth) lookups in bulk seed/backfill.
 export interface OrgNodeLite { id: string; kind: string; parentId: string | null; tenantId: string | null }
 

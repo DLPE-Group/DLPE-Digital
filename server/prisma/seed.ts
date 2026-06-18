@@ -18,6 +18,7 @@ import {
   FIELD_CATEGORIES,
 } from '@dlpe/shared';
 import { seedMetaModel, cardToEntityCreate, vehicleToEntityCreate, type CardSeed } from '../src/domain/backfill.js';
+import { DEMO_TENANT_ID } from '../src/domain/tenancy.js';
 
 const prisma = new PrismaClient();
 
@@ -452,7 +453,6 @@ async function main() {
   await prisma.tenant.deleteMany();
 
   // Tenant (single demo tenant — Task 1 foundation; backfill of existing rows in Task 2).
-  const DEMO_TENANT_ID = 'tenant-dlpe-demo';
   await prisma.tenant.create({
     data: {
       id: DEMO_TENANT_ID,
