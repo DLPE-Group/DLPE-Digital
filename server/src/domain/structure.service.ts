@@ -95,6 +95,7 @@ export async function resolveSettingsFor(id: string): Promise<Record<string, Res
 export async function addCompany(
   parentId: string,
   data: { name: string; code?: string; meta?: unknown; overrides?: unknown },
+  tenantId: string,
 ) {
   const id = 'cmp-' + (data.code || data.name).toLowerCase().replace(/[^a-z0-9]+/g, '-');
   return prisma.orgNode.create({
@@ -106,6 +107,7 @@ export async function addCompany(
       meta: (data.meta as object) ?? undefined,
       overrides: (data.overrides as object) ?? undefined,
       parentId,
+      tenantId,
     },
   });
 }
@@ -116,13 +118,14 @@ const KIND_PREFIX: Record<string, string> = { REGION: 'reg-', COUNTRY: 'co-', CO
 export async function addNode(
   parentId: string,
   data: { kind: 'REGION' | 'COUNTRY' | 'COMPANY'; name: string; code?: string },
+  tenantId: string,
 ) {
   const parent = await prisma.orgNode.findUnique({ where: { id: parentId } });
   if (!parent) throw new Error('Parent node not found');
   const base = (data.code || data.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const id = (KIND_PREFIX[data.kind] ?? 'node-') + base;
   return prisma.orgNode.create({
-    data: { id, kind: data.kind, name: data.name, code: data.code, parentId },
+    data: { id, kind: data.kind, name: data.name, code: data.code, parentId, tenantId },
   });
 }
 

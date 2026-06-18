@@ -1,5 +1,6 @@
 import { prisma } from '../prisma.js';
 import type { Prisma } from '@prisma/client';
+import { DEMO_TENANT_ID } from './tenancy.js';
 
 export interface CascadeLine {
   track: string;
@@ -28,7 +29,7 @@ function nowParts() {
   return { day, time };
 }
 
-export async function writeAudit(input: WriteAuditInput, tx?: Prisma.TransactionClient) {
+export async function writeAudit(input: WriteAuditInput, tx?: Prisma.TransactionClient, tenantId: string = DEMO_TENANT_ID) {
   const client = tx ?? prisma;
   const { day, time } = nowParts();
   return client.auditEntry.create({
@@ -44,8 +45,9 @@ export async function writeAudit(input: WriteAuditInput, tx?: Prisma.Transaction
       icon: input.icon,
       isSystem: input.isSystem ?? false,
       meta: input.meta ?? undefined,
+      tenantId,
       cascades: input.cascades
-        ? { create: input.cascades.map((c, i) => ({ order: i, track: c.track, text: c.text })) }
+        ? { create: input.cascades.map((c, i) => ({ order: i, track: c.track, text: c.text, tenantId })) }
         : undefined,
     },
     include: { cascades: { orderBy: { order: 'asc' } } },

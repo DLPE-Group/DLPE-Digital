@@ -37,6 +37,7 @@ integrationsRouter.post('/', async (req, res) => {
       desc: d.desc,
       nango: true,
       transforms: 0,
+      tenantId: req.tenantId!,
     },
   });
   res.json(row);

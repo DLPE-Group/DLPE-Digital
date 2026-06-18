@@ -48,7 +48,7 @@ fieldRulesRouter.put('/field-rules', async (req, res) => {
         await tx.fieldRule.upsert({
           where: { roleId_dataTypeId_fieldId_scope: { roleId: r.roleId, dataTypeId: r.dataTypeId, fieldId: r.fieldId, scope: r.scope } },
           update: { visible: r.visible, editable: r.editable, masked: r.masked, note: r.note ?? null },
-          create: { roleId: r.roleId, dataTypeId: r.dataTypeId, fieldId: r.fieldId, scope: r.scope, visible: r.visible, editable: r.editable, masked: r.masked, note: r.note ?? null },
+          create: { roleId: r.roleId, dataTypeId: r.dataTypeId, fieldId: r.fieldId, scope: r.scope, visible: r.visible, editable: r.editable, masked: r.masked, note: r.note ?? null, tenantId: req.tenantId! },
         }),
       );
     }
@@ -67,6 +67,7 @@ fieldRulesRouter.put('/field-rules', async (req, res) => {
         actor: parsed.data.actor ?? 'System',
         note: parsed.data.note ?? `Updated ${diffs.length} field rule(s)`,
         snapshot: snapshot as unknown as object,
+        tenantId: req.tenantId!,
       },
     });
     return { upserted, version };
@@ -97,7 +98,7 @@ fieldRulesRouter.post('/rbac/versions/:v/revert', async (req, res) => {
 
   const result = await prisma.$transaction(async (tx) => {
     await tx.fieldRule.deleteMany({});
-    if (rules.length) await tx.fieldRule.createMany({ data: rules });
+    if (rules.length) await tx.fieldRule.createMany({ data: rules.map((r) => ({ ...r, tenantId: req.tenantId! })) });
     const top = await tx.rbacVersion.findFirst({ orderBy: { v: 'desc' } });
     const v = (top?.v ?? 0) + 1;
     const when = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -107,6 +108,7 @@ fieldRulesRouter.post('/rbac/versions/:v/revert', async (req, res) => {
         actor: (typeof req.body?.actor === 'string' ? req.body.actor : 'System'),
         note: `Reverted to v${targetV}`,
         snapshot: rules as unknown as object,
+        tenantId: req.tenantId!,
       },
     });
     return { restored: rules.length, version };

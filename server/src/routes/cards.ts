@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { listCards, getCard, moveStage, patchCard, createCard, deleteCard } from '../domain/cards.service.js';
 import { runAction, type ActionName } from '../domain/actions.js';
 import { actingUserId } from '../auth/preview.js';
+import { withTenant } from '../db/withTenant.js';
 
 export const cardsRouter: Router = Router();
 
@@ -13,7 +14,9 @@ function actor(req: { user?: { name: string; roleId: string; id?: string } }) {
 cardsRouter.get('/', async (req, res) => {
   const track = typeof req.query.track === 'string' ? req.query.track : undefined;
   try {
-    res.json(await listCards(track, actingUserId(req)));
+    const userId = actingUserId(req);
+    const cards = await withTenant(req.tenantId!, (tx) => listCards(track, userId, tx));
+    res.json(cards);
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }
@@ -35,7 +38,7 @@ cardsRouter.post('/', async (req, res) => {
   const parsed = createCardSchema.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   try {
-    res.json(await createCard(parsed.data, actor(req)));
+    res.json(await createCard(parsed.data, actor(req), req.tenantId!));
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }
@@ -43,7 +46,7 @@ cardsRouter.post('/', async (req, res) => {
 
 cardsRouter.delete('/:id', async (req, res) => {
   try {
-    await deleteCard(req.params.id, actor(req));
+    await deleteCard(req.params.id, actor(req), req.tenantId!);
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
@@ -61,7 +64,7 @@ cardsRouter.put('/:id/stage', async (req, res) => {
   const parsed = stageSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'stageId required' });
   try {
-    res.json(await moveStage(req.params.id, parsed.data.stageId, actor(req), req.user?.id));
+    res.json(await moveStage(req.params.id, parsed.data.stageId, actor(req), req.user?.id, req.tenantId!));
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }

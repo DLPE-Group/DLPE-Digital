@@ -43,6 +43,7 @@ reportsRouter.post('/', async (req, res) => {
       prose: prose as unknown as Prisma.InputJsonValue,
       when: fmtWhen(now),
       createdById: req.user?.id ?? null,
+      tenantId: req.tenantId!,
     },
   });
   res.json({ id: report.id, spec: report.spec, prose: report.prose, when: report.when });

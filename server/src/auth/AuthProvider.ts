@@ -3,11 +3,13 @@
 
 export interface AuthUser {
   id: string;
+  tenantId: string;
   email: string;
   name: string;
   roleId: string;
   scopeType: string;
   scopeNodeId: string | null;
+  platformAdmin: boolean;
   secondaryScopes: {
     roleId: string | null;
     scopeType: string;

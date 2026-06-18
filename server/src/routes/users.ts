@@ -52,6 +52,7 @@ usersRouter.post('/users', async (req, res) => {
         scopeNodeId: d.scopeNodeId ?? null,
         scopeLabel: d.scopeLabel ?? null,
         status: d.status,
+        tenantId: req.tenantId!,
       },
       include: userInclude,
     });
@@ -110,6 +111,7 @@ usersRouter.post('/users/:id/scopes', async (req, res) => {
         scopeNodeId: parsed.data.scopeNodeId ?? null,
         scopeLabel: parsed.data.scopeLabel ?? null,
         roleLabel: parsed.data.roleLabel ?? null,
+        tenantId: req.tenantId!,
       },
       include: { role: true, scopeNode: true },
     });
@@ -149,6 +151,7 @@ usersRouter.post('/users/import', async (req, res) => {
           scopeType: (col(cells, 'scopetype') as never) ?? 'company',
           scopeLabel: col(cells, 'scopelabel') ?? null,
           status: (col(cells, 'status') as never) ?? 'active',
+          tenantId: req.tenantId!,
         },
       });
       created.push(email);

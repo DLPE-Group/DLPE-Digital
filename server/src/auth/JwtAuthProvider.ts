@@ -4,6 +4,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { prisma } from '../prisma.js';
 import { env } from '../env.js';
 import type { AuthProvider, AuthUser, LoginResult } from './AuthProvider.js';
+import { DEMO_TENANT_ID } from '../domain/tenancy.js';
 
 const ACCESS_TTL = '15m';
 const REFRESH_TTL_DAYS = 30;
@@ -21,11 +22,13 @@ async function toAuthUser(userId: string): Promise<AuthUser> {
   if (user.status === 'disabled') throw new Error('User is disabled');
   return {
     id: user.id,
+    tenantId: user.tenantId,
     email: user.email,
     name: user.name,
     roleId: user.roleId,
     scopeType: user.scopeType,
     scopeNodeId: user.scopeNodeId,
+    platformAdmin: user.platformAdmin,
     secondaryScopes: user.secondary.map((s) => ({
       roleId: s.roleId,
       scopeType: s.scopeType,
@@ -46,7 +49,7 @@ async function issueRefresh(userId: string): Promise<string> {
   const raw = randomBytes(48).toString('hex');
   const expiresAt = new Date(Date.now() + REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000);
   const session = await prisma.session.create({
-    data: { userId, refreshTokenHash: hashToken(raw), expiresAt },
+    data: { userId, refreshTokenHash: hashToken(raw), expiresAt, tenantId: DEMO_TENANT_ID },
   });
   // Embed the session id so we can find + rotate the row on refresh.
   return `${session.id}.${raw}`;

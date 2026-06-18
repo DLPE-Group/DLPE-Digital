@@ -46,7 +46,7 @@ stageConfigRouter.put('/stage-config/:track', async (req, res) => {
       const s = parsed.data.stages[i];
       created.push(
         await tx.stageConfig.create({
-          data: { track: trackEnum, order: i, stageId: s.stageId, label: s.label, sla: s.sla, lock: s.lock ?? null, cta: s.cta },
+          data: { track: trackEnum, order: i, stageId: s.stageId, label: s.label, sla: s.sla, lock: s.lock ?? null, cta: s.cta, tenantId: req.tenantId! },
         }),
       );
     }

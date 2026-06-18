@@ -25,7 +25,7 @@ structureRouter.post('/structure/:parentId/companies', async (req, res) => {
   const parsed = companySchema.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ error: 'name required' });
   try {
-    res.json(await addCompany(req.params.parentId, parsed.data));
+    res.json(await addCompany(req.params.parentId, parsed.data, req.tenantId!));
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }
@@ -41,7 +41,7 @@ structureRouter.post('/structure/:parentId/nodes', async (req, res) => {
   const parsed = nodeSchema.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ error: 'kind + name required' });
   try {
-    res.json(await addNode(req.params.parentId, parsed.data));
+    res.json(await addNode(req.params.parentId, parsed.data, req.tenantId!));
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }
@@ -95,7 +95,7 @@ structureRouter.put('/data-sharing', async (req, res) => {
       await prisma.dataSharing.upsert({
         where: { type: row.type },
         update: { mode: row.mode, note: row.note },
-        create: { type: row.type, mode: row.mode, note: row.note },
+        create: { type: row.type, mode: row.mode, note: row.note, tenantId: req.tenantId! },
       }),
     );
   }

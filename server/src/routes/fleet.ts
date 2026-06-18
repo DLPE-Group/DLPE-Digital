@@ -76,6 +76,7 @@ fleetRouter.post('/portal/messages', async (req, res) => {
       author: req.user?.name ?? null,
       when: `Today · ${when}`,
       body,
+      tenantId: req.tenantId!,
     },
   });
   res.json(row);

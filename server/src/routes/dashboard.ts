@@ -25,7 +25,7 @@ dashboardRouter.put('/dashboard', async (req, res) => {
   const layout = await prisma.dashboardLayout.upsert({
     where: { userId },
     update: { charts },
-    create: { userId, charts },
+    create: { userId, charts, tenantId: req.tenantId! },
   });
   res.json({ charts: layout.charts });
 });

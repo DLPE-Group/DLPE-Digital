@@ -19,6 +19,7 @@ serves the built frontend, so it ships as **one container** plus Postgres.
 | `CORS_ORIGIN` | no | comma-separated allowlist; empty = same-origin only |
 | `STATIC_DIR` | no | path to `app/dist`; the image sets it |
 | `PORT` | no | default `4000` |
+| `APP_DATABASE_URL` | no | Non-superuser (`il_app`) connection string used to serve requests once RLS is enabled. Empty → falls back to `DATABASE_URL` (no isolation; fine for single-tenant dev). |
 
 Copy `.env.example` → `.env` and fill in secrets. **Never commit `.env`** (gitignored).
 
@@ -67,6 +68,26 @@ NODE_ENV=production \
   global on `/api`), `pino-http` structured request logging (auth header redacted).
 - CORS reflects only `CORS_ORIGIN` in production (same-origin by default).
 - Zod-validated env at boot (`server/src/env.ts`) — the process exits on bad config.
+
+## Database roles
+
+The migration `20260618190000_app_role` creates a non-superuser role `il_app` that is used (once RLS is enabled in Task 6) to serve all API requests. It has `LOGIN` and table-level `SELECT/INSERT/UPDATE/DELETE` grants but no `SUPERUSER` or `BYPASSRLS`.
+
+**Local dev:** the role is created with password `il_app_pw` by the migration and also by `docker/initdb/01_app_role.sql` on fresh volume init.
+
+**DigitalOcean Managed Postgres (and any hosted provider):** do **not** use the literal `il_app_pw` password. Create the role manually (or via a one-off migration) and store its password in a secret manager. Set `APP_DATABASE_URL` to the full connection string (including the secret password) in your environment / Secret.
+
+```bash
+# Example: create il_app on DigitalOcean after connecting as the admin user
+CREATE ROLE il_app LOGIN PASSWORD '<secret-from-vault>';
+GRANT USAGE ON SCHEMA public TO il_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO il_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO il_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO il_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO il_app;
+```
 
 ## Notes
 

@@ -44,7 +44,7 @@ preferencesRouter.put('/preferences', async (req, res) => {
   const row = await prisma.userPreference.upsert({
     where: { userId },
     update: { prefs: merged },
-    create: { userId, prefs: merged },
+    create: { userId, prefs: merged, tenantId: req.tenantId! },
   });
   res.json(row.prefs);
 });

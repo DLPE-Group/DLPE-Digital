@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import type { CardDTO as Card } from '@dlpe/shared';
 import { trackKeyToEnum } from './cards.service.js';
 import { entityToCardDTO, type EntityRow } from './projection.js';
-import { loadTenantResolver } from './tenancy.js';
+import { loadTenantResolver, DEMO_TENANT_ID } from './tenancy.js';
 
 export interface RunTriggersInput {
   whenTrack: string; // lowercase track key e.g. 'sales'
@@ -23,18 +23,20 @@ const BRUSSELS_FIN_ID = 'f1';
 interface TriggerCtx {
   // pipeline EntityType id by track key (operations → 'operation', finance → 'invoice')
   typeIdByTrack: Record<string, string>;
-  tenantFor: (companyId: string | null) => string | null;
+  tenantFor: (companyId: string | null) => string;
 }
 
 // Build the downstream Entity create payload for a trigger row + source card.
+// Uses EntityUncheckedCreateInput so that tenantId can be passed as a raw scalar
+// (the checked type requires `tenant: { connect: ... }` once the relation exists).
 function buildEntityForTrigger(
   trigger: { thenTrack: string; thenStage: string; note: string },
   source: Card,
   ctx: TriggerCtx,
-): { id: string; data: Prisma.EntityCreateInput } | null {
+): { id: string; data: Prisma.EntityUncheckedCreateInput } | null {
   const then = trigger.thenTrack;
   const tenantId = ctx.tenantFor(source.companyId ?? null);
-  const companyConnect = source.companyId ? { connect: { id: source.companyId } } : undefined;
+  const companyId = source.companyId ?? null;
 
   // --- Brussels cascade (sales · Contract signed) ---
   if (then === 'operations' && trigger.thenStage === 'Vehicle ordered') {
@@ -43,8 +45,8 @@ function buildEntityForTrigger(
       data: {
         id: BRUSSELS_OPS_ID,
         tenantId,
-        entityType: { connect: { id: ctx.typeIdByTrack.operations } },
-        company: companyConnect,
+        entityTypeId: ctx.typeIdByTrack.operations,
+        companyId,
         title: source.customer,
         value: null,
         owner: 'Tom Janssens',
@@ -68,8 +70,8 @@ function buildEntityForTrigger(
       data: {
         id: BRUSSELS_FIN_ID,
         tenantId,
-        entityType: { connect: { id: ctx.typeIdByTrack.finance } },
-        company: companyConnect,
+        entityTypeId: ctx.typeIdByTrack.finance,
+        companyId,
         title: source.customer,
         value: source.value ?? 2460000,
         owner: 'Ines Vandeput',
@@ -95,8 +97,8 @@ function buildEntityForTrigger(
       data: {
         id: `f-${source.id}-supplier`,
         tenantId,
-        entityType: { connect: { id: ctx.typeIdByTrack.finance } },
-        company: companyConnect,
+        entityTypeId: ctx.typeIdByTrack.finance,
+        companyId,
         title: source.customer,
         value: source.value ?? null,
         owner: 'Ines Vandeput',
@@ -134,7 +136,8 @@ export async function runTriggers(
     if (t.key === 'operation') typeIdByTrack.operations = t.id;
     if (t.key === 'invoice') typeIdByTrack.finance = t.id;
   }
-  const tenantFor = await loadTenantResolver(tx as unknown as Parameters<typeof loadTenantResolver>[0]);
+  const tenantForRaw = await loadTenantResolver(tx as unknown as Parameters<typeof loadTenantResolver>[0]);
+  const tenantFor = (companyId: string | null): string => tenantForRaw(companyId) ?? DEMO_TENANT_ID;
   const ctx: TriggerCtx = { typeIdByTrack, tenantFor };
 
   const createdCards: Card[] = [];
