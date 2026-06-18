@@ -14,6 +14,7 @@ export const ControlPlaneView = () => {
   const [bpKey, setBpKey] = React.useState('');
   const [inputs, setInputs] = React.useState({});
   const [result, setResult] = React.useState(null);
+  const [lastResult, setLastResult] = React.useState(null);
   const [provisioning, setProvisioning] = React.useState(false);
 
   const reload = React.useCallback(() => {
@@ -37,6 +38,7 @@ export const ControlPlaneView = () => {
     setBpKey(e.target.value);
     setInputs({});
     setResult(null);
+    setLastResult(null);
     setErr(null);
   };
 
@@ -49,14 +51,17 @@ export const ControlPlaneView = () => {
     .filter((i) => i.required)
     .every((i) => (inputs[i.key] || '').trim() !== '');
 
-  // idempotency key: use slug or customerName provided by user; disable if neither available and no other inputs
-  const idempotencySuffix = inputs.slug || inputs.customerName || '';
-  const canSubmit = requiredFilled && idempotencySuffix.trim() !== '';
+  // canSubmit: blueprint selected + all required fields filled (no slug/customerName dependency)
+  const canSubmit = requiredFilled;
+
+  // Idempotency suffix: stable fallback chain — never rely on Date.now()
+  const idempotencySuffix = inputs.slug || inputs.customerName || Object.values(inputs).filter(Boolean)[0] || bpKey;
 
   const provision = async (e) => {
     e.preventDefault();
     setErr(null);
     setResult(null);
+    setLastResult(null);
     setProvisioning(true);
     try {
       const r = await api.post('/platform/tenants', {
@@ -64,8 +69,11 @@ export const ControlPlaneView = () => {
         inputs,
         idempotencyKey: `cp-${bpKey}-${idempotencySuffix}`,
       });
+      setLastResult(r);
       setResult(r);
       reload();
+      setBpKey('');
+      setInputs({});
     } catch (ex) {
       setErr(ex.message);
     } finally {
@@ -123,28 +131,25 @@ export const ControlPlaneView = () => {
                 {/* Dynamic inputs from spec */}
                 {specInputs.length > 0 && (
                   <div style={{ display: 'grid', gap: 10 }}>
-                    {specInputs.map((inp) => (
-                      <label key={inp.key} style={fieldLabel}>
-                        {inp.label}
-                        {inp.required && <span style={{ color: 'var(--status-red, #e05)', marginLeft: 2 }}>*</span>}
-                        <input
-                          type="text"
-                          value={inputs[inp.key] || ''}
-                          onChange={(e) => handleInputChange(inp.key, e.target.value)}
-                          placeholder={inp.default != null ? String(inp.default) : ''}
-                          style={inputStyle}
-                        />
-                      </label>
-                    ))}
+                    {specInputs.map((inp) => {
+                      const htmlType = inp.type === 'number' ? 'number' : inp.type === 'email' ? 'email' : 'text';
+                      return (
+                        <label key={inp.key} style={fieldLabel}>
+                          {inp.label}
+                          {inp.required && <span style={{ color: 'var(--status-red, #e05)', marginLeft: 2 }}>*</span>}
+                          <input
+                            type={htmlType}
+                            value={inputs[inp.key] || ''}
+                            onChange={(e) => handleInputChange(inp.key, e.target.value)}
+                            placeholder={inp.default != null ? String(inp.default) : ''}
+                            style={inputStyle}
+                          />
+                        </label>
+                      );
+                    })}
                   </div>
                 )}
 
-                {/* Uniqueness hint when slug/customerName not in spec */}
-                {specInputs.length > 0 && !specInputs.some((i) => i.key === 'slug' || i.key === 'customerName') && (
-                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                    Provide a <code style={codeChip}>slug</code> or <code style={codeChip}>customerName</code> input in the blueprint spec to enable submission.
-                  </div>
-                )}
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                   <button
@@ -156,19 +161,19 @@ export const ControlPlaneView = () => {
                   </button>
                   {!canSubmit && bpKey && (
                     <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                      Fill all required fields (marked *) including a unique slug or customer name.
+                      Fill all required fields (marked *).
                     </span>
                   )}
                 </div>
 
-                {/* Success result */}
-                {result && (
+                {/* Success result — keyed off lastResult so it survives form reset */}
+                {lastResult && (
                   <div style={successBar}>
-                    <strong>Provisioned:</strong> <code style={codeChip}>{result.slug}</code>
-                    {result.adminLoginOrInviteLink && (
+                    <strong>Provisioned:</strong> <code style={codeChip}>{lastResult.slug}</code>
+                    {lastResult.adminLoginOrInviteLink && (
                       <>
                         {' — '}
-                        <a href={result.adminLoginOrInviteLink} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--status-green, #0a0)' }}>
+                        <a href={lastResult.adminLoginOrInviteLink} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--status-green, #0a0)' }}>
                           Admin invite link
                         </a>
                       </>
