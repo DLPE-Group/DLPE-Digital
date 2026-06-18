@@ -653,6 +653,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
             scopeLabel: u.scopeLabel ?? null,
             scopeNodeId: resolvedScopeNodeId,
             status: userStatus as Prisma.UserCreateInput['status'],
+            platformAdmin: u.platformAdmin ?? false,
             tenantId,
             secondary: u.secondary && u.secondary.length > 0
               ? {
@@ -677,6 +678,8 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
 
       // Create admin user only if not already created via spec.users[].
       if (!createdUserIds.has(adminUserId)) {
+        // Inherit platformAdmin from the matching spec.users[] entry (if present).
+        const adminSpecEntry = specUsersById.get(adminUserId);
         await tx.user.create({
           data: {
             id: adminUserId,
@@ -686,6 +689,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
             roleId: `${pfx}${adminUser.roleId}`,
             scopeType: adminUser.scopeType as Prisma.UserCreateInput['scopeType'],
             status: adminStatus as Prisma.UserCreateInput['status'],
+            platformAdmin: adminSpecEntry?.platformAdmin ?? false,
             tenantId,
           },
         });

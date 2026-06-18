@@ -28,6 +28,7 @@ permissionsRouter.get('/permissions', async (req, res) => {
 
   res.json({
     tenantId: req.user?.tenantId,
+    platformAdmin: req.user?.platformAdmin ?? false,
     roleIds,
     scopeType: actingUser.scopeType,
     scopeNodeId: actingUser.scopeNodeId,
