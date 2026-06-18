@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../prisma.js';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { BlueprintSpec } from '@dlpe/shared';
 import { provisionTenant } from '../domain/provisioning/provisionTenant.js';
@@ -87,8 +88,11 @@ platformRouter.patch('/tenants/:id', async (req, res) => {
   try {
     const t = await prisma.tenant.update({ where: { id: req.params.id }, data: { status: parsed.data.status } });
     return res.json(t);
-  } catch {
-    return res.status(404).json({ error: 'Tenant not found' });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+    throw err;
   }
 });
 
