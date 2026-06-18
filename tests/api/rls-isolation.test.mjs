@@ -25,3 +25,59 @@ describe('withTenant helper', () => {
     await helperPrisma.$disconnect();
   });
 });
+
+describe('RLS cross-tenant isolation', () => {
+  it("a tenant cannot read another tenant's entities (RLS)", async () => {
+    const { appPrisma: rlsPrisma, withTenant } = await import('../../server/src/db/withTenant.ts');
+
+    // owner client (postgres superuser) seeds a 2nd tenant + one entity in it
+    const owner = new PrismaClient({
+      datasources: {
+        db: {
+          url:
+            process.env.OWNER_TEST_DB_URL ??
+            'postgresql://postgres:postgres@localhost:5432/intelligence_test',
+        },
+      },
+    });
+
+    await owner.tenant.upsert({
+      where: { slug: 'tenant-b' },
+      update: {},
+      create: { id: 'tnt-b', slug: 'tenant-b', name: 'Tenant B' },
+    });
+
+    const anyType = await owner.entityType.findFirst();
+    if (!anyType) throw new Error('No EntityType found in test DB — run prepare-db first');
+
+    // Clean up any leftover from a previous run
+    await owner.entity.deleteMany({ where: { id: 'ent-b-secret' } });
+
+    await owner.entity.create({
+      data: {
+        id: 'ent-b-secret',
+        tenantId: 'tnt-b',
+        entityTypeId: anyType.id,
+        title: 'B-only secret',
+      },
+    });
+
+    // as tenant A (demo): must NOT see tenant B's entity
+    const visibleToA = await withTenant('tenant-dlpe-demo', (tx) =>
+      tx.entity.findMany({ where: { id: 'ent-b-secret' } }),
+    );
+    expect(visibleToA).toHaveLength(0);
+
+    // as tenant B: sees its own entity
+    const visibleToB = await withTenant('tnt-b', (tx) =>
+      tx.entity.findMany({ where: { id: 'ent-b-secret' } }),
+    );
+    expect(visibleToB).toHaveLength(1);
+
+    // Clean up
+    await owner.entity.deleteMany({ where: { id: 'ent-b-secret' } });
+    await owner.tenant.deleteMany({ where: { id: 'tnt-b' } });
+    await owner.$disconnect();
+    await rlsPrisma.$disconnect();
+  });
+});
