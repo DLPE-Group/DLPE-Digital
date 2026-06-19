@@ -144,6 +144,7 @@ export const UserSpec = z.object({
   scopeNodeId: z.string().optional(),
   status: z.enum(['active', 'invited', 'disabled']).optional(),
   password: z.string().optional(),
+  platformAdmin: z.boolean().optional(),
   secondary: z.array(z.object({
     roleId: z.string().optional(),
     scopeType: z.string(),

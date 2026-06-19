@@ -4,7 +4,7 @@ import { useT } from './i18n.jsx';
 
 /* Side menu — primary navigation for the dashboard */
 
-export const SideMenu = ({ active, setActive, counts, onTrackSelect, allowedTracks, isAdmin }) => {
+export const SideMenu = ({ active, setActive, counts, onTrackSelect, allowedTracks, isAdmin, isPlatformAdmin }) => {
   const { t } = useT();
   const tracks = [
     { id: 'sales',      label: t('track.sales'),      color: 'var(--track-sales)',    count: counts.sales },
@@ -82,6 +82,13 @@ export const SideMenu = ({ active, setActive, counts, onTrackSelect, allowedTrac
           {isAdmin && item('audit', 'document', t('nav.audit'))}
           {item('settings', 'settings', t('nav.settings'))}
         </div>
+
+        {isPlatformAdmin && (
+          <div className="navSection">
+            <div className="navHead">Platform</div>
+            {item('platform', 'bolt', 'Control plane')}
+          </div>
+        )}
       </div>
 
       <div className="sideFoot">

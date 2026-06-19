@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../prisma.js';
+import { Prisma } from '@prisma/client';
+import { z } from 'zod';
 import { BlueprintSpec } from '@dlpe/shared';
 import { provisionTenant } from '../domain/provisioning/provisionTenant.js';
 import { SharedDbTarget } from '../domain/provisioning/target.js';
@@ -76,6 +78,22 @@ platformRouter.post('/blueprints', async (req, res) => {
     },
   });
   return res.status(201).json(blueprint);
+});
+
+// PATCH /api/platform/tenants/:id — update tenant status
+const statusSchema = z.object({ status: z.enum(['TRIAL', 'ACTIVE', 'SUSPENDED', 'ARCHIVED']) });
+platformRouter.patch('/tenants/:id', async (req, res) => {
+  const parsed = statusSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid status' });
+  try {
+    const t = await prisma.tenant.update({ where: { id: req.params.id }, data: { status: parsed.data.status } });
+    return res.json(t);
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+    throw err;
+  }
 });
 
 // GET /api/platform/blueprints/:id/export — return the spec JSON for a blueprint

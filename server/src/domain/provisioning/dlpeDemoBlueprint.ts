@@ -240,7 +240,7 @@ const ADMIN_USER: BlueprintSpec['adminUser'] = {
 
 /* ---- Spec users (all 9 ADMIN_USERS; admin deduplication handled by interpreter) ---- */
 const SPEC_USERS: NonNullable<BlueprintSpec['users']> = [
-  { id: 'u-robert', name: 'Robert Mertens', email: 'r.mertens@group.eu', initials: 'RM', roleId: 'group-admin', scopeType: 'group', scopeLabel: 'Group', scopeNodeId: 'grp', status: 'active', password: 'demo1234', secondary: [] },
+  { id: 'u-robert', name: 'Robert Mertens', email: 'r.mertens@group.eu', initials: 'RM', roleId: 'group-admin', scopeType: 'group', scopeLabel: 'Group', scopeNodeId: 'grp', status: 'active', password: 'demo1234', platformAdmin: true, secondary: [] },
   { id: 'u-lars', name: 'Lars Pieters', email: 'l.pieters@group.eu', initials: 'LP', roleId: 'finance-mgr', scopeType: 'group', scopeLabel: 'Group', scopeNodeId: 'grp', status: 'active', password: 'demo1234', secondary: [] },
   { id: 'u-anna', name: 'Anna Kowalska', email: 'a.kowalska@group.eu', initials: 'AK', roleId: 'sys-integrator', scopeType: 'group', scopeLabel: 'Group', scopeNodeId: 'grp', status: 'active', password: 'demo1234', secondary: [] },
   { id: 'u-eva', name: 'Eva de Vries', email: 'e.devries@group.eu', initials: 'EV', roleId: 'sales-mgr', scopeType: 'company', scopeLabel: 'Rotterdam Branch', scopeNodeId: 'cmp-rotterdam', status: 'active', password: 'demo1234', secondary: [{ roleId: 'sales-mgr', scopeType: 'company', scopeLabel: 'Amsterdam Branch', scopeNodeId: 'cmp-amsterdam', roleLabel: 'Sales manager — read only' }] },
