@@ -31,4 +31,32 @@ describe('blueprint management', () => {
     expect((await post('/platform/tenants/tenant-dlpe-demo/capture', { key: 'cap-demo', name: 'dup' }, PLATFORM())).status).toBe(409);
     expect((await req('POST', '/platform/tenants/tenant-dlpe-demo/capture', { body: { key: 'cap-x', name: 'x' }, tok: NON() })).status).toBe(403);
   });
+  it('a captured blueprint can provision a new tenant (round-trip)', async () => {
+    // capture the demo tenant under a fresh key
+    const cap = await post('/platform/tenants/tenant-dlpe-demo/capture', { key: 'cap-rt', name: 'RT' }, PLATFORM());
+    expect(cap.status).toBe(200);
+    // provision a new tenant from the captured blueprint (prefixed id mode — default)
+    const prov = await post('/platform/tenants', { blueprintKey: 'cap-rt', inputs: { slug: 'rt-clone', customerName: 'RT Clone' }, idempotencyKey: 'cap-rt-1' }, PLATFORM());
+    expect(prov.status).toBe(201);
+    const tid = prov.body.tenantId;
+    expect(tid).toBeTruthy();
+    // the clone has org nodes + roles under its own tenantId (captured from the demo)
+    expect(await prisma.role.count({ where: { tenantId: tid } })).toBeGreaterThan(0);
+    expect(await prisma.orgNode.count({ where: { tenantId: tid } })).toBeGreaterThan(0);
+    // cleanup the provisioned clone FK-safe (mirrors provision-tenant.test.mjs + fieldRule/fieldDef from capture)
+    await prisma.subscription.deleteMany({ where: { tenantId: tid } });
+    await prisma.user.deleteMany({ where: { tenantId: tid } });
+    await prisma.fieldRule.deleteMany({ where: { tenantId: tid } });
+    await prisma.stageDef.deleteMany({ where: { tenantId: tid } });
+    await prisma.stageConfig.deleteMany({ where: { tenantId: tid } });
+    await prisma.fieldDef.deleteMany({ where: { tenantId: tid } });
+    await prisma.entityType.deleteMany({ where: { tenantId: tid } });
+    await prisma.trackDef.deleteMany({ where: { tenantId: tid } });
+    await prisma.crossTrigger.deleteMany({ where: { tenantId: tid } });
+    await prisma.userScope.deleteMany({ where: { tenantId: tid } });
+    await prisma.role.deleteMany({ where: { tenantId: tid } });
+    await prisma.orgNode.deleteMany({ where: { tenantId: tid } });
+    await prisma.provisioningRun.deleteMany({ where: { tenantId: tid } });
+    await prisma.tenant.delete({ where: { id: tid } });
+  });
 });
