@@ -134,8 +134,10 @@ export const ControlPlaneView = () => {
       const blob = new Blob([JSON.stringify(spec, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = key + '.json';
+      a.download = `${key}.json`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(a.href);
     } catch (e) { setErr(e.message); }
   };
@@ -426,7 +428,7 @@ export const ControlPlaneView = () => {
 const SectionHead = ({ icon, label, count }) => (
   <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
     <Icon name={icon} size={14} /> {label}
-    <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>· {count}</span>
+    {count != null && <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>· {count}</span>}
   </div>
 );
 
