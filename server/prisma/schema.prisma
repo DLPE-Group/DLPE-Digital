@@ -61,6 +61,13 @@ enum TenantStatus {
   ARCHIVED
 }
 
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
 enum BlueprintStatus {
   DRAFT
   PUBLISHED
@@ -116,6 +123,7 @@ model Tenant {
   entityTypes     EntityType[]
   fieldDefs       FieldDef[]
   entities        Entity[]
+  subscription    Subscription?
 }
 
 // ---------------- Org tree (group → region → country → company) ----------------
@@ -582,6 +590,34 @@ model Entity {
 
   @@index([tenantId, companyId, entityTypeId, trackId, stageId])
   @@index([tenantId, trackId, stageId, status])
+}
+
+// ---------------- Billing: Plan (platform-level) + Subscription (tenant-scoped, RLS) ----------------
+model Plan {
+  id            String         @id @default(cuid())
+  key           String         @unique
+  name          String
+  tier          Int            @default(0)
+  priceMonthly  Int            @default(0)
+  currency      String         @default("eur")
+  entitlements  Json
+  active        Boolean        @default(true)
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id               String             @id @default(cuid())
+  tenantId         String             @unique
+  tenant           Tenant             @relation(fields: [tenantId], references: [id])
+  planId           String
+  plan             Plan               @relation(fields: [planId], references: [id])
+  status           SubscriptionStatus @default(TRIALING)
+  provider         String             @default("simulated")
+  providerRef      String?
+  currentPeriodEnd DateTime?
+  seats            Int?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
 }
 
 // ---------------- Platform-level provisioning (no tenantId, no RLS) ----------------
