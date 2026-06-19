@@ -1,7 +1,7 @@
 // tests/api/billing.test.mjs
 import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import { TEST_DB_URL } from '../helpers.mjs';
+import { TEST_DB_URL, token, post } from '../helpers.mjs';
 import { SPEC_VERSION } from '@dlpe/shared';
 const prisma = new PrismaClient({ datasources: { db: { url: TEST_DB_URL } } });
 afterAll(() => prisma.$disconnect());
@@ -41,6 +41,83 @@ describe('SimulatedBillingProvider', () => {
     expect(s1.planKey).toBe('starter'); expect(['ACTIVE','TRIALING']).toContain(s1.status);
     const s2 = await bp.changePlan({ tenantId: t.id, planKey: 'pro' });
     expect(s2.planKey).toBe('pro');
+    await prisma.subscription.deleteMany({ where: { tenantId: t.id } });
+    await prisma.tenant.delete({ where: { id: t.id } });
+  });
+});
+
+describe('maxUsers gate on POST /admin/users', () => {
+  it('blocks the 11th user create (402) on starter; allows after upgrade to pro (200)', async () => {
+    const { SimulatedBillingProvider } = await import('../../server/src/domain/billing/provider.ts');
+    const bp = new SimulatedBillingProvider(prisma);
+
+    // --- arrange: throwaway tenant on starter (maxUsers 10) ---
+    const t = await prisma.tenant.create({ data: { slug: 'cap-test', name: 'Cap Test', region: 'eu' } });
+    await bp.createSubscription({ tenantId: t.id, planKey: 'starter' });
+
+    // Admin user reuses the global 'group-admin' role (its roleId FK points to the shared Role row).
+    // This satisfies requireAdmin (checks roleId === 'group-admin') while tenantId = t.id
+    // ensures req.tenantId resolves to the throwaway tenant.
+    const adminId = 'u-cap-admin';
+    const adminEmail = 'cap.admin@cap-test.io';
+    await prisma.user.create({
+      data: {
+        id: adminId,
+        name: 'Cap Admin',
+        email: adminEmail,
+        initials: 'CA',
+        passwordHash: 'x',
+        roleId: 'group-admin',
+        scopeType: 'group',
+        status: 'active',
+        tenantId: t.id,
+      },
+    });
+
+    // Seed 9 more users to bring the total to 10 (admin + 9 = 10 = maxUsers for starter)
+    for (let i = 1; i <= 9; i++) {
+      await prisma.user.create({
+        data: {
+          id: `u-cap-fill-${i}`,
+          name: `Fill ${i}`,
+          email: `fill${i}@cap-test.io`,
+          initials: `F${i}`,
+          passwordHash: 'x',
+          roleId: 'group-admin',
+          scopeType: 'group',
+          status: 'active',
+          tenantId: t.id,
+        },
+      });
+    }
+
+    const tok = token(adminId, adminEmail, 'group-admin');
+
+    // --- act: attempt to create the 11th user → expect 402 ---
+    const r1 = await post('/admin/users', {
+      name: 'Over Limit',
+      email: 'overlimit@cap-test.io',
+      roleId: 'group-admin',
+      scopeType: 'group',
+    }, tok);
+    expect(r1.status).toBe(402);
+    expect(r1.body.limit).toBe(10);
+    expect(r1.body.current).toBe(10);
+
+    // --- upgrade to pro (maxUsers 50) → create should succeed ---
+    await bp.changePlan({ tenantId: t.id, planKey: 'pro' });
+    const r2 = await post('/admin/users', {
+      id: 'u-cap-new',
+      name: 'Now Allowed',
+      email: 'nowallowed@cap-test.io',
+      roleId: 'group-admin',
+      scopeType: 'group',
+    }, tok);
+    expect(r2.status).toBe(200);
+    expect(r2.body.id).toBe('u-cap-new');
+
+    // --- cleanup: FK-safe order ---
+    await prisma.user.deleteMany({ where: { tenantId: t.id } });
     await prisma.subscription.deleteMany({ where: { tenantId: t.id } });
     await prisma.tenant.delete({ where: { id: t.id } });
   });

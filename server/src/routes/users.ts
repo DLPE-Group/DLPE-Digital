@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import argon2 from 'argon2';
 import { prisma } from '../prisma.js';
+import { loadEntitlements } from '../domain/billing/entitlements.js';
 
 export const usersRouter: Router = Router();
 
@@ -37,6 +38,15 @@ usersRouter.post('/users', async (req, res) => {
   const parsed = createSchema.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid user payload', detail: parsed.error.flatten() });
   const d = parsed.data;
+
+  // Enforce plan maxUsers limit before creating
+  const current = await prisma.user.count({ where: { tenantId: req.tenantId! } });
+  const ent = await loadEntitlements(req.tenantId!);
+  const limit = ent.limits.maxUsers;
+  if (typeof limit === 'number' && current >= limit) {
+    return res.status(402).json({ error: 'Plan user limit reached', limit, current });
+  }
+
   const id = d.id ?? 'u-' + d.email.split('@')[0].replace(/[^a-z0-9]+/gi, '-').toLowerCase();
   const passwordHash = await argon2.hash(d.password ?? 'demo1234');
   try {
