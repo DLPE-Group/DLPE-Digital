@@ -6,6 +6,7 @@ import { BlueprintSpec } from '@dlpe/shared';
 import { provisionTenant } from '../domain/provisioning/provisionTenant.js';
 import { SharedDbTarget } from '../domain/provisioning/target.js';
 import { billingProvider } from '../domain/billing/provider.js';
+import { captureBlueprint } from '../domain/provisioning/captureBlueprint.js';
 
 export const platformRouter = Router();
 
@@ -148,6 +149,41 @@ platformRouter.get('/tenants/:id/subscription', async (req, res) => {
   });
   if (!sub) return res.status(404).json({ error: 'Subscription not found' });
   return res.json(sub);
+});
+
+// POST /api/platform/tenants/:id/capture — capture a live tenant into a DRAFT blueprint
+const captureSchema = z.object({ key: z.string().min(1), name: z.string().min(1) });
+platformRouter.post('/tenants/:id/capture', async (req, res) => {
+  const parsed = captureSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: 'key and name are required' });
+  const tenant = await prisma.tenant.findUnique({ where: { id: req.params.id } });
+  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+  let spec;
+  try { spec = await captureBlueprint(prisma, req.params.id); }
+  catch (e) { return res.status(422).json({ error: 'Capture failed: ' + (e as Error).message }); }
+  try {
+    const bp = await prisma.blueprint.create({
+      data: { key: parsed.data.key, name: parsed.data.name, status: 'DRAFT', spec: spec as unknown as Prisma.InputJsonValue, sourceTenantId: req.params.id },
+    });
+    return res.json(bp);
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') return res.status(409).json({ error: 'Blueprint key already exists' });
+    throw e;
+  }
+});
+
+// PATCH /api/platform/blueprints/:id — update blueprint status (lifecycle)
+const bpStatusSchema = z.object({ status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']) });
+platformRouter.patch('/blueprints/:id', async (req, res) => {
+  const parsed = bpStatusSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid status' });
+  try {
+    const bp = await prisma.blueprint.update({ where: { id: req.params.id }, data: { status: parsed.data.status } });
+    return res.json(bp);
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') return res.status(404).json({ error: 'Blueprint not found' });
+    throw e;
+  }
 });
 
 // PATCH /api/platform/tenants/:id/subscription — change a tenant's plan
