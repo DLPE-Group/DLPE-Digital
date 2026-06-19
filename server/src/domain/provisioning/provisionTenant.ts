@@ -191,18 +191,6 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
     precomputedUserHashes.set(u.id, await argon2.hash(u.password ?? 'demo1234'));
   }
 
-  // Pre-filter spec.users to skip any whose email already exists globally (User.email @unique).
-  // This allows blueprints with demo users to be re-provisioned without clashing with existing tenants.
-  const specUserEmailsToSkip = new Set<string>();
-  if ((spec.users ?? []).length > 0) {
-    const specEmails = (spec.users ?? []).map((u) => u.email);
-    const existing = await prisma.user.findMany({
-      where: { email: { in: specEmails } },
-      select: { email: true },
-    });
-    for (const { email } of existing) specUserEmailsToSkip.add(email);
-  }
-
   // ------------------------------------------------------------------
   // 5. Atomic data transaction
   // ------------------------------------------------------------------
@@ -408,10 +396,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
       }
 
       // Pipeline + reference entities (CardSeed-shaped objects in spec.seed.entities)
-      // Skip seed data when some spec.users were omitted due to email conflicts (re-provisioning scenario):
-      // a new customer should start with a clean slate, not with the blueprint's demo data.
-      const skipSeed = specUserEmailsToSkip.size > 0;
-      if (!skipSeed && spec.seed?.entities && spec.seed.entities.length > 0) {
+      if (spec.seed?.entities && spec.seed.entities.length > 0) {
         for (const e of spec.seed.entities as Array<Record<string, unknown>>) {
           const track = typeof e.track === 'string' ? e.track : '';
           const trackKey: string = TRACK_KEY_FROM_ENUM[track] ?? track.toLowerCase();
@@ -462,7 +447,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
       }
 
       // 5h-extras: rich demo business data from spec.seed.extras
-      const extras = !skipSeed ? (spec.seed?.extras as Record<string, unknown> | undefined) : undefined;
+      const extras = spec.seed?.extras as Record<string, unknown> | undefined;
       if (extras) {
         // Vehicle timeline
         if (extras.vehicleTimeline) {
@@ -519,22 +504,16 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
                 note: typeof v.note === 'string' ? v.note : null,
                 companyId: typeof v.companyId === 'string' ? v.companyId : operatorCompanyId,
               };
-              const vData = vehicleToEntityCreate(vs, metaCtx);
-              // In prefixed mode, prefix the generated vehicle id to avoid cross-tenant clashes.
-              if (idMode === 'prefixed') vData.id = `${pfx}${vData.id}`;
-              await tx.entity.create({ data: vData });
+              await tx.entity.create({ data: vehicleToEntityCreate(vs, metaCtx) });
             }
           }
 
           // Invoices
           if (Array.isArray(pf.invoices)) {
             for (const inv of pf.invoices as Array<Record<string, unknown>>) {
-              const rawRef = String(inv.ref ?? randomUUID());
-              // In prefixed mode, prefix the invoice ref to avoid cross-tenant clashes.
-              const ref = idMode === 'prefixed' ? `${pfx}${rawRef}` : rawRef;
               await tx.invoice.create({
                 data: {
-                  ref,
+                  ref: String(inv.ref ?? randomUUID()),
                   value: typeof inv.value === 'number' ? inv.value : null,
                   due: typeof inv.due === 'string' ? inv.due : null,
                   status: typeof inv.status === 'string' ? inv.status : null,
@@ -564,12 +543,9 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
         // Integrations
         if (Array.isArray(extras.integrations)) {
           for (const integ of extras.integrations as Array<Record<string, unknown>>) {
-            const rawIntegId = String(integ.id ?? randomUUID());
-            // In prefixed mode, prefix the integration id to avoid cross-tenant clashes.
-            const integId = idMode === 'prefixed' ? `${pfx}${rawIntegId}` : rawIntegId;
             await tx.integration.create({
               data: {
-                id: integId,
+                id: String(integ.id ?? randomUUID()),
                 name: String(integ.name ?? ''),
                 kind: String(integ.kind ?? ''),
                 direction: String(integ.direction ?? 'inbound'),
@@ -644,10 +620,6 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
       for (const [uid, u] of specUsersById.entries()) {
         // De-duplicate against adminUser: if ids match, skip here and let the admin block handle it.
         if (uid === adminUserId) continue;
-        // Also skip if the spec user's raw id matches the admin's idPrefix (catches prefixed-mode mismatch).
-        if (u.id === spec.adminUser.idPrefix) continue;
-        // Skip users whose email is already taken globally (pre-filtered above).
-        if (specUserEmailsToSkip.has(u.email)) continue;
 
         // Look up pre-computed hash (key is original spec id before prefix).
         const userPasswordHash = precomputedUserHashes.get(u.id)!;
@@ -717,8 +689,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
         : `/login?email=${encodeURIComponent(adminUser.email)}`;
 
       // 5j. User-dependent extras (reports, dashboard, rbacVersions) — written after users exist
-      // Skip user-dependent extras when seed is skipped (re-provisioning scenario).
-      const extrasForUsers = !skipSeed ? (spec.seed?.extras as Record<string, unknown> | undefined) : undefined;
+      const extrasForUsers = spec.seed?.extras as Record<string, unknown> | undefined;
       if (extrasForUsers) {
         // Reports (FK: createdById → User)
         if (Array.isArray(extrasForUsers.reports)) {

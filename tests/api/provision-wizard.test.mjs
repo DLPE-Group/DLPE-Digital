@@ -27,13 +27,17 @@ async function destroyTenant(tid) {
 const created = [];
 afterAll(async () => {
   for (const tid of created) { try { await destroyTenant(tid); } catch {} }
+  await prisma.blueprint.deleteMany({ where: { key: { startsWith: 'cap-s4' } } });
   await prisma.$disconnect();
 });
 
 describe('provision overrides', () => {
   it('honours admin + planKey overrides', async () => {
+    // capture the demo config-only (no seed users/entities) into a fresh blueprint
+    const cap = await post('/platform/tenants/tenant-dlpe-demo/capture', { key: 'cap-s4-ovr', name: 'S4 Ovr Template' }, PLATFORM());
+    expect(cap.status).toBe(200);
     const r = await post('/platform/tenants', {
-      blueprintKey: 'dlpe-demo',
+      blueprintKey: 'cap-s4-ovr',
       inputs: { slug: 's4-ovr', customerName: 'S4 Override Co' },
       admin: { name: 'Wizard Admin', email: 'wizard.admin@s4ovr.test' },
       planKey: 'pro',
@@ -42,11 +46,9 @@ describe('provision overrides', () => {
     expect(r.status).toBe(201);
     const tid = r.body.tenantId;
     created.push(tid);
-    // admin user carries the overridden email + name
     const admin = await prisma.user.findFirst({ where: { tenantId: tid, email: 'wizard.admin@s4ovr.test' } });
     expect(admin).toBeTruthy();
     expect(admin.name).toBe('Wizard Admin');
-    // subscription is the overridden plan
     const sub = await prisma.subscription.findUnique({ where: { tenantId: tid }, include: { plan: true } });
     expect(sub?.plan?.key).toBe('pro');
   });
