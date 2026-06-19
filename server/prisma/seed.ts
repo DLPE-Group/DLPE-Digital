@@ -107,10 +107,12 @@ async function main() {
   });
 
   // Demo tenant subscription — enterprise plan, ACTIVE.
+  // provisionTenant (above) may have already created it as TRIALING via the billing
+  // provider; this upsert always wins and sets the final state to ACTIVE.
   const enterprisePlan = await prisma.plan.findUniqueOrThrow({ where: { key: 'enterprise' } });
   await prisma.subscription.upsert({
     where: { tenantId: DEMO_TENANT_ID },
-    update: {},
+    update: { planId: enterprisePlan.id, status: 'ACTIVE' },
     create: {
       tenantId: DEMO_TENANT_ID,
       planId: enterprisePlan.id,

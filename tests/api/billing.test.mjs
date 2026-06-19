@@ -2,6 +2,7 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { TEST_DB_URL } from '../helpers.mjs';
+import { SPEC_VERSION } from '@dlpe/shared';
 const prisma = new PrismaClient({ datasources: { db: { url: TEST_DB_URL } } });
 afterAll(() => prisma.$disconnect());
 
@@ -42,5 +43,27 @@ describe('SimulatedBillingProvider', () => {
     expect(s2.planKey).toBe('pro');
     await prisma.subscription.deleteMany({ where: { tenantId: t.id } });
     await prisma.tenant.delete({ where: { id: t.id } });
+  });
+});
+
+describe('provisionTenant default subscription', () => {
+  it('provisionTenant assigns the blueprint default plan as a TRIALING subscription', async () => {
+    const { provisionTenant } = await import('../../server/src/domain/provisioning/provisionTenant.ts');
+    const { SharedDbTarget } = await import('../../server/src/domain/provisioning/target.ts');
+    const spec = { specVersion: SPEC_VERSION, defaultPlanKey: 'pro', inputs: [],
+      orgStructure: { id: 'grp', kind: 'group', name: 'Bp', code: 'BP', children: [] },
+      roles: [{ id: 'group-admin', name: 'A', system: true, tracks: ['All'], edit: 'a', desc: 'a' }],
+      fieldRules: [], tracks: [], entityTypes: [], crossTriggers: [],
+      adminUser: { idPrefix: 'u', name: 'A', email: 'a@bp.io', roleId: 'group-admin', scopeType: 'group', password: 'demo1234' } };
+    const r = await provisionTenant({ blueprint: { spec }, inputs: { slug: 'bp-sub' }, target: new SharedDbTarget(), idempotencyKey: 'bp-sub-1', prismaClient: prisma });
+    const sub = await prisma.subscription.findUnique({ where: { tenantId: r.tenantId }, include: { plan: true } });
+    expect(sub.plan.key).toBe('pro'); expect(sub.status).toBe('TRIALING');
+    // cleanup
+    await prisma.subscription.deleteMany({ where: { tenantId: r.tenantId } });
+    await prisma.user.deleteMany({ where: { tenantId: r.tenantId } });
+    await prisma.role.deleteMany({ where: { tenantId: r.tenantId } });
+    await prisma.orgNode.deleteMany({ where: { tenantId: r.tenantId } });
+    await prisma.provisioningRun.deleteMany({ where: { tenantId: r.tenantId } });
+    await prisma.tenant.delete({ where: { id: r.tenantId } });
   });
 });

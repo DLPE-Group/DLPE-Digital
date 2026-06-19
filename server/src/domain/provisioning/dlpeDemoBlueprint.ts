@@ -456,6 +456,7 @@ export const dlpeDemoBlueprint = {
   name: 'DLPE Demo',
   spec: {
     specVersion: SPEC_VERSION,
+    defaultPlanKey: 'enterprise',
     inputs: [
       { key: 'slug', label: 'Tenant slug', type: 'string' as const, required: true },
       { key: 'customerName', label: 'Customer name', type: 'string' as const, required: true },

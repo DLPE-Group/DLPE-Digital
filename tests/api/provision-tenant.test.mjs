@@ -51,6 +51,7 @@ describe('provisionTenant', () => {
     expect(await prisma.entityType.count({ where: { tenantId: tid } })).toBe(1);
     expect(await prisma.user.count({ where: { tenantId: tid } })).toBe(1);
     // cleanup
+    await prisma.subscription.deleteMany({ where: { tenantId: tid } });
     await prisma.user.deleteMany({ where: { tenantId: tid } });
     await prisma.stageDef.deleteMany({ where: { tenantId: tid } });
     await prisma.stageConfig.deleteMany({ where: { tenantId: tid } });
@@ -120,6 +121,7 @@ describe('provisionTenant', () => {
     expect(adminUser.tenantId).toBe(tid);
 
     // cleanup
+    await prisma.subscription.deleteMany({ where: { tenantId: tid } });
     await prisma.userScope.deleteMany({ where: { tenantId: tid } });
     await prisma.user.deleteMany({ where: { tenantId: tid } });
     await prisma.stageDef.deleteMany({ where: { tenantId: tid } });

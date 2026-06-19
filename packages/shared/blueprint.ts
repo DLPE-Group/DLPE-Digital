@@ -160,6 +160,7 @@ export type UserSpec = z.infer<typeof UserSpec>;
 
 export const BlueprintSpec = z.object({
   specVersion: z.literal(SPEC_VERSION),
+  defaultPlanKey: z.string().optional(),
   inputs: z.array(InputSpec),
   orgStructure: OrgNode,
   roles: z.array(RoleSpec),
