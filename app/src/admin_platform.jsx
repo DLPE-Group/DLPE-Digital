@@ -88,6 +88,58 @@ export const ControlPlaneView = () => {
     }
   };
 
+  // Blueprint management state
+  const [captureTenantId, setCaptureTenantId] = React.useState('');
+  const [captureKey, setCaptureKey] = React.useState('');
+  const [captureName, setCaptureName] = React.useState('');
+  const [captureErr, setCaptureErr] = React.useState(null);
+
+  const [importJson, setImportJson] = React.useState('');
+  const [importKey, setImportKey] = React.useState('');
+  const [importName, setImportName] = React.useState('');
+  const [importErr, setImportErr] = React.useState(null);
+
+  const capture = async () => {
+    setCaptureErr(null);
+    setErr(null);
+    try {
+      await api.post(`/platform/tenants/${captureTenantId}/capture`, { key: captureKey, name: captureName });
+      setCaptureKey(''); setCaptureName(''); setCaptureTenantId('');
+      reload();
+    } catch (e) { setCaptureErr(e.message); }
+  };
+
+  const importBlueprint = async () => {
+    setImportErr(null);
+    setErr(null);
+    let spec;
+    try { spec = JSON.parse(importJson); } catch { setImportErr('Invalid JSON — check pasted content.'); return; }
+    try {
+      await api.post('/platform/blueprints/import', { key: importKey, name: importName, spec });
+      setImportKey(''); setImportName(''); setImportJson('');
+      reload();
+    } catch (e) { setImportErr(e.message); }
+  };
+
+  const patchBlueprintStatus = async (id, status) => {
+    setErr(null);
+    try { await api.patch(`/platform/blueprints/${id}`, { status }); reload(); }
+    catch (e) { setErr(e.message); }
+  };
+
+  const exportBlueprint = async (id, key) => {
+    setErr(null);
+    try {
+      const spec = await api.get(`/platform/blueprints/${id}/export`);
+      const blob = new Blob([JSON.stringify(spec, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = key + '.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) { setErr(e.message); }
+  };
+
   // Sort blueprints: PUBLISHED first
   const sortedBlueprints = [...blueprints].sort((a, b) => {
     if (a.status === 'PUBLISHED' && b.status !== 'PUBLISHED') return -1;
@@ -240,16 +292,129 @@ export const ControlPlaneView = () => {
               {blueprints.length === 0 && (
                 <div style={{ fontSize: 13, color: 'var(--text-tertiary)', padding: '8px 0' }}>No blueprints found.</div>
               )}
-              {blueprints.map((b) => (
+              {sortedBlueprints.map((b) => (
                 <div key={b.id} style={card}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <strong>{b.name}</strong>
                     <code style={codeChip}>{b.key}</code>
                     <span style={verBadge}>v{b.version}</span>
                     <span style={{ ...statusBadge(b.status) }}>{b.status}</span>
+                    <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                      {b.status === 'DRAFT' && (
+                        <button style={miniBtn} onClick={() => patchBlueprintStatus(b.id, 'PUBLISHED')}>Publish</button>
+                      )}
+                      {b.status !== 'ARCHIVED' && (
+                        <button style={warnBtn} onClick={() => patchBlueprintStatus(b.id, 'ARCHIVED')}>Archive</button>
+                      )}
+                      <button style={miniBtn} onClick={() => exportBlueprint(b.id, b.key)}>Export</button>
+                    </span>
                   </div>
                 </div>
               ))}
+            </div>
+          </section>
+
+          {/* ── Capture blueprint from tenant ── */}
+          <section>
+            <SectionHead icon="download" label="Capture blueprint from tenant" />
+            <div style={card}>
+              {captureErr && <div style={{ ...errBar, marginBottom: 12 }}><Icon name="flash" size={13} /> {captureErr}</div>}
+              <div style={{ display: 'grid', gap: 12 }}>
+                <label style={fieldLabel}>
+                  Source tenant
+                  <select
+                    value={captureTenantId}
+                    onChange={(e) => setCaptureTenantId(e.target.value)}
+                    style={selectStyle}
+                  >
+                    <option value="">— select a tenant —</option>
+                    {tenants.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name} ({t.slug})</option>
+                    ))}
+                  </select>
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <label style={fieldLabel}>
+                    Blueprint key
+                    <input
+                      type="text"
+                      value={captureKey}
+                      onChange={(e) => setCaptureKey(e.target.value)}
+                      placeholder="e.g. my-template"
+                      style={inputStyle}
+                    />
+                  </label>
+                  <label style={fieldLabel}>
+                    Blueprint name
+                    <input
+                      type="text"
+                      value={captureName}
+                      onChange={(e) => setCaptureName(e.target.value)}
+                      placeholder="e.g. My Template"
+                      style={inputStyle}
+                    />
+                  </label>
+                </div>
+                <div>
+                  <button
+                    onClick={capture}
+                    disabled={!captureTenantId || !captureKey.trim() || !captureName.trim()}
+                    style={captureTenantId && captureKey.trim() && captureName.trim() ? primaryBtn : disabledBtn}
+                  >
+                    Capture
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* ── Import blueprint ── */}
+          <section>
+            <SectionHead icon="upload" label="Import blueprint" />
+            <div style={card}>
+              {importErr && <div style={{ ...errBar, marginBottom: 12 }}><Icon name="flash" size={13} /> {importErr}</div>}
+              <div style={{ display: 'grid', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <label style={fieldLabel}>
+                    Blueprint key
+                    <input
+                      type="text"
+                      value={importKey}
+                      onChange={(e) => setImportKey(e.target.value)}
+                      placeholder="e.g. imported-template"
+                      style={inputStyle}
+                    />
+                  </label>
+                  <label style={fieldLabel}>
+                    Blueprint name
+                    <input
+                      type="text"
+                      value={importName}
+                      onChange={(e) => setImportName(e.target.value)}
+                      placeholder="e.g. Imported Template"
+                      style={inputStyle}
+                    />
+                  </label>
+                </div>
+                <label style={fieldLabel}>
+                  Spec JSON (paste exported blueprint)
+                  <textarea
+                    value={importJson}
+                    onChange={(e) => setImportJson(e.target.value)}
+                    placeholder={'{\n  "specVersion": 1,\n  ...\n}'}
+                    style={{ ...inputStyle, fontFamily: 'var(--mono)', fontSize: 12, minHeight: 120, resize: 'vertical' }}
+                  />
+                </label>
+                <div>
+                  <button
+                    onClick={importBlueprint}
+                    disabled={!importKey.trim() || !importName.trim() || !importJson.trim()}
+                    style={importKey.trim() && importName.trim() && importJson.trim() ? primaryBtn : disabledBtn}
+                  >
+                    Import
+                  </button>
+                </div>
+              </div>
             </div>
           </section>
         </div>
