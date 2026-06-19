@@ -8,6 +8,7 @@ import { Icon } from './icons.jsx';
 export const ControlPlaneView = () => {
   const [tenants, setTenants] = React.useState(null);
   const [blueprints, setBlueprints] = React.useState([]);
+  const [plans, setPlans] = React.useState([]);
   const [err, setErr] = React.useState(null);
 
   // Provision form state
@@ -18,8 +19,8 @@ export const ControlPlaneView = () => {
   const [provisioning, setProvisioning] = React.useState(false);
 
   const reload = React.useCallback(() => {
-    Promise.all([api.get('/platform/tenants'), api.get('/platform/blueprints')])
-      .then(([t, b]) => { setTenants(t); setBlueprints(b); })
+    Promise.all([api.get('/platform/tenants'), api.get('/platform/blueprints'), api.get('/platform/plans')])
+      .then(([t, b, p]) => { setTenants(t); setBlueprints(b); setPlans(p); })
       .catch((e) => setErr(e.message));
   }, []);
   React.useEffect(() => { reload(); }, [reload]);
@@ -27,6 +28,12 @@ export const ControlPlaneView = () => {
   const setStatus = async (id, status) => {
     setErr(null);
     try { await api.patch(`/platform/tenants/${id}`, { status }); reload(); }
+    catch (e) { setErr(e.message); }
+  };
+
+  const changePlan = async (id, planKey) => {
+    setErr(null);
+    try { await api.patch(`/platform/tenants/${id}/subscription`, { planKey }); reload(); }
     catch (e) { setErr(e.message); }
   };
 
@@ -197,6 +204,25 @@ export const ControlPlaneView = () => {
                     <code style={codeChip}>{t.slug}</code>
                     <span style={{ ...statusBadge(t.status) }}>{t.status}</span>
                     {t.region && <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{t.region}</span>}
+                    {t.subscription && (
+                      <>
+                        <span style={planBadge}>{t.subscription.plan?.key ?? '—'}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t.subscription.status}</span>
+                      </>
+                    )}
+                    {plans.length > 0 && (
+                      <select
+                        value={t.subscription?.plan?.key ?? ''}
+                        onChange={(e) => changePlan(t.id, e.target.value)}
+                        style={{ ...selectStyle, fontSize: 11, padding: '2px 6px' }}
+                        title="Change plan"
+                      >
+                        {!t.subscription && <option value="">— no plan —</option>}
+                        {plans.map((p) => (
+                          <option key={p.key} value={p.key}>{p.key}</option>
+                        ))}
+                      </select>
+                    )}
                     <span style={{ marginLeft: 'auto' }}>
                       {t.status === 'ACTIVE'
                         ? <button style={warnBtn} onClick={() => setStatus(t.id, 'SUSPENDED')}>Suspend</button>
@@ -262,3 +288,4 @@ const inputStyle = { fontSize: 13, padding: '5px 8px', borderRadius: 5, border: 
 const primaryBtn = { fontSize: 13, padding: '5px 14px', borderRadius: 5, border: '1px solid var(--accent, #0070f3)', background: 'var(--accent, #0070f3)', color: '#fff', cursor: 'pointer', fontWeight: 500 };
 const disabledBtn = { fontSize: 13, padding: '5px 14px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg-muted)', color: 'var(--text-tertiary)', cursor: 'not-allowed', fontWeight: 500 };
 const successBar = { padding: '8px 12px', borderRadius: 6, background: 'rgba(0,160,80,0.08)', border: '1px solid rgba(0,160,80,0.25)', color: 'var(--status-green, #0a0)', fontSize: 13 };
+const planBadge = { fontSize: 11, padding: '1px 6px', borderRadius: 3, background: 'rgba(0,112,243,0.08)', border: '1px solid rgba(0,112,243,0.25)', color: 'var(--accent, #0070f3)', fontFamily: 'var(--mono)' };

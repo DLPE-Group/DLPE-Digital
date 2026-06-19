@@ -27,6 +27,9 @@ test('control plane: suspend and reactivate demo tenant', async ({ page }) => {
   await expect(tenantRow).toContainText('DLPE Demo');
   await expect(tenantRow).toContainText('ACTIVE');
 
+  // Plan column: demo tenant must show enterprise plan key
+  await expect(tenantRow).toContainText('enterprise', { timeout: 10000 });
+
   // Suspend the tenant
   await tenantRow.getByRole('button', { name: 'Suspend' }).click();
 

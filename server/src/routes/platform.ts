@@ -46,7 +46,10 @@ platformRouter.post('/tenants', async (req, res) => {
 
 // GET /api/platform/tenants — list tenants
 platformRouter.get('/tenants', async (_req, res) => {
-  const tenants = await prisma.tenant.findMany({ orderBy: { createdAt: 'desc' } });
+  const tenants = await prisma.tenant.findMany({
+    orderBy: { createdAt: 'desc' },
+    include: { subscription: { include: { plan: true } } },
+  });
   return res.json(tenants);
 });
 
