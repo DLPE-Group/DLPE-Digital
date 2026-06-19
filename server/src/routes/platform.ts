@@ -12,14 +12,20 @@ export const platformRouter = Router();
 
 // POST /api/platform/tenants — provision a new tenant from a blueprint
 platformRouter.post('/tenants', async (req, res) => {
-  const { blueprintKey, inputs, idempotencyKey } = req.body as {
+  const { blueprintKey, inputs, idempotencyKey, admin, planKey } = req.body as {
     blueprintKey?: string;
     inputs?: Record<string, unknown>;
     idempotencyKey?: string;
+    admin?: { name?: string; email?: string };
+    planKey?: string;
   };
 
   if (!blueprintKey) {
     return res.status(400).json({ error: 'blueprintKey is required' });
+  }
+
+  if (admin?.email !== undefined && !z.string().email().safeParse(admin.email).success) {
+    return res.status(400).json({ error: 'admin.email must be a valid email' });
   }
 
   const blueprint = await prisma.blueprint.findUnique({ where: { key: blueprintKey } });
@@ -38,6 +44,8 @@ platformRouter.post('/tenants', async (req, res) => {
       inputs: inputs ?? {},
       target: new SharedDbTarget(),
       idempotencyKey,
+      adminOverride: admin,
+      planKey,
     });
     return res.status(201).json(result);
   } catch (err) {

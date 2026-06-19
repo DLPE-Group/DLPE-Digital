@@ -21,7 +21,7 @@ import { prisma as defaultPrisma } from '../../prisma.js';
 import type { BlueprintSpec as BlueprintSpecType } from '@dlpe/shared';
 import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
 import type { ProvisioningTarget } from './target.js';
-import { slugify, validateInputs, resolveSlugName } from './derive.js';
+import { slugify, validateInputs, resolveSlugName, resolvePlanKey } from './derive.js';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { cardToEntityCreate, vehicleToEntityCreate, type CardSeed, type VehicleSeed, type MetaCtx } from '../backfill.js';
 import { SimulatedBillingProvider } from '../billing/provider.js';
@@ -49,6 +49,10 @@ export interface ProvisionTenantArgs {
    *   used verbatim. Admin/user ids are used verbatim.
    */
   idMode?: 'prefixed' | 'literal';
+  /** Override the blueprint's admin user name/email (per-onboarding). Field-wise merge. */
+  adminOverride?: { name?: string; email?: string };
+  /** Override the default subscription plan key (else spec.defaultPlanKey ?? 'starter'). */
+  planKey?: string;
   /** Optional prisma client override — defaults to the owner (bypass-RLS) client.
    *  Useful in tests to point at the test database. */
   prismaClient?: PrismaClient;
@@ -103,6 +107,11 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
   const { blueprint, inputs, target, idempotencyKey } = args;
   const prisma = args.prismaClient ?? defaultPrisma;
   const spec = blueprint.spec;
+  const effectiveAdmin = {
+    ...spec.adminUser,
+    ...(args.adminOverride?.name ? { name: args.adminOverride.name } : {}),
+    ...(args.adminOverride?.email ? { email: args.adminOverride.email } : {}),
+  };
   const idMode = args.idMode ?? 'prefixed';
 
   // ------------------------------------------------------------------
@@ -129,7 +138,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
       const savedSteps = existing.steps as Record<string, unknown> | null;
       const savedLink = typeof savedSteps?.adminLoginOrInviteLink === 'string'
         ? savedSteps.adminLoginOrInviteLink
-        : `/login?email=${encodeURIComponent(spec.adminUser.email)}`;
+        : `/login?email=${encodeURIComponent(effectiveAdmin.email)}`;
       return {
         tenantId: existing.tenantId,
         slug: existing.slug,
@@ -169,8 +178,8 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
   // Admin user hash
   let adminPasswordHashPre: string;
   let adminInviteTokenPre: string | null = null;
-  if (spec.adminUser.password) {
-    adminPasswordHashPre = await argon2.hash(spec.adminUser.password);
+  if (effectiveAdmin.password) {
+    adminPasswordHashPre = await argon2.hash(effectiveAdmin.password);
   } else {
     adminInviteTokenPre = randomUUID();
     adminPasswordHashPre = await argon2.hash(adminInviteTokenPre); // placeholder; redeemed via invite flow
@@ -180,6 +189,18 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
   const precomputedUserHashes = new Map<string, string>();
   for (const u of spec.users ?? []) {
     precomputedUserHashes.set(u.id, await argon2.hash(u.password ?? 'demo1234'));
+  }
+
+  // Pre-filter spec.users to skip any whose email already exists globally (User.email @unique).
+  // This allows blueprints with demo users to be re-provisioned without clashing with existing tenants.
+  const specUserEmailsToSkip = new Set<string>();
+  if ((spec.users ?? []).length > 0) {
+    const specEmails = (spec.users ?? []).map((u) => u.email);
+    const existing = await prisma.user.findMany({
+      where: { email: { in: specEmails } },
+      select: { email: true },
+    });
+    for (const { email } of existing) specUserEmailsToSkip.add(email);
   }
 
   // ------------------------------------------------------------------
@@ -387,7 +408,10 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
       }
 
       // Pipeline + reference entities (CardSeed-shaped objects in spec.seed.entities)
-      if (spec.seed?.entities && spec.seed.entities.length > 0) {
+      // Skip seed data when some spec.users were omitted due to email conflicts (re-provisioning scenario):
+      // a new customer should start with a clean slate, not with the blueprint's demo data.
+      const skipSeed = specUserEmailsToSkip.size > 0;
+      if (!skipSeed && spec.seed?.entities && spec.seed.entities.length > 0) {
         for (const e of spec.seed.entities as Array<Record<string, unknown>>) {
           const track = typeof e.track === 'string' ? e.track : '';
           const trackKey: string = TRACK_KEY_FROM_ENUM[track] ?? track.toLowerCase();
@@ -438,7 +462,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
       }
 
       // 5h-extras: rich demo business data from spec.seed.extras
-      const extras = spec.seed?.extras as Record<string, unknown> | undefined;
+      const extras = !skipSeed ? (spec.seed?.extras as Record<string, unknown> | undefined) : undefined;
       if (extras) {
         // Vehicle timeline
         if (extras.vehicleTimeline) {
@@ -495,16 +519,22 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
                 note: typeof v.note === 'string' ? v.note : null,
                 companyId: typeof v.companyId === 'string' ? v.companyId : operatorCompanyId,
               };
-              await tx.entity.create({ data: vehicleToEntityCreate(vs, metaCtx) });
+              const vData = vehicleToEntityCreate(vs, metaCtx);
+              // In prefixed mode, prefix the generated vehicle id to avoid cross-tenant clashes.
+              if (idMode === 'prefixed') vData.id = `${pfx}${vData.id}`;
+              await tx.entity.create({ data: vData });
             }
           }
 
           // Invoices
           if (Array.isArray(pf.invoices)) {
             for (const inv of pf.invoices as Array<Record<string, unknown>>) {
+              const rawRef = String(inv.ref ?? randomUUID());
+              // In prefixed mode, prefix the invoice ref to avoid cross-tenant clashes.
+              const ref = idMode === 'prefixed' ? `${pfx}${rawRef}` : rawRef;
               await tx.invoice.create({
                 data: {
-                  ref: String(inv.ref ?? randomUUID()),
+                  ref,
                   value: typeof inv.value === 'number' ? inv.value : null,
                   due: typeof inv.due === 'string' ? inv.due : null,
                   status: typeof inv.status === 'string' ? inv.status : null,
@@ -534,9 +564,12 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
         // Integrations
         if (Array.isArray(extras.integrations)) {
           for (const integ of extras.integrations as Array<Record<string, unknown>>) {
+            const rawIntegId = String(integ.id ?? randomUUID());
+            // In prefixed mode, prefix the integration id to avoid cross-tenant clashes.
+            const integId = idMode === 'prefixed' ? `${pfx}${rawIntegId}` : rawIntegId;
             await tx.integration.create({
               data: {
-                id: String(integ.id ?? randomUUID()),
+                id: integId,
                 name: String(integ.name ?? ''),
                 kind: String(integ.kind ?? ''),
                 direction: String(integ.direction ?? 'inbound'),
@@ -589,7 +622,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
 
       // Derive admin user id based on id mode.
       // In prefixed mode: <idPrefix>-<slug>. In literal mode: idPrefix verbatim.
-      const adminUser = spec.adminUser;
+      const adminUser = effectiveAdmin;
       const adminUserId = idMode === 'literal'
         ? adminUser.idPrefix
         : `${adminUser.idPrefix}-${slug}`;
@@ -611,6 +644,10 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
       for (const [uid, u] of specUsersById.entries()) {
         // De-duplicate against adminUser: if ids match, skip here and let the admin block handle it.
         if (uid === adminUserId) continue;
+        // Also skip if the spec user's raw id matches the admin's idPrefix (catches prefixed-mode mismatch).
+        if (u.id === spec.adminUser.idPrefix) continue;
+        // Skip users whose email is already taken globally (pre-filtered above).
+        if (specUserEmailsToSkip.has(u.email)) continue;
 
         // Look up pre-computed hash (key is original spec id before prefix).
         const userPasswordHash = precomputedUserHashes.get(u.id)!;
@@ -680,7 +717,8 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
         : `/login?email=${encodeURIComponent(adminUser.email)}`;
 
       // 5j. User-dependent extras (reports, dashboard, rbacVersions) — written after users exist
-      const extrasForUsers = spec.seed?.extras as Record<string, unknown> | undefined;
+      // Skip user-dependent extras when seed is skipped (re-provisioning scenario).
+      const extrasForUsers = !skipSeed ? (spec.seed?.extras as Record<string, unknown> | undefined) : undefined;
       if (extrasForUsers) {
         // Reports (FK: createdById → User)
         if (Array.isArray(extrasForUsers.reports)) {
@@ -754,7 +792,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
       const bp = new SimulatedBillingProvider(prisma);
       await bp.createSubscription({
         tenantId: result.tenantId,
-        planKey: spec.defaultPlanKey ?? 'starter',
+        planKey: resolvePlanKey(spec, args.planKey),
         status: 'TRIALING',
       });
     } catch (subErr) {
