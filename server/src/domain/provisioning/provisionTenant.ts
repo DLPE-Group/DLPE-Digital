@@ -15,13 +15,13 @@
      rollback of the data does not erase the failure audit trail.
    ============================================================ */
 
-import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import argon2 from 'argon2';
 import { prisma as defaultPrisma } from '../../prisma.js';
 import type { BlueprintSpec as BlueprintSpecType } from '@dlpe/shared';
 import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
 import type { ProvisioningTarget } from './target.js';
+import { slugify, validateInputs, resolveSlugName } from './derive.js';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { cardToEntityCreate, vehicleToEntityCreate, type CardSeed, type VehicleSeed, type MetaCtx } from '../backfill.js';
 import { SimulatedBillingProvider } from '../billing/provider.js';
@@ -55,15 +55,6 @@ export interface ProvisionTenantArgs {
 }
 
 // ---------- helpers ----------
-
-/** Slugify a display name → URL/subdomain-safe lowercase string. */
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 63);
-}
 
 /** Walk an org-node tree depth-first, emitting flat rows (parents first). */
 type OrgNodeSpec = BlueprintSpecType['orgStructure'];
@@ -117,27 +108,15 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
   // ------------------------------------------------------------------
   // 1. Validate inputs against spec.inputs
   // ------------------------------------------------------------------
-  const shape: Record<string, z.ZodTypeAny> = {};
-  for (const field of spec.inputs) {
-    const base: z.ZodTypeAny = z.string(); // all inputs are strings for now
-    shape[field.key] = field.required ? base : base.optional();
-  }
-  const InputSchema = z.object(shape);
-  const parsed = InputSchema.safeParse(inputs);
-  if (!parsed.success) {
-    const offending = parsed.error.issues.map((i) => i.path[0]).join(', ');
-    throw new Error(`Invalid inputs: ${offending}`);
+  const inputCheck = validateInputs(spec, inputs);
+  if (!inputCheck.ok) {
+    throw new Error(`Invalid inputs: ${inputCheck.missing.join(', ')}`);
   }
 
   // ------------------------------------------------------------------
-  // 2. Derive slug + name
+  // 2. Derive slug + name + region
   // ------------------------------------------------------------------
-  const slug =
-    typeof inputs.slug === 'string' && inputs.slug
-      ? slugify(inputs.slug)
-      : slugify((inputs.customerName as string | undefined) ?? spec.adminUser.name);
-  const name = (inputs.customerName as string | undefined) ?? slug;
-  const region = (inputs.region as string | undefined) ?? 'eu';
+  const { slug, name, region } = resolveSlugName(spec, inputs);
 
   // ------------------------------------------------------------------
   // 3. Idempotency guard — short-circuit if SUCCEEDED run exists
