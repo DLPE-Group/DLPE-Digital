@@ -19,6 +19,16 @@ describe('billing model + seed', () => {
   });
 });
 
+describe('entitlement helpers', () => {
+  it('entitlement helpers reflect the demo enterprise plan', async () => {
+    const ent = await import('../../server/src/domain/billing/entitlements.ts');
+    expect(await ent.isBillableActive('tenant-dlpe-demo', prisma)).toBe(true);
+    expect(await ent.tenantHasFeature('tenant-dlpe-demo', 'sso', prisma)).toBe(true);
+    // enterprise has no maxUsers limit → within limit regardless of count
+    expect(await ent.tenantWithinLimit('tenant-dlpe-demo', 'maxUsers', 9999, prisma)).toBe(true);
+  });
+});
+
 describe('SimulatedBillingProvider', () => {
   it('creates + changes a subscription', async () => {
     const { SimulatedBillingProvider } = await import('../../server/src/domain/billing/provider.ts');
