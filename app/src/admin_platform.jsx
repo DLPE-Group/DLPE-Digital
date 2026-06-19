@@ -1,6 +1,7 @@
 import React from 'react';
 import { api } from './api/client.js';
 import { Icon } from './icons.jsx';
+import { ProvisionWizard } from './provision_wizard.jsx';
 
 /* Control Plane — platform-admin-only view: tenant roster + blueprint catalogue.
    Mirrors DataModelView conventions (contextBar, card, errBar, miniBtn, delBtn, etc.) */
@@ -10,13 +11,6 @@ export const ControlPlaneView = () => {
   const [blueprints, setBlueprints] = React.useState([]);
   const [plans, setPlans] = React.useState([]);
   const [err, setErr] = React.useState(null);
-
-  // Provision form state
-  const [bpKey, setBpKey] = React.useState('');
-  const [inputs, setInputs] = React.useState({});
-  const [result, setResult] = React.useState(null);
-  const [lastResult, setLastResult] = React.useState(null);
-  const [provisioning, setProvisioning] = React.useState(false);
 
   const reload = React.useCallback(() => {
     Promise.all([api.get('/platform/tenants'), api.get('/platform/blueprints'), api.get('/platform/plans')])
@@ -35,57 +29,6 @@ export const ControlPlaneView = () => {
     setErr(null);
     try { await api.patch(`/platform/tenants/${id}/subscription`, { planKey }); reload(); }
     catch (e) { setErr(e.message); }
-  };
-
-  // Derived: selected blueprint object and its spec.inputs
-  const selectedBp = blueprints.find((b) => b.key === bpKey) || null;
-  const specInputs = selectedBp?.spec?.inputs || [];
-
-  const handleBpChange = (e) => {
-    setBpKey(e.target.value);
-    setInputs({});
-    setResult(null);
-    setLastResult(null);
-    setErr(null);
-  };
-
-  const handleInputChange = (key, value) => {
-    setInputs((prev) => ({ ...prev, [key]: value }));
-  };
-
-  // Guard: required inputs must be non-empty
-  const requiredFilled = bpKey && specInputs
-    .filter((i) => i.required)
-    .every((i) => (inputs[i.key] || '').trim() !== '');
-
-  // canSubmit: blueprint selected + all required fields filled (no slug/customerName dependency)
-  const canSubmit = requiredFilled;
-
-  // Idempotency suffix: stable fallback chain — never rely on Date.now()
-  const idempotencySuffix = inputs.slug || inputs.customerName || Object.values(inputs).filter(Boolean)[0] || bpKey;
-
-  const provision = async (e) => {
-    e.preventDefault();
-    setErr(null);
-    setResult(null);
-    setLastResult(null);
-    setProvisioning(true);
-    try {
-      const r = await api.post('/platform/tenants', {
-        blueprintKey: bpKey,
-        inputs,
-        idempotencyKey: `cp-${bpKey}-${idempotencySuffix}`,
-      });
-      setLastResult(r);
-      setResult(r);
-      reload();
-      setBpKey('');
-      setInputs({});
-    } catch (ex) {
-      setErr(ex.message);
-    } finally {
-      setProvisioning(false);
-    }
   };
 
   // Blueprint management state
@@ -166,83 +109,10 @@ export const ControlPlaneView = () => {
       {tenants && (
         <div style={{ display: 'grid', gap: 24, marginTop: 8 }}>
 
-          {/* ── Provision new customer ── */}
+          {/* ── Provision new customer (guided wizard, S4) ── */}
           <section>
             <SectionHead icon="plus" label="Provision new customer" />
-            <div style={card}>
-              <form onSubmit={provision} style={{ display: 'grid', gap: 14 }}>
-                {/* Blueprint picker */}
-                <label style={fieldLabel}>
-                  Blueprint
-                  <select
-                    value={bpKey}
-                    onChange={handleBpChange}
-                    style={selectStyle}
-                  >
-                    <option value="">— select a blueprint —</option>
-                    {sortedBlueprints.map((b) => (
-                      <option key={b.key} value={b.key}>
-                        {b.name} ({b.key}) · v{b.version}
-                        {b.status !== 'PUBLISHED' ? ` [${b.status}]` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                {/* Dynamic inputs from spec */}
-                {specInputs.length > 0 && (
-                  <div style={{ display: 'grid', gap: 10 }}>
-                    {specInputs.map((inp) => {
-                      const htmlType = inp.type === 'number' ? 'number' : inp.type === 'email' ? 'email' : 'text';
-                      return (
-                        <label key={inp.key} style={fieldLabel}>
-                          {inp.label}
-                          {inp.required && <span style={{ color: 'var(--status-red, #e05)', marginLeft: 2 }}>*</span>}
-                          <input
-                            type={htmlType}
-                            value={inputs[inp.key] || ''}
-                            onChange={(e) => handleInputChange(inp.key, e.target.value)}
-                            placeholder={inp.default != null ? String(inp.default) : ''}
-                            style={inputStyle}
-                          />
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
-
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                  <button
-                    type="submit"
-                    disabled={!canSubmit || provisioning}
-                    style={canSubmit && !provisioning ? primaryBtn : disabledBtn}
-                  >
-                    {provisioning ? 'Provisioning…' : 'Provision'}
-                  </button>
-                  {!canSubmit && bpKey && (
-                    <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                      Fill all required fields (marked *).
-                    </span>
-                  )}
-                </div>
-
-                {/* Success result — keyed off lastResult so it survives form reset */}
-                {lastResult && (
-                  <div style={successBar}>
-                    <strong>Provisioned:</strong> <code style={codeChip}>{lastResult.slug}</code>
-                    {lastResult.adminLoginOrInviteLink && (
-                      <>
-                        {' — '}
-                        <a href={lastResult.adminLoginOrInviteLink} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--status-green, #0a0)' }}>
-                          Admin invite link
-                        </a>
-                      </>
-                    )}
-                  </div>
-                )}
-              </form>
-            </div>
+            <ProvisionWizard onProvisioned={reload} />
           </section>
 
           <section>
@@ -454,5 +324,4 @@ const selectStyle = { fontSize: 13, padding: '5px 8px', borderRadius: 5, border:
 const inputStyle = { fontSize: 13, padding: '5px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-primary)', marginTop: 2 };
 const primaryBtn = { fontSize: 13, padding: '5px 14px', borderRadius: 5, border: '1px solid var(--accent, #0070f3)', background: 'var(--accent, #0070f3)', color: '#fff', cursor: 'pointer', fontWeight: 500 };
 const disabledBtn = { fontSize: 13, padding: '5px 14px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg-muted)', color: 'var(--text-tertiary)', cursor: 'not-allowed', fontWeight: 500 };
-const successBar = { padding: '8px 12px', borderRadius: 6, background: 'rgba(0,160,80,0.08)', border: '1px solid rgba(0,160,80,0.25)', color: 'var(--status-green, #0a0)', fontSize: 13 };
 const planBadge = { fontSize: 11, padding: '1px 6px', borderRadius: 3, background: 'rgba(0,112,243,0.08)', border: '1px solid rgba(0,112,243,0.25)', color: 'var(--accent, #0070f3)', fontFamily: 'var(--mono)' };

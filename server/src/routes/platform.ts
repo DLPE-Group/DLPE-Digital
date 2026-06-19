@@ -7,19 +7,26 @@ import { provisionTenant } from '../domain/provisioning/provisionTenant.js';
 import { SharedDbTarget } from '../domain/provisioning/target.js';
 import { billingProvider } from '../domain/billing/provider.js';
 import { captureBlueprint } from '../domain/provisioning/captureBlueprint.js';
+import { validateInputs, resolveSlugName, resolvePlanKey, summarizeBlueprint } from '../domain/provisioning/derive.js';
 
 export const platformRouter = Router();
 
 // POST /api/platform/tenants — provision a new tenant from a blueprint
 platformRouter.post('/tenants', async (req, res) => {
-  const { blueprintKey, inputs, idempotencyKey } = req.body as {
+  const { blueprintKey, inputs, idempotencyKey, admin, planKey } = req.body as {
     blueprintKey?: string;
     inputs?: Record<string, unknown>;
     idempotencyKey?: string;
+    admin?: { name?: string; email?: string };
+    planKey?: string;
   };
 
   if (!blueprintKey) {
     return res.status(400).json({ error: 'blueprintKey is required' });
+  }
+
+  if (admin?.email !== undefined && !z.string().email().safeParse(admin.email).success) {
+    return res.status(400).json({ error: 'admin.email must be a valid email' });
   }
 
   const blueprint = await prisma.blueprint.findUnique({ where: { key: blueprintKey } });
@@ -38,11 +45,69 @@ platformRouter.post('/tenants', async (req, res) => {
       inputs: inputs ?? {},
       target: new SharedDbTarget(),
       idempotencyKey,
+      adminOverride: admin,
+      planKey,
     });
     return res.status(201).json(result);
   } catch (err) {
     return res.status(422).json({ error: err instanceof Error ? err.message : String(err) });
   }
+});
+
+// POST /api/platform/provision/preflight — dry-run validation + summary (no writes)
+platformRouter.post('/provision/preflight', async (req, res) => {
+  const { blueprintKey, inputs, admin, planKey } = req.body as {
+    blueprintKey?: string;
+    inputs?: Record<string, unknown>;
+    admin?: { name?: string; email?: string };
+    planKey?: string;
+  };
+  if (!blueprintKey) return res.status(400).json({ error: 'blueprintKey is required' });
+
+  const blueprint = await prisma.blueprint.findUnique({ where: { key: blueprintKey } });
+  if (!blueprint) return res.status(404).json({ error: `Blueprint not found: ${blueprintKey}` });
+
+  const specParsed = BlueprintSpec.safeParse(blueprint.spec);
+  if (!specParsed.success) {
+    return res.status(422).json({ error: 'Stored blueprint spec is invalid', details: specParsed.error.issues });
+  }
+  const spec = specParsed.data;
+  const safeInputs = inputs ?? {};
+
+  const issues: Array<{ level: 'error' | 'warning'; message: string }> = [];
+
+  // inputs
+  const inputCheck = validateInputs(spec, safeInputs);
+  if (!inputCheck.ok) {
+    issues.push({ level: 'error', message: `Missing required inputs: ${inputCheck.missing.join(', ')}` });
+  }
+
+  // slug
+  const { slug } = resolveSlugName(spec, safeInputs);
+  const slugTaken = (await prisma.tenant.findUnique({ where: { slug } })) != null;
+  if (slugTaken) issues.push({ level: 'error', message: `Slug already in use: ${slug}` });
+
+  // plan
+  const resolvedPlanKey = resolvePlanKey(spec, planKey);
+  const planExists = (await prisma.plan.findUnique({ where: { key: resolvedPlanKey } })) != null;
+  if (!planExists) issues.push({ level: 'warning', message: `Unknown plan '${resolvedPlanKey}' — subscription will be skipped` });
+
+  const adminEmail = admin?.email ?? spec.adminUser.email;
+
+  if (admin?.email !== undefined && !z.string().email().safeParse(admin.email).success) {
+    issues.push({ level: 'error', message: 'admin.email is not a valid email' });
+  }
+
+  return res.json({
+    ok: !issues.some((i) => i.level === 'error'),
+    slug,
+    slugAvailable: !slugTaken,
+    resolvedPlanKey,
+    planExists,
+    summary: summarizeBlueprint(spec),
+    adminEmail,
+    issues,
+  });
 });
 
 // GET /api/platform/tenants — list tenants
