@@ -127,13 +127,25 @@ describe('platform billing API', () => {
   const PLATFORM = () => token('u-robert', 'r.mertens@group.eu', 'group-admin');
   const NON = () => token('u-markus', 'm.weber@group.eu', 'sales-mgr');
 
+  // Unconditionally restore demo tenant to enterprise/ACTIVE after this describe block,
+  // regardless of whether any assertion failed mid-test (same isolation class as S3 bug).
+  afterAll(async () => {
+    const enterprise = await prisma.plan.findUnique({ where: { key: 'enterprise' } });
+    if (enterprise) {
+      await prisma.subscription.update({
+        where: { tenantId: 'tenant-dlpe-demo' },
+        data: { planId: enterprise.id, status: 'ACTIVE' },
+      });
+    }
+  });
+
   it('platform billing API: list plans, read + change a tenant subscription; gated', async () => {
     expect((await get('/platform/plans', PLATFORM())).body.length).toBe(3);
     const subR = await get('/platform/tenants/tenant-dlpe-demo/subscription', PLATFORM());
     expect(subR.body.plan.key).toBe('enterprise');
     const ch = await patch('/platform/tenants/tenant-dlpe-demo/subscription', { planKey: 'pro' }, PLATFORM());
     expect(ch.status).toBe(200); expect(ch.body.planKey).toBe('pro');
-    await patch('/platform/tenants/tenant-dlpe-demo/subscription', { planKey: 'enterprise' }, PLATFORM()); // restore
+    await patch('/platform/tenants/tenant-dlpe-demo/subscription', { planKey: 'enterprise' }, PLATFORM()); // restore (belt)
     expect((await req('GET', '/platform/plans', { tok: NON() })).status).toBe(403);
   });
 });
