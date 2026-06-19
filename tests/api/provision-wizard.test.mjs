@@ -1,7 +1,7 @@
 // tests/api/provision-wizard.test.mjs
 import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import { post, req, token, TEST_DB_URL } from '../helpers.mjs';
+import { get, post, req, token, TEST_DB_URL } from '../helpers.mjs';
 const prisma = new PrismaClient({ datasources: { db: { url: TEST_DB_URL } } });
 const PLATFORM = () => token('u-robert', 'r.mertens@group.eu', 'group-admin');
 const NON = () => token('u-markus', 'm.weber@group.eu', 'sales-mgr');
@@ -61,5 +61,58 @@ describe('provision overrides', () => {
       idempotencyKey: 's4-bad-1',
     }, PLATFORM());
     expect(r.status).toBe(400);
+  });
+});
+
+describe('preflight', () => {
+  it('returns a valid summary for the demo blueprint', async () => {
+    // expected counts computed from the stored demo spec — no brittle hardcoding
+    const bp = (await get('/platform/blueprints', PLATFORM())).body.find((b) => b.key === 'dlpe-demo');
+    const spec = bp.spec;
+    const expectRoles = spec.roles.length;
+
+    const r = await post('/platform/provision/preflight', {
+      blueprintKey: 'dlpe-demo',
+      inputs: { slug: 's4-pf-fresh', customerName: 'S4 PF Fresh' },
+      planKey: 'pro',
+    }, PLATFORM());
+    expect(r.status).toBe(200);
+    expect(r.body.ok).toBe(true);
+    expect(r.body.slug).toBe('s4-pf-fresh');
+    expect(r.body.slugAvailable).toBe(true);
+    expect(r.body.resolvedPlanKey).toBe('pro');
+    expect(r.body.planExists).toBe(true);
+    expect(r.body.summary.roles).toBe(expectRoles);
+    expect(r.body.summary.tracks).toBe(spec.tracks.length);
+    expect(r.body.summary.entityTypes).toBe(spec.entityTypes.length);
+  });
+
+  it('flags missing required inputs as an error', async () => {
+    const r = await post('/platform/provision/preflight', {
+      blueprintKey: 'dlpe-demo',
+      inputs: {}, // omit required inputs
+    }, PLATFORM());
+    expect(r.status).toBe(200);
+    expect(r.body.ok).toBe(false);
+    expect(r.body.issues.some((i) => i.level === 'error')).toBe(true);
+  });
+
+  it('flags a taken slug and an unknown plan', async () => {
+    // demo slug is taken
+    const taken = await post('/platform/provision/preflight', {
+      blueprintKey: 'dlpe-demo',
+      inputs: { slug: 'dlpe-demo', customerName: 'X' },
+      planKey: 'no-such-plan',
+    }, PLATFORM());
+    expect(taken.status).toBe(200);
+    expect(taken.body.slugAvailable).toBe(false);
+    expect(taken.body.issues.some((i) => i.level === 'error')).toBe(true); // taken slug blocks
+    expect(taken.body.planExists).toBe(false);
+    expect(taken.body.issues.some((i) => i.level === 'warning')).toBe(true); // unknown plan warns
+  });
+
+  it('404 on unknown blueprint; 403 for non-admins', async () => {
+    expect((await post('/platform/provision/preflight', { blueprintKey: 'nope', inputs: {} }, PLATFORM())).status).toBe(404);
+    expect((await req('POST', '/platform/provision/preflight', { body: { blueprintKey: 'dlpe-demo', inputs: {} }, tok: NON() })).status).toBe(403);
   });
 });
