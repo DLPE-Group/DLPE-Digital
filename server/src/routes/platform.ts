@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { BlueprintSpec } from '@dlpe/shared';
 import { provisionTenant } from '../domain/provisioning/provisionTenant.js';
 import { SharedDbTarget } from '../domain/provisioning/target.js';
+import { billingProvider } from '../domain/billing/provider.js';
 
 export const platformRouter = Router();
 
@@ -128,4 +129,48 @@ platformRouter.post('/blueprints/import', async (req, res) => {
     },
   });
   return res.status(201).json(blueprint);
+});
+
+// GET /api/platform/plans — list active plans ordered by tier
+platformRouter.get('/plans', async (_req, res) => {
+  const plans = await prisma.plan.findMany({ where: { active: true }, orderBy: { tier: 'asc' } });
+  return res.json(plans);
+});
+
+// GET /api/platform/tenants/:id/subscription — get a tenant's subscription (incl. plan)
+platformRouter.get('/tenants/:id/subscription', async (req, res) => {
+  const sub = await prisma.subscription.findUnique({
+    where: { tenantId: req.params.id },
+    include: { plan: true },
+  });
+  if (!sub) return res.status(404).json({ error: 'Subscription not found' });
+  return res.json(sub);
+});
+
+// PATCH /api/platform/tenants/:id/subscription — change a tenant's plan
+const changePlanSchema = z.object({ planKey: z.string().min(1) });
+platformRouter.patch('/tenants/:id/subscription', async (req, res) => {
+  const parsed = changePlanSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: 'planKey is required and must be a non-empty string' });
+
+  const { planKey } = parsed.data;
+  const tenantId = req.params.id;
+
+  try {
+    // Check if a subscription exists; if not, create one (resilience over strict 404)
+    const existing = await prisma.subscription.findUnique({ where: { tenantId } });
+    let state;
+    if (!existing) {
+      state = await billingProvider.createSubscription({ tenantId, planKey });
+    } else {
+      state = await billingProvider.changePlan({ tenantId, planKey });
+    }
+    return res.json(state);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('Plan not found')) {
+      return res.status(404).json({ error: 'Unknown plan' });
+    }
+    throw err;
+  }
 });

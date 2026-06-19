@@ -1,7 +1,7 @@
 // tests/api/billing.test.mjs
 import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import { TEST_DB_URL, token, post } from '../helpers.mjs';
+import { TEST_DB_URL, token, post, get, patch, req } from '../helpers.mjs';
 import { SPEC_VERSION } from '@dlpe/shared';
 const prisma = new PrismaClient({ datasources: { db: { url: TEST_DB_URL } } });
 afterAll(() => prisma.$disconnect());
@@ -120,6 +120,21 @@ describe('maxUsers gate on POST /admin/users', () => {
     await prisma.user.deleteMany({ where: { tenantId: t.id } });
     await prisma.subscription.deleteMany({ where: { tenantId: t.id } });
     await prisma.tenant.delete({ where: { id: t.id } });
+  });
+});
+
+describe('platform billing API', () => {
+  const PLATFORM = () => token('u-robert', 'r.mertens@group.eu', 'group-admin');
+  const NON = () => token('u-markus', 'm.weber@group.eu', 'sales-mgr');
+
+  it('platform billing API: list plans, read + change a tenant subscription; gated', async () => {
+    expect((await get('/platform/plans', PLATFORM())).body.length).toBe(3);
+    const subR = await get('/platform/tenants/tenant-dlpe-demo/subscription', PLATFORM());
+    expect(subR.body.plan.key).toBe('enterprise');
+    const ch = await patch('/platform/tenants/tenant-dlpe-demo/subscription', { planKey: 'pro' }, PLATFORM());
+    expect(ch.status).toBe(200); expect(ch.body.planKey).toBe('pro');
+    await patch('/platform/tenants/tenant-dlpe-demo/subscription', { planKey: 'enterprise' }, PLATFORM()); // restore
+    expect((await req('GET', '/platform/plans', { tok: NON() })).status).toBe(403);
   });
 });
 
