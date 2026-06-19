@@ -24,6 +24,7 @@ import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
 import type { ProvisioningTarget } from './target.js';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { cardToEntityCreate, vehicleToEntityCreate, type CardSeed, type VehicleSeed, type MetaCtx } from '../backfill.js';
+import { SimulatedBillingProvider } from '../billing/provider.js';
 
 // ---------- public types ----------
 
@@ -763,6 +764,26 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
         steps: { adminLoginOrInviteLink: result.adminLoginOrInviteLink },
       },
     });
+
+    // ------------------------------------------------------------------
+    // 6b. Assign default subscription (outside tx — tenant must already exist)
+    // Uses the same prisma client so tests can point it at the test DB.
+    // Guard: if the plan key doesn't resolve, skip (don't fail provisioning).
+    // createSubscription upserts by tenantId so this is idempotent.
+    // ------------------------------------------------------------------
+    try {
+      const bp = new SimulatedBillingProvider(prisma);
+      await bp.createSubscription({
+        tenantId: result.tenantId,
+        planKey: spec.defaultPlanKey ?? 'starter',
+        status: 'TRIALING',
+      });
+    } catch (subErr) {
+      console.warn(
+        `[provisionTenant] subscription assignment skipped for tenant ${result.tenantId}:`,
+        subErr instanceof Error ? subErr.message : String(subErr),
+      );
+    }
 
     return result;
   } catch (err) {

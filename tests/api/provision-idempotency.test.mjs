@@ -25,6 +25,7 @@ describe('provisioning idempotency', () => {
     expect(await prisma.tenant.count({ where: { slug: 'idem-co' } })).toBe(1);
     expect(await prisma.user.count({ where: { tenantId: r1.tenantId } })).toBe(1);
     // cleanup
+    await prisma.subscription.deleteMany({ where: { tenantId: r1.tenantId } });
     await prisma.user.deleteMany({ where: { tenantId: r1.tenantId } });
     await prisma.role.deleteMany({ where: { tenantId: r1.tenantId } });
     await prisma.orgNode.deleteMany({ where: { tenantId: r1.tenantId } });
@@ -60,6 +61,7 @@ describe('provisioning idempotency', () => {
     expect(run?.status).toBe('SUCCEEDED');
     // cleanup
     const tid = result.tenantId;
+    await prisma.subscription.deleteMany({ where: { tenantId: tid } });
     await prisma.user.deleteMany({ where: { tenantId: tid } });
     await prisma.role.deleteMany({ where: { tenantId: tid } });
     await prisma.orgNode.deleteMany({ where: { tenantId: tid } });
@@ -85,6 +87,7 @@ describe('provisioning idempotency', () => {
     ).rejects.toThrow('slug already in use: slug-clash');
     // cleanup
     const tid = r1.tenantId;
+    await prisma.subscription.deleteMany({ where: { tenantId: tid } });
     await prisma.user.deleteMany({ where: { tenantId: tid } });
     await prisma.role.deleteMany({ where: { tenantId: tid } });
     await prisma.orgNode.deleteMany({ where: { tenantId: tid } });
