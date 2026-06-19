@@ -94,6 +94,10 @@ platformRouter.post('/provision/preflight', async (req, res) => {
 
   const adminEmail = admin?.email ?? spec.adminUser.email;
 
+  if (admin?.email !== undefined && !z.string().email().safeParse(admin.email).success) {
+    issues.push({ level: 'error', message: 'admin.email is not a valid email' });
+  }
+
   return res.json({
     ok: !issues.some((i) => i.level === 'error'),
     slug,

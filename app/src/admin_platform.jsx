@@ -324,5 +324,4 @@ const selectStyle = { fontSize: 13, padding: '5px 8px', borderRadius: 5, border:
 const inputStyle = { fontSize: 13, padding: '5px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-primary)', marginTop: 2 };
 const primaryBtn = { fontSize: 13, padding: '5px 14px', borderRadius: 5, border: '1px solid var(--accent, #0070f3)', background: 'var(--accent, #0070f3)', color: '#fff', cursor: 'pointer', fontWeight: 500 };
 const disabledBtn = { fontSize: 13, padding: '5px 14px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg-muted)', color: 'var(--text-tertiary)', cursor: 'not-allowed', fontWeight: 500 };
-const successBar = { padding: '8px 12px', borderRadius: 6, background: 'rgba(0,160,80,0.08)', border: '1px solid rgba(0,160,80,0.25)', color: 'var(--status-green, #0a0)', fontSize: 13 };
 const planBadge = { fontSize: 11, padding: '1px 6px', borderRadius: 3, background: 'rgba(0,112,243,0.08)', border: '1px solid rgba(0,112,243,0.25)', color: 'var(--accent, #0070f3)', fontFamily: 'var(--mono)' };

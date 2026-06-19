@@ -115,4 +115,15 @@ describe('preflight', () => {
     expect((await post('/platform/provision/preflight', { blueprintKey: 'nope', inputs: {} }, PLATFORM())).status).toBe(404);
     expect((await req('POST', '/platform/provision/preflight', { body: { blueprintKey: 'dlpe-demo', inputs: {} }, tok: NON() })).status).toBe(403);
   });
+
+  it('flags a malformed admin email as an error', async () => {
+    const r = await post('/platform/provision/preflight', {
+      blueprintKey: 'dlpe-demo',
+      inputs: { slug: 's4-pf-mail', customerName: 'X' },
+      admin: { email: 'not-an-email' },
+    }, PLATFORM());
+    expect(r.status).toBe(200);
+    expect(r.body.ok).toBe(false);
+    expect(r.body.issues.some((i) => i.level === 'error' && /email/i.test(i.message))).toBe(true);
+  });
 });
