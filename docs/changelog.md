@@ -5,6 +5,7 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 
 ## 2026-06-22
 
+- `2975f70` docs: MkDocs site + auto-generating pre-commit hook
 - `7b7ac14` Local production-parity Docker stack (1:1 with DigitalOcean)
 - `b746c7c` tenant-iso: production boot guard — fail fast if APP_DATABASE_URL missing or RLS-bypassing
 - `8099de8` tenant-iso Task 7: leak sweep + APP_DATABASE_URL deploy rule + final isolation proof
@@ -158,5 +159,5 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 - `a8c1e03` Implement Intelligence Layer as Vite + React app
 - `6fede3e` Claude Design handoff: Dlpe Digital
 
-<small>137 commits.</small>
+<small>138 commits.</small>
 
