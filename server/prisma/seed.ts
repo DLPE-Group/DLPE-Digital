@@ -77,20 +77,24 @@ async function main() {
     await prisma.plan.upsert({ where: { key: p.key }, update: p, create: p });
   }
 
-  // Upsert the dlpe-demo Blueprint row (PUBLISHED).
+  // The full dlpe-demo blueprint carries the demo's seed business data AND 9 demo
+  // staff users with fixed emails. It exists to reproduce the demo tenant — NOT to
+  // onboard real customers (cloning it into another tenant collides on the globally
+  // unique User.email; per-tenant email uniqueness is a future/S5 concern). So it is
+  // kept as DRAFT (still provisionable for demo cloning, but not the default template).
   const bp = await prisma.blueprint.upsert({
     where: { key: dlpeDemoBlueprint.key },
     create: {
       key: dlpeDemoBlueprint.key,
       name: dlpeDemoBlueprint.name,
       version: dlpeDemoBlueprint.spec.specVersion,
-      status: 'PUBLISHED',
+      status: 'DRAFT',
       spec: dlpeDemoBlueprint.spec as unknown as Prisma.InputJsonValue,
     },
     update: {
       name: dlpeDemoBlueprint.name,
       version: dlpeDemoBlueprint.spec.specVersion,
-      status: 'PUBLISHED',
+      status: 'DRAFT',
       spec: dlpeDemoBlueprint.spec as unknown as Prisma.InputJsonValue,
     },
   });
@@ -119,6 +123,40 @@ async function main() {
       status: 'ACTIVE',
       provider: 'simulated',
       currentPeriodEnd: null,
+    },
+  });
+
+  // Publish a CONFIG-ONLY "starter" template — the correct blueprint for onboarding
+  // a real customer: the demo's structure/roles/tracks/entity-types/field-rules +
+  // runtime inputs, but NONE of the demo's seed business data or staff users. A new
+  // customer gets a clean, isolated tenant with only the admin set in the wizard
+  // (override the placeholder email below). This is what the provisioning wizard
+  // offers by default (PUBLISHED, sorted first).
+  const { seed: _omitSeed, users: _omitUsers, ...starterBase } = dlpeDemoBlueprint.spec;
+  void _omitSeed; void _omitUsers;
+  const starterSpec = {
+    ...starterBase,
+    adminUser: {
+      ...dlpeDemoBlueprint.spec.adminUser,
+      idPrefix: 'u-admin',
+      name: 'Account Admin',
+      email: 'admin@change-me.example', // placeholder — set the real admin email in the wizard
+    },
+  };
+  await prisma.blueprint.upsert({
+    where: { key: 'dlpe-starter' },
+    create: {
+      key: 'dlpe-starter',
+      name: 'Clean starter (config only)',
+      version: starterSpec.specVersion,
+      status: 'PUBLISHED',
+      spec: starterSpec as unknown as Prisma.InputJsonValue,
+    },
+    update: {
+      name: 'Clean starter (config only)',
+      version: starterSpec.specVersion,
+      status: 'PUBLISHED',
+      spec: starterSpec as unknown as Prisma.InputJsonValue,
     },
   });
 

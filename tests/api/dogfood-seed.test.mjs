@@ -18,10 +18,16 @@ describe('dogfood: demo provisioned from blueprint', () => {
     expect(t?.status).toBe('ACTIVE');
   });
 
-  it('a PUBLISHED dlpe-demo Blueprint row exists', async () => {
-    const bp = await prisma.blueprint.findUnique({ where: { key: 'dlpe-demo' } });
-    expect(bp).not.toBeNull();
-    expect(bp?.status).toBe('PUBLISHED');
+  it('the dlpe-demo Blueprint exists as DRAFT (demo clone), with a PUBLISHED config-only dlpe-starter template', async () => {
+    // dlpe-demo carries seed data + demo staff users → kept DRAFT (cloning it collides
+    // on globally-unique User.email). dlpe-starter is the clean, config-only PUBLISHED
+    // template the provisioning wizard offers for real customers.
+    const demo = await prisma.blueprint.findUnique({ where: { key: 'dlpe-demo' } });
+    expect(demo).not.toBeNull();
+    expect(demo?.status).toBe('DRAFT');
+    const starter = await prisma.blueprint.findUnique({ where: { key: 'dlpe-starter' } });
+    expect(starter).not.toBeNull();
+    expect(starter?.status).toBe('PUBLISHED');
   });
 
   it('a ProvisioningRun SUCCEEDED row exists for seed-dlpe-demo', async () => {

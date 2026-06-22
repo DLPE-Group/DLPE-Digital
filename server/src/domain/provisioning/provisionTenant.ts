@@ -405,7 +405,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
           if (isVehicle) {
             // Reference entity (vehicle)
             const v: VehicleSeed = {
-              id: typeof e.id === 'string' ? (idMode === 'literal' ? e.id : `${pfx}${e.id}`) : undefined,
+              id: typeof e.id === 'string' ? e.id : undefined,
               plate: typeof e.plate === 'string' ? e.plate : String(e.id ?? ''),
               model: typeof e.model === 'string' ? e.model : null,
               vin: typeof e.vin === 'string' ? e.vin : null,
@@ -416,7 +416,10 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
               companyId: typeof e.companyId === 'string' ? e.companyId : null,
             };
             const data = vehicleToEntityCreate(v, metaCtx);
-            if (idMode === 'literal' && typeof e.id === 'string') data.id = e.id;
+            // Namespace the entity id per-tenant in prefixed mode — covers both the
+            // explicit id and the `veh-<plate>` fallback — so re-provisioning a
+            // seed-bearing blueprint can't clash on the global Entity.id PK.
+            if (idMode === 'prefixed') data.id = `${pfx}${data.id}`;
             await tx.entity.create({ data });
           } else {
             // Pipeline entity (CardSeed-shaped)
@@ -504,7 +507,11 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
                 note: typeof v.note === 'string' ? v.note : null,
                 companyId: typeof v.companyId === 'string' ? v.companyId : operatorCompanyId,
               };
-              await tx.entity.create({ data: vehicleToEntityCreate(vs, metaCtx) });
+              const vData = vehicleToEntityCreate(vs, metaCtx);
+              // Portal vehicles get a `veh-<plate>` id by default — namespace it per
+              // tenant in prefixed mode to avoid clashing with another tenant's vehicles.
+              if (idMode === 'prefixed') vData.id = `${pfx}${vData.id}`;
+              await tx.entity.create({ data: vData });
             }
           }
 
@@ -513,7 +520,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
             for (const inv of pf.invoices as Array<Record<string, unknown>>) {
               await tx.invoice.create({
                 data: {
-                  ref: String(inv.ref ?? randomUUID()),
+                  ref: idMode === 'prefixed' ? `${pfx}${String(inv.ref ?? randomUUID())}` : String(inv.ref ?? randomUUID()),
                   value: typeof inv.value === 'number' ? inv.value : null,
                   due: typeof inv.due === 'string' ? inv.due : null,
                   status: typeof inv.status === 'string' ? inv.status : null,
@@ -545,7 +552,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
           for (const integ of extras.integrations as Array<Record<string, unknown>>) {
             await tx.integration.create({
               data: {
-                id: String(integ.id ?? randomUUID()),
+                id: idMode === 'prefixed' ? `${pfx}${String(integ.id ?? randomUUID())}` : String(integ.id ?? randomUUID()),
                 name: String(integ.name ?? ''),
                 kind: String(integ.kind ?? ''),
                 direction: String(integ.direction ?? 'inbound'),
