@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import type { FieldDef } from '@prisma/client';
 import { withTenant } from '../db/withTenant.js';
 
 // GET /admin/data-model — the data-driven meta-model (tracks + entity types +
@@ -164,18 +165,18 @@ const FieldPatch = z.object({
 dataModelRouter.patch('/data-model/types/:key/fields/:fieldKey', async (req, res) => {
   const p = FieldPatch.safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: p.error.issues[0].message });
-  const result = await withTenant(req.tenantId!, async (db) => {
+  const result = await withTenant(req.tenantId!, async (db): Promise<{ notFound: 'type' | 'field' } | FieldDef> => {
     const type = await db.entityType.findUnique({ where: { key: req.params.key }, include: { fieldDefs: true } });
-    if (!type) return { notFound: 'type' } as const;
+    if (!type) return { notFound: 'type' as const };
     const field = type.fieldDefs.find((f) => f.key === req.params.fieldKey);
-    if (!field) return { notFound: 'field' } as const;
+    if (!field) return { notFound: 'field' as const };
     const row = await db.fieldDef.update({ where: { id: field.id }, data: p.data });
     return row;
   });
-  if (typeof result === 'object' && 'notFound' in result) {
+  if ('notFound' in result) {
     return res.status(404).json({ error: result.notFound === 'type' ? 'Type not found' : 'Field not found' });
   }
-  res.json({ key: (result as any).key, label: (result as any).label, category: (result as any).category, dataKind: (result as any).dataKind });
+  res.json({ key: result.key, label: result.label, category: result.category, dataKind: result.dataKind });
 });
 
 dataModelRouter.delete('/data-model/types/:key/fields/:fieldKey', async (req, res) => {
