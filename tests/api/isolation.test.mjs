@@ -144,3 +144,75 @@ describe('isolation: config family', () => {
     expect(grp.name).not.toBe('HACKED GROUP');
   });
 });
+
+describe('isolation: integrations + triggers', () => {
+  it('GET /api/integrations as tenant B returns only B rows (none of demo)', async () => {
+    // Fetch demo (tenant A) integrations to capture known ids/names
+    const aRes = await get('/integrations', A());
+    expect(aRes.status).toBe(200);
+    expect(aRes.body.length).toBeGreaterThan(0); // demo has integrations seeded
+
+    const demoIds = aRes.body.map((i) => i.id);
+    const demoNames = aRes.body.map((i) => i.name);
+
+    // Tenant B sees only its own integrations (none seeded)
+    const bRes = await get('/integrations', TENANT_B_TOKEN());
+    expect(bRes.status).toBe(200);
+    expect(Array.isArray(bRes.body)).toBe(true);
+    // None of demo integration ids or names must appear
+    expect(bRes.body.every((i) => !demoIds.includes(i.id))).toBe(true);
+    expect(bRes.body.every((i) => !demoNames.includes(i.name))).toBe(true);
+  });
+
+  it('GET /api/admin/triggers as tenant B returns only B rows (none of demo)', async () => {
+    // Fetch demo (tenant A) triggers
+    const aRes = await get('/admin/triggers', A());
+    expect(aRes.status).toBe(200);
+    expect(aRes.body.length).toBeGreaterThan(0); // demo has triggers seeded
+
+    const demoIds = aRes.body.map((t) => t.id);
+
+    // Tenant B sees only its own triggers (none seeded)
+    const bRes = await get('/admin/triggers', TENANT_B_TOKEN());
+    expect(bRes.status).toBe(200);
+    expect(Array.isArray(bRes.body)).toBe(true);
+    // None of demo trigger ids must appear
+    expect(bRes.body.every((t) => !demoIds.includes(t.id))).toBe(true);
+  });
+
+  it('DELETE /api/integrations/:id as tenant B does not delete a tenant A integration', async () => {
+    // Get a demo integration id (tenant A)
+    const aRes = await get('/integrations', A());
+    expect(aRes.status).toBe(200);
+    expect(aRes.body.length).toBeGreaterThan(0);
+    const demoIntegrationId = aRes.body[0].id;
+
+    // Attempt delete as tenant B — RLS makes the row invisible, so 404
+    const delRes = await del(`/integrations/${demoIntegrationId}`, TENANT_B_TOKEN());
+    expect([400, 404, 500]).toContain(delRes.status);
+
+    // Re-read as tenant A — integration must still exist
+    const aResAfter = await get('/integrations', A());
+    expect(aResAfter.status).toBe(200);
+    expect(aResAfter.body.some((i) => i.id === demoIntegrationId)).toBe(true);
+  });
+
+  it('PATCH /api/admin/triggers/:id as tenant B does not modify a tenant A trigger', async () => {
+    // Get a demo trigger id (tenant A)
+    const aRes = await get('/admin/triggers', A());
+    expect(aRes.status).toBe(200);
+    expect(aRes.body.length).toBeGreaterThan(0);
+    const demoTrigger = aRes.body[0];
+
+    // Attempt patch as tenant B — RLS makes the row invisible, expect non-200
+    const patchRes = await patch(`/admin/triggers/${demoTrigger.id}`, { note: 'HACKED' }, TENANT_B_TOKEN());
+    expect([400, 404, 500]).toContain(patchRes.status);
+
+    // Re-read as tenant A — trigger note must be unchanged
+    const aResAfter = await get('/admin/triggers', A());
+    expect(aResAfter.status).toBe(200);
+    const found = aResAfter.body.find((t) => t.id === demoTrigger.id);
+    expect(found).toBeDefined();
+    expect(found.note).not.toBe('HACKED');
+  });
+});
