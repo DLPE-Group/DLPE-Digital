@@ -1,0 +1,56 @@
+# Build & publish the MkDocs site to GitHub Pages.
+#
+# This is a BONUS for if/when this repo is ever pushed to GitHub. Today everything
+# is local, so the real "every commit" trigger is the .githooks/pre-commit hook
+# (which keeps the generated markdown current). This workflow renders + deploys the
+# HTML site on each push to main. Enable Pages: Settings → Pages → Source: GitHub Actions.
+name: docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "scripts/gen_docs.py"
+      - "requirements-docs.txt"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so the generated changelog is complete
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-docs.txt
+      - run: python3 scripts/gen_docs.py
+      # Not --strict: some historical design specs link to source files (app/src/…,
+      # server/src/…) that aren't part of the docs site; those are warnings, not errors.
+      - run: python3 -m mkdocs build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,63 @@
+site_name: DLPE Digital — Documentation
+site_description: Generic multi-tenant entity platform (DLPE Digital SaaS) — architecture, deployment, and design history.
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Local Docker stack: LOCAL-DOCKER.md
+  - Deployment:
+      - Deploy guide: DEPLOY.md
+      - Deployment rules: DEPLOYMENT-RULES.md
+  - Reference:
+      - Design specs: reference/specs.md
+      - Implementation plans: reference/plans.md
+  - Changelog: changelog.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+
+# The design specs/plans live under docs/superpowers/ and are linked from the
+# generated index pages rather than the top nav — silence the "not in nav" notices.
+validation:
+  nav:
+    omitted_files: ignore
+  links:
+    absolute_links: ignore
+    unrecognized_links: ignore

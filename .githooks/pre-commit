@@ -1,0 +1,30 @@
+#!/bin/sh
+# Keep the generated documentation in sync with every commit:
+#   - docs/changelog.md           (from git history)
+#   - docs/reference/specs.md     (index of design specs)
+#   - docs/reference/plans.md     (index of implementation plans)
+#
+# Resilient by design: this hook must NEVER block a commit. If python3 or the
+# generator is missing/fails, it warns and lets the commit proceed.
+#
+# Enabled via:  git config core.hooksPath .githooks
+#
+# Note: at pre-commit time the in-progress commit is not yet in history, so the
+# changelog reflects everything up to (and including) the previous commit; the
+# new commit's line appears on the next commit. That one-step lag is expected.
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+if command -v python3 >/dev/null 2>&1; then
+  if python3 "$ROOT/scripts/gen_docs.py"; then
+    git add "$ROOT/docs/changelog.md" \
+            "$ROOT/docs/reference/specs.md" \
+            "$ROOT/docs/reference/plans.md" 2>/dev/null
+  else
+    echo "[pre-commit] gen_docs.py failed — committing without refreshing docs."
+  fi
+else
+  echo "[pre-commit] python3 not found — skipping docs generation."
+fi
+
+exit 0
