@@ -103,6 +103,10 @@ export async function revertAudit(
   const isSignCascade = verb.includes('contract signed') && full.cascades.length > 0;
 
   if (isSignCascade) {
+    // OWNER-BY-DESIGN (demo-scoped): uses the owner `prisma` client intentionally.
+    // The auditEntry.findUnique above runs under `db` (RLS), so a non-demo tenant gets a
+    // 404 before reaching this block — no other tenant has entity ids o1/f1/s5.
+    // Do NOT convert these inner $transaction blocks to withTenant.
     return prisma.$transaction(async (tx) => {
       const removedCardIds: string[] = [];
       for (const id of SIGN_CASCADE_CARD_IDS) {
@@ -159,6 +163,10 @@ export async function revertAudit(
     if (!meta.cardId || !meta.prevStageId) {
       throw new RevertError('This stage move cannot be reverted (no prior stage recorded).');
     }
+    // OWNER-BY-DESIGN (demo-scoped): uses the owner `prisma` client intentionally.
+    // The auditEntry.findUnique above runs under `db` (RLS), so a non-demo tenant gets a
+    // 404 before reaching this block. The cardId is validated by that same RLS-scoped lookup.
+    // Do NOT convert this inner $transaction block to withTenant.
     return prisma.$transaction(async (tx) => {
       const card = await tx.entity.findUnique({ where: { id: meta.cardId } });
       if (!card) throw new RevertError('Card to revert no longer exists.');

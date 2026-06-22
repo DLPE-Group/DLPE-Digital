@@ -98,6 +98,34 @@ can't see. Until that exists, no more than a handful of dedicated environments b
 
 ---
 
+## Runtime tenant isolation
+
+### 9. Production MUST set `APP_DATABASE_URL` to the non-superuser `il_app` connection string. **[Launch gate]**
+
+The server keeps two Postgres connections: the owner/superuser (`DATABASE_URL`) used only
+for migrations and provisioning, and the non-superuser app connection (`APP_DATABASE_URL`)
+used for every request. Request handlers call `withTenant(tenantId, db => …)`, which sets
+`app.tenant = <id>` on the session and then issues all queries through the `APP_DATABASE_URL`
+connection. Postgres Row-Level Security policies on every tenant-scoped table enforce that
+`il_app` can only see rows whose `tenantId` matches the session setting.
+
+**If `APP_DATABASE_URL` is unset, `appDatabaseUrl` falls back to `DATABASE_URL`** (see
+`server/src/env.ts`). The superuser bypasses all RLS policies, which means **every request
+route will leak data across tenants** — each tenant can read every other tenant's users,
+pipeline items, audit log, integrations, and all other data.
+
+**Requirement:**
+- Every production environment MUST have `APP_DATABASE_URL` set to a connection string that
+  authenticates as the `il_app` Postgres role (or a role with equivalent non-superuser grants).
+- The `il_app` role must NOT have `BYPASSRLS` or `SUPERUSER` privileges.
+- Do NOT deploy or promote to production with `APP_DATABASE_URL` missing or pointing to a
+  superuser credential. This is a hard launch gate — violating it silently destroys the
+  entire runtime tenant isolation subsystem (`tenant-iso-enforcement`).
+- Verify on each fresh environment by checking `\du il_app` in psql and confirming no
+  `Bypass RLS` attribute is listed.
+
+---
+
 ## Why this also protects the shared product
 Rules 1–4 aren't just for the dedicated future — they make **today's** single shared
 deployment safer too: rolling deploys never half-break, rollbacks are trivial, and there's

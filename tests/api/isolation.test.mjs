@@ -353,6 +353,105 @@ describe('isolation: domain/entity', () => {
   });
 });
 
+// Final cross-route sweep: as tenant B, hit one READ route per family and assert
+// that NONE of the responses contain any tenant-A row.
+// This is the definitive proof that RLS enforcement holds across every route family
+// that was converted during the tenant-iso-enforcement branch.
+describe('isolation: cross-route sweep', () => {
+  // Known tenant-A (demo) identifiers that must NEVER appear in tenant-B responses.
+  const DEMO_USER_EMAIL   = 'r.mertens@group.eu';  // demo admin user
+  const DEMO_USER_ID      = 'u-robert';
+  const DEMO_TRACK_KEY    = 'sales';                // demo seeded track
+  const DEMO_TYPE_KEY     = 'contract';             // demo seeded entity type
+  // Demo integration name/key (seeded by provisionTenant with dlpeDemoBlueprint)
+  const DEMO_INTEGRATION_NAMES = ['Salesforce CRM', 'Supplier APIs', 'Talend ETL', 'Bulk CSV'];
+
+  it('/admin/users — tenant B sees no tenant-A users', async () => {
+    const res = await get('/admin/users', TENANT_B_TOKEN());
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    // Must not contain demo users
+    const emails = res.body.map((u) => u.email);
+    const ids    = res.body.map((u) => u.id);
+    expect(emails).not.toContain(DEMO_USER_EMAIL);
+    expect(ids).not.toContain(DEMO_USER_ID);
+    // Every returned user must belong to tenant B
+    expect(res.body.every((u) => u.tenantId === 'tenant-iso-b')).toBe(true);
+  });
+
+  it('/admin/data-model — tenant B sees no tenant-A tracks or entity types', async () => {
+    const res = await get('/admin/data-model', TENANT_B_TOKEN());
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('tracks');
+    expect(res.body).toHaveProperty('types');
+    const trackKeys = res.body.tracks.map((t) => t.key);
+    const typeKeys  = res.body.types.map((t) => t.key);
+    // Demo track keys must be absent
+    for (const k of ['sales', 'operations', 'workshop', 'finance']) {
+      expect(trackKeys).not.toContain(k);
+    }
+    // Demo entity type keys must be absent
+    for (const k of ['contract', 'operation', 'workshop_order', 'invoice', 'vehicle', 'fleet_operator']) {
+      expect(typeKeys).not.toContain(k);
+    }
+  });
+
+  it('/integrations — tenant B sees no tenant-A integrations', async () => {
+    // First, confirm tenant A has integrations
+    const aRes = await get('/integrations', token('u-robert', 'r.mertens@group.eu', 'group-admin'));
+    expect(aRes.status).toBe(200);
+    expect(aRes.body.length).toBeGreaterThan(0);
+    const demoIds   = aRes.body.map((i) => i.id);
+    const demoNames = aRes.body.map((i) => i.name);
+
+    const bRes = await get('/integrations', TENANT_B_TOKEN());
+    expect(bRes.status).toBe(200);
+    expect(Array.isArray(bRes.body)).toBe(true);
+    // None of demo integration ids or names must appear
+    for (const id of demoIds) {
+      expect(bRes.body.map((i) => i.id)).not.toContain(id);
+    }
+    for (const name of DEMO_INTEGRATION_NAMES) {
+      expect(bRes.body.map((i) => i.name)).not.toContain(name);
+    }
+  });
+
+  it('/reports — tenant B sees no tenant-A reports', async () => {
+    const aRes = await get('/reports', token('u-robert', 'r.mertens@group.eu', 'group-admin'));
+    expect(aRes.status).toBe(200);
+    const demoIds = aRes.body.map((r) => r.id);
+
+    const bRes = await get('/reports', TENANT_B_TOKEN());
+    expect(bRes.status).toBe(200);
+    expect(Array.isArray(bRes.body)).toBe(true);
+    // Every response row must not be a demo id
+    for (const id of demoIds) {
+      expect(bRes.body.map((r) => r.id)).not.toContain(id);
+    }
+    // Tenant B has no reports seeded — result must be empty
+    expect(bRes.body.length).toBe(0);
+  });
+
+  it('/vehicles — tenant B sees no tenant-A vehicles', async () => {
+    // Confirm demo has vehicles
+    const aRes = await get('/vehicles', token('u-robert', 'r.mertens@group.eu', 'group-admin'));
+    expect(aRes.status).toBe(200);
+    expect(aRes.body.length).toBeGreaterThan(0);
+    const demoIds    = aRes.body.map((v) => v.id);
+    const demoTitles = aRes.body.map((v) => v.title ?? v.id);
+
+    const bRes = await get('/vehicles', TENANT_B_TOKEN());
+    expect(bRes.status).toBe(200);
+    expect(Array.isArray(bRes.body)).toBe(true);
+    // Tenant B has no vehicles
+    expect(bRes.body.length).toBe(0);
+    // Absolute: none of demo vehicle ids must appear
+    for (const id of demoIds) {
+      expect(bRes.body.map((v) => v.id)).not.toContain(id);
+    }
+  });
+});
+
 describe('isolation: cards actions endpoint', () => {
   // Demo card 's1' (Rotterdam Logistics) exists in tenant A and supports sendFollowUp.
   // Tenant B must NOT be able to mutate it via POST /cards/:id/actions/:action.
