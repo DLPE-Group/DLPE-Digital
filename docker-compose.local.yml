@@ -1,0 +1,117 @@
+# Local production-parity stack — as close to the DigitalOcean target as a laptop gets.
+#
+#   1:1 with DO App Platform + DO Managed Postgres (EU):
+#     - same multi-stage image from Dockerfile (API serves the built SPA)
+#     - NODE_ENV=production, prisma migrate deploy runs on container start
+#     - the non-superuser RLS role `il_app` is used to serve requests
+#       (APP_DATABASE_URL set → the production boot guard is satisfied AND
+#        Postgres RLS is actually enforced, exactly like production)
+#
+# Differences from real DO (all local-only conveniences):
+#     - Postgres runs as a container instead of DO Managed Postgres
+#     - secrets are obvious local placeholders (NEVER use these in real prod)
+#     - port 5432 is exposed so you can inspect the DB from the host / adminer
+#
+# Quickstart:
+#   docker compose -f docker-compose.local.yml up --build -d      # build + boot
+#   docker compose -f docker-compose.local.yml --profile seed run --rm seed   # load the demo (once)
+#   open http://localhost:4000                                    # the app
+#   # optional DB UI: docker compose -f docker-compose.local.yml --profile tools up -d adminer  → http://localhost:8082
+#
+# Tear down (keep data):   docker compose -f docker-compose.local.yml down
+# Tear down (wipe data):   docker compose -f docker-compose.local.yml down -v
+#
+# Isolated compose project (own name) so this stack never disturbs the dev
+# `docker-compose.yml` containers (e.g. il_postgres) even in the same directory.
+name: dlpe-local
+services:
+  postgres:
+    image: postgres:16
+    container_name: il_local_pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: intelligence
+    ports:
+      - "5433:5432"        # host access for inspection on :5433 (avoids the dev il_postgres on 5432; DO Managed PG would be private)
+    volumes:
+      - il_local_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d intelligence"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  # The application — identical image to what DO App Platform builds from the Dockerfile.
+  # On start: `prisma migrate deploy` (creates schema + the il_app role/grants), then the API.
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: il_local_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      # Owner connection (superuser) — migrations, provisioning, platform routes.
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/intelligence
+      # RLS-enforced connection used to SERVE tenant requests. MUST differ from
+      # DATABASE_URL or the production boot guard refuses to start. il_app is the
+      # non-superuser role created by the app_role migration (password il_app_pw).
+      APP_DATABASE_URL: postgresql://il_app:il_app_pw@postgres:5432/intelligence
+      # LOCAL-ONLY placeholder secrets. Generate real ones for any real deploy.
+      JWT_SECRET: local-only-jwt-secret-not-for-production
+      JWT_REFRESH_SECRET: local-only-jwt-refresh-secret-not-for-production
+      # Same-origin (the API serves the SPA) → no cross-origin needed locally.
+      CORS_ORIGIN: ""
+      # Optional: real AI report prose. Empty → scripted fallback.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
+      PORT: 4000
+    ports:
+      - "4000:4000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  # One-shot demo seeder (profile: seed). Uses the build stage (it has src/ + tsx,
+  # which the slim runtime image deliberately omits). Runs as the OWNER and does
+  # NOT set NODE_ENV=production, so the RLS boot guard does not apply to seeding.
+  # Self-sufficient: applies migrations then seeds, so ordering vs. `app` is irrelevant.
+  #   docker compose -f docker-compose.local.yml --profile seed run --rm seed
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: build
+    profiles: ["seed"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/intelligence
+      JWT_SECRET: local-only-jwt-secret-not-for-production
+      JWT_REFRESH_SECRET: local-only-jwt-refresh-secret-not-for-production
+    working_dir: /app/server
+    command: ["sh", "-c", "npx prisma migrate deploy && npx prisma db seed"]
+
+  # Optional DB UI (profile: tools). Not part of the 1:1 stack — a local convenience.
+  #   docker compose -f docker-compose.local.yml --profile tools up -d adminer
+  adminer:
+    image: adminer
+    container_name: il_local_adminer
+    profiles: ["tools"]
+    restart: unless-stopped
+    ports:
+      - "8082:8080"        # adminer on host :8082 (avoids the WordPress container on 8080)
+    depends_on:
+      - postgres
+
+volumes:
+  il_local_pgdata:

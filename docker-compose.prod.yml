@@ -28,6 +28,11 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-intelligence}
+      # REQUIRED in production: the non-superuser, RLS-enforced il_app connection used to
+      # serve tenant requests. MUST differ from DATABASE_URL or the boot guard refuses to
+      # start (otherwise RLS is bypassed). Rotate IL_APP_PASSWORD from the migration default
+      # 'il_app_pw' for any non-local deploy. See docs/DEPLOYMENT-RULES.md rule 9.
+      APP_DATABASE_URL: postgresql://il_app:${IL_APP_PASSWORD:-il_app_pw}@postgres:5432/${POSTGRES_DB:-intelligence}
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set JWT_REFRESH_SECRET}
       # Optional — empty falls back to scripted report prose.
