@@ -29,6 +29,7 @@ export default async function setup() {
   const env = {
     ...process.env,
     DATABASE_URL: TEST_DB_URL,
+    APP_DATABASE_URL: 'postgresql://il_app:il_app_pw@localhost:5432/intelligence_test',
     PORT: String(TEST_PORT),
     NODE_ENV: 'test',
     SERVE_STATIC: '1',

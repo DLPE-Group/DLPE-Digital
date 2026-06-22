@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { prisma } from '../prisma.js';
+import { withTenant } from '../db/withTenant.js';
 
 export const integrationsRouter: Router = Router();
 
-integrationsRouter.get('/', async (_req, res) => {
-  const rows = await prisma.integration.findMany({ orderBy: { id: 'asc' } });
+integrationsRouter.get('/', async (req, res) => {
+  const rows = await withTenant(req.tenantId!, (db) => db.integration.findMany({ orderBy: { id: 'asc' } }));
   res.json(rows);
 });
 
@@ -23,7 +23,7 @@ integrationsRouter.post('/', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: 'name required' });
   const d = parsed.data;
   const id = 'nango-' + d.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now().toString(36);
-  const row = await prisma.integration.create({
+  const row = await withTenant(req.tenantId!, (db) => db.integration.create({
     data: {
       id,
       name: d.name,
@@ -39,7 +39,7 @@ integrationsRouter.post('/', async (req, res) => {
       transforms: 0,
       tenantId: req.tenantId!,
     },
-  });
+  }));
   res.json(row);
 });
 
@@ -55,7 +55,7 @@ integrationsRouter.patch('/:id', async (req, res) => {
   const parsed = patchIntegrationSchema.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid integration patch' });
   try {
-    const row = await prisma.integration.update({ where: { id: req.params.id }, data: parsed.data });
+    const row = await withTenant(req.tenantId!, (db) => db.integration.update({ where: { id: req.params.id }, data: parsed.data }));
     res.json(row);
   } catch (e) {
     res.status(404).json({ error: (e as Error).message });
@@ -65,28 +65,40 @@ integrationsRouter.patch('/:id', async (req, res) => {
 // GET /integrations/:id/logs — recent activity for this integration. Derived
 // from system audit entries (real events flowing through the DataSource).
 integrationsRouter.get('/:id/logs', async (req, res) => {
-  const it = await prisma.integration.findUnique({ where: { id: req.params.id } });
-  if (!it) return res.status(404).json({ error: 'Integration not found' });
-  const sys = await prisma.auditEntry.findMany({ where: { isSystem: true }, orderBy: { createdAt: 'desc' }, take: 12 });
-  const lines = sys.map((a) => ({ when: `${a.day} · ${a.time}`, text: `${a.verb} — ${a.target}` }));
-  res.json({ integration: { id: it.id, name: it.name, status: it.status, lastSync: it.lastSync }, lines });
+  const result = await withTenant(req.tenantId!, async (db) => {
+    const it = await db.integration.findUnique({ where: { id: req.params.id } });
+    if (!it) return null;
+    const sys = await db.auditEntry.findMany({ where: { isSystem: true }, orderBy: { createdAt: 'desc' }, take: 12 });
+    const lines = sys.map((a) => ({ when: `${a.day} · ${a.time}`, text: `${a.verb} — ${a.target}` }));
+    return { integration: { id: it.id, name: it.name, status: it.status, lastSync: it.lastSync }, lines };
+  });
+  if (!result) return res.status(404).json({ error: 'Integration not found' });
+  res.json(result);
 });
 
 // DELETE /integrations/:id — remove a connector.
 integrationsRouter.delete('/:id', async (req, res) => {
-  const existing = await prisma.integration.findUnique({ where: { id: req.params.id } });
-  if (!existing) return res.status(404).json({ error: 'Integration not found' });
-  await prisma.integration.delete({ where: { id: req.params.id } });
+  const result = await withTenant(req.tenantId!, async (db) => {
+    const existing = await db.integration.findUnique({ where: { id: req.params.id } });
+    if (!existing) return false;
+    await db.integration.delete({ where: { id: req.params.id } });
+    return true;
+  });
+  if (!result) return res.status(404).json({ error: 'Integration not found' });
   res.json({ ok: true });
 });
 
 // POST /integrations/:id/test — "test connection": marks healthy + bumps lastSync.
 integrationsRouter.post('/:id/test', async (req, res) => {
-  const existing = await prisma.integration.findUnique({ where: { id: req.params.id } });
-  if (!existing) return res.status(404).json({ error: 'Integration not found' });
-  const row = await prisma.integration.update({
-    where: { id: req.params.id },
-    data: { status: 'healthy', lastSync: 'just now' },
+  const result = await withTenant(req.tenantId!, async (db) => {
+    const existing = await db.integration.findUnique({ where: { id: req.params.id } });
+    if (!existing) return null;
+    const row = await db.integration.update({
+      where: { id: req.params.id },
+      data: { status: 'healthy', lastSync: 'just now' },
+    });
+    return row;
   });
-  res.json({ ok: true, integration: row });
+  if (!result) return res.status(404).json({ error: 'Integration not found' });
+  res.json({ ok: true, integration: result });
 });

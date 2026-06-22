@@ -1,5 +1,5 @@
 import type { CardDTO as Card } from '@dlpe/shared';
-import { prisma } from '../prisma.js';
+import type { Prisma } from '@prisma/client';
 import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
 import { runTriggers } from './triggers.engine.js';
 import { writeAudit, type CascadeLine } from './audit.service.js';
@@ -94,66 +94,67 @@ export async function runAction(
   action: ActionName,
   state: Record<string, unknown>,
   actor: { name: string; roleId: string },
+  tenantId: string,
+  db: Prisma.TransactionClient,
 ): Promise<RunActionResult> {
   if (!PATCHES[action]) throw new Error(`Unknown action: ${action}`);
 
   const cascadeCfg = CASCADING[action];
 
   if (cascadeCfg) {
-    // Transactional: patch source + run triggers + write one audit entry w/ children.
-    return prisma.$transaction(async (tx) => {
-      const sourceRow = await tx.entity.findUnique({ where: { id: cardId } });
-      if (!sourceRow) throw new Error('Card not found');
-      const source = entityToCardDTO(sourceRow as unknown as EntityRow) as unknown as Card;
+    // db is already a withTenant transaction client — run statements directly (no nested tx).
+    const sourceRow = await db.entity.findUnique({ where: { id: cardId } });
+    if (!sourceRow) throw new Error('Card not found');
+    const source = entityToCardDTO(sourceRow as unknown as EntityRow) as unknown as Card;
 
-      const patch = PATCHES[action](source, state);
-      const updatedRow = await tx.entity.update({
-        where: { id: cardId },
-        data: cardPatchToEntityData(patch as Partial<Card>, (sourceRow.fields ?? {}) as Record<string, unknown>),
-      });
-      const card = entityToCardDTO(updatedRow as unknown as EntityRow) as unknown as Card;
-
-      const whenTrack = TRACK_KEY_FROM_ENUM[source.track];
-      const { createdCards, cascadeLines } = await runTriggers(tx, {
-        whenTrack,
-        whenStageName: cascadeCfg.whenStageName,
-        sourceCard: card,
-        actor,
-      });
-
-      // The Brussels sign cascade also touches the customer portal (3rd line).
-      const cascades: CascadeLine[] = [...cascadeLines];
-      if (action === 'signContract') {
-        cascades.push({ track: 'sales', text: `Customer portal updated · order confirmed` });
-      }
-
-      await writeAudit(
-        {
-          actor: actor.name,
-          actorRole: actor.roleId,
-          verb: action === 'signContract' ? 'marked contract signed' : 'approved PEPPOL invoice',
-          target:
-            action === 'signContract'
-              ? `${card.customer} · ${card.value ? '€' + (card.value / 1e6).toFixed(2) + 'M' : ''} renewal`.trim()
-              : `${card.customer} · ${card.vehicle ?? ''}`.trim(),
-          track: whenTrack,
-          kind: 'critical',
-          icon: 'bolt',
-          cascades,
-        },
-        tx,
-      );
-
-      return { card, cascades, createdCards };
+    const patch = PATCHES[action](source, state);
+    const updatedRow = await db.entity.update({
+      where: { id: cardId },
+      data: cardPatchToEntityData(patch as Partial<Card>, (sourceRow.fields ?? {}) as Record<string, unknown>),
     });
+    const card = entityToCardDTO(updatedRow as unknown as EntityRow) as unknown as Card;
+
+    const whenTrack = TRACK_KEY_FROM_ENUM[source.track];
+    const { createdCards, cascadeLines } = await runTriggers(db, {
+      whenTrack,
+      whenStageName: cascadeCfg.whenStageName,
+      sourceCard: card,
+      actor,
+    });
+
+    // The Brussels sign cascade also touches the customer portal (3rd line).
+    const cascades: CascadeLine[] = [...cascadeLines];
+    if (action === 'signContract') {
+      cascades.push({ track: 'sales', text: `Customer portal updated · order confirmed` });
+    }
+
+    await writeAudit(
+      {
+        actor: actor.name,
+        actorRole: actor.roleId,
+        verb: action === 'signContract' ? 'marked contract signed' : 'approved PEPPOL invoice',
+        target:
+          action === 'signContract'
+            ? `${card.customer} · ${card.value ? '€' + (card.value / 1e6).toFixed(2) + 'M' : ''} renewal`.trim()
+            : `${card.customer} · ${card.vehicle ?? ''}`.trim(),
+        track: whenTrack,
+        kind: 'critical',
+        icon: 'bolt',
+        cascades,
+      },
+      db,
+      tenantId,
+    );
+
+    return { card, cascades, createdCards };
   }
 
-  // Non-cascading action: patch + audit.
-  const sourceRow = await prisma.entity.findUnique({ where: { id: cardId } });
+  // Non-cascading action: patch + audit — run directly on the caller's tenant tx (db).
+  const sourceRow = await db.entity.findUnique({ where: { id: cardId } });
   if (!sourceRow) throw new Error('Card not found');
   const source = entityToCardDTO(sourceRow as unknown as EntityRow) as unknown as Card;
   const patch = PATCHES[action](source, state);
-  const updatedRow = await prisma.entity.update({
+  const updatedRow = await db.entity.update({
     where: { id: cardId },
     data: cardPatchToEntityData(patch as Partial<Card>, (sourceRow.fields ?? {}) as Record<string, unknown>),
   });
@@ -167,7 +168,7 @@ export async function runAction(
     track: TRACK_KEY_FROM_ENUM[card.track],
     kind: 'normal',
     icon: 'mail',
-  });
+  }, db, tenantId);
 
   return { card, cascades: [], createdCards: [] };
 }

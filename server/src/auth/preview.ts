@@ -5,15 +5,23 @@ import type { Request, Response, NextFunction } from 'express';
 // preview overrides.
 export const ADMIN_ROLE_IDS = new Set(['group-admin']);
 
+// A role grants admin if its id is the canonical 'group-admin' or a provisioned,
+// slug-prefixed variant '<slug>-group-admin'. Tenant-portable (isolation still
+// enforced by RLS + tenantContext — this only governs the admin *capability*).
+export function roleIdIsAdmin(roleId: string | undefined): boolean {
+  if (!roleId) return false;
+  return ADMIN_ROLE_IDS.has(roleId) || roleId.endsWith('-group-admin');
+}
+
 export function isAdmin(req: Request): boolean {
-  return !!req.user && ADMIN_ROLE_IDS.has(req.user.roleId);
+  return !!req.user && roleIdIsAdmin(req.user.roleId);
 }
 
 // Express guard: 403 for anyone who isn't an admin. Mount before admin-only
 // route groups (defense-in-depth alongside the hidden frontend nav).
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
-  if (!ADMIN_ROLE_IDS.has(req.user.roleId)) {
+  if (!roleIdIsAdmin(req.user.roleId)) {
     return res.status(403).json({ error: 'Admin access required' });
   }
   next();
@@ -25,6 +33,6 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
 // so the header can never be used to escalate access.
 export function actingUserId(req: Request): string | undefined {
   const previewAs = req.header('x-preview-as');
-  if (previewAs && req.user && ADMIN_ROLE_IDS.has(req.user.roleId)) return previewAs;
+  if (previewAs && req.user && roleIdIsAdmin(req.user.roleId)) return previewAs;
   return req.user?.id;
 }

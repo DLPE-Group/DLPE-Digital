@@ -55,9 +55,13 @@ describe('maxUsers gate on POST /admin/users', () => {
     const t = await prisma.tenant.create({ data: { slug: 'cap-test', name: 'Cap Test', region: 'eu' } });
     await bp.createSubscription({ tenantId: t.id, planKey: 'starter' });
 
-    // Admin user reuses the global 'group-admin' role (its roleId FK points to the shared Role row).
-    // This satisfies requireAdmin (checks roleId === 'group-admin') while tenantId = t.id
-    // ensures req.tenantId resolves to the throwaway tenant.
+    // Create a tenant-local admin role (ends with -group-admin so requireAdmin passes).
+    // This must be tenant-owned so RLS allows reading it via withTenant in POST /admin/users.
+    const capAdminRoleId = 'cap-group-admin';
+    await prisma.role.create({
+      data: { id: capAdminRoleId, name: 'Group Admin', system: true, tracks: [], edit: 'all', desc: 'admin', tenantId: t.id },
+    });
+
     const adminId = 'u-cap-admin';
     const adminEmail = 'cap.admin@cap-test.io';
     await prisma.user.create({
@@ -67,7 +71,7 @@ describe('maxUsers gate on POST /admin/users', () => {
         email: adminEmail,
         initials: 'CA',
         passwordHash: 'x',
-        roleId: 'group-admin',
+        roleId: capAdminRoleId,
         scopeType: 'group',
         status: 'active',
         tenantId: t.id,
@@ -83,7 +87,7 @@ describe('maxUsers gate on POST /admin/users', () => {
           email: `fill${i}@cap-test.io`,
           initials: `F${i}`,
           passwordHash: 'x',
-          roleId: 'group-admin',
+          roleId: capAdminRoleId,
           scopeType: 'group',
           status: 'active',
           tenantId: t.id,
@@ -91,13 +95,13 @@ describe('maxUsers gate on POST /admin/users', () => {
       });
     }
 
-    const tok = token(adminId, adminEmail, 'group-admin');
+    const tok = token(adminId, adminEmail, capAdminRoleId);
 
     // --- act: attempt to create the 11th user → expect 402 ---
     const r1 = await post('/admin/users', {
       name: 'Over Limit',
       email: 'overlimit@cap-test.io',
-      roleId: 'group-admin',
+      roleId: capAdminRoleId,
       scopeType: 'group',
     }, tok);
     expect(r1.status).toBe(402);
@@ -110,7 +114,7 @@ describe('maxUsers gate on POST /admin/users', () => {
       id: 'u-cap-new',
       name: 'Now Allowed',
       email: 'nowallowed@cap-test.io',
-      roleId: 'group-admin',
+      roleId: capAdminRoleId,
       scopeType: 'group',
     }, tok);
     expect(r2.status).toBe(200);
@@ -118,6 +122,7 @@ describe('maxUsers gate on POST /admin/users', () => {
 
     // --- cleanup: FK-safe order ---
     await prisma.user.deleteMany({ where: { tenantId: t.id } });
+    await prisma.role.deleteMany({ where: { tenantId: t.id } });
     await prisma.subscription.deleteMany({ where: { tenantId: t.id } });
     await prisma.tenant.delete({ where: { id: t.id } });
   });

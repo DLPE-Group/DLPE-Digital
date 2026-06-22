@@ -5,6 +5,7 @@ import { buildEffectiveForUser } from '../rbac/context.js';
 import { valueRestricted } from '../rbac/applyCardRules.js';
 import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
 import type { CardDTO as Card } from '@dlpe/shared';
+import type { Prisma } from '@prisma/client';
 
 // Apply track-access (H3) + row-level scope (H4) to a card set for the caller.
 // Returns the scoped cards plus the caller's allowed track keys (null = all,
@@ -12,11 +13,12 @@ import type { CardDTO as Card } from '@dlpe/shared';
 async function scopeCardsFor(
   cards: Card[],
   userId?: string,
+  db: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<{ cards: Card[]; allowed: string[] | null }> {
   if (!userId) return { cards, allowed: null };
-  const allowed = await userAllowedTracks(userId);
+  const allowed = await userAllowedTracks(userId, db);
   let out = cards.filter((c) => allowed.includes(TRACK_KEY_FROM_ENUM[c.track]));
-  const visible = await visibleCompanyIds(userId);
+  const visible = await visibleCompanyIds(userId, db);
   if (visible) out = out.filter((c) => c.companyId != null && visible.has(c.companyId));
   return { cards: out, allowed };
 }
@@ -24,10 +26,10 @@ async function scopeCardsFor(
 const MASK = '€XXX,XXX';
 // Per-type money restriction for the caller (e.g. 'contract', 'invoice',
 // 'workshop_order') — so aggregates follow per-EntityType field rules.
-async function callerValueRestricted(userId?: string, typeKey = 'contract'): Promise<boolean> {
+async function callerValueRestricted(userId?: string, typeKey = 'contract', db: Prisma.TransactionClient | typeof prisma = prisma): Promise<boolean> {
   if (!userId) return false;
   try {
-    const { effective } = await buildEffectiveForUser(userId);
+    const { effective } = await buildEffectiveForUser(userId, db);
     return valueRestricted(effective, typeKey);
   } catch {
     return false;
@@ -71,13 +73,13 @@ export interface TrackAggregate {
 
 // computeTrack — server twin of the frontend, reading live DB cards.
 // When the caller may not see contract values, money figures are masked.
-export async function computeTrack(track: string, userId?: string): Promise<TrackAggregate> {
-  const raw = await loadPipelineCards(track.toLowerCase());
+export async function computeTrack(track: string, userId?: string, db: Prisma.TransactionClient | typeof prisma = prisma): Promise<TrackAggregate> {
+  const raw = await loadPipelineCards(track.toLowerCase(), db);
   const key = track.toLowerCase();
   // Track-access (H3) + scope (H4): if the caller can't view this track, the
   // scoped set is empty and every metric computes to zero.
-  const { cards: items } = await scopeCardsFor(raw, userId);
-  const restricted = await callerValueRestricted(userId, TYPE_KEY_BY_TRACK_KEY[key] ?? 'contract');
+  const { cards: items } = await scopeCardsFor(raw, userId, db);
+  const restricted = await callerValueRestricted(userId, TYPE_KEY_BY_TRACK_KEY[key] ?? 'contract', db);
   const agg = await computeTrackInner(items, key);
   if (!restricted) return agg;
   // Mask any money-shaped string (starts with €) in metrics + chart displays.
@@ -213,15 +215,15 @@ export const DEFAULT_CHARTS = [
 // matching what app/src/dashboard.jsx chart components consume.
 // NOTE: wonThisWeek / ontime / followupsDue / newLeads are documented approximations
 // (no first-class source columns exist for them).
-export async function dashboardSnapshot(userId?: string) {
+export async function dashboardSnapshot(userId?: string, db: Prisma.TransactionClient | typeof prisma = prisma) {
   // Track-access (H3) + scope (H4): the snapshot reflects only what the caller
   // may see, so the overview matches the side menu and the per-track lists.
-  const { cards, allowed } = await scopeCardsFor(await loadPipelineCards(), userId);
+  const { cards, allowed } = await scopeCardsFor(await loadPipelineCards(undefined, db), userId, db);
   // Per-type money gates: Sales money follows the contract rules, Finance money
   // follows the invoice rules — so the dashboard reflects per-EntityType field
   // governance ("aggregates follow").
-  const restricted = await callerValueRestricted(userId, 'contract');
-  const restrictedInvoice = await callerValueRestricted(userId, 'invoice');
+  const restricted = await callerValueRestricted(userId, 'contract', db);
+  const restrictedInvoice = await callerValueRestricted(userId, 'invoice', db);
   const money = (v: number) => (restricted ? null : v); // Sales/contract money
   const moneyInv = (v: number) => (restrictedInvoice ? null : v); // Finance/invoice money
   const byTrack = (t: string) => cards.filter((c) => c.track === t);

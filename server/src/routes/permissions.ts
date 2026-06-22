@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { prisma } from '../prisma.js';
 import { buildEffectiveForUser } from '../rbac/context.js';
 import { userAllowedTracks } from '../domain/cards.service.js';
 import { actingUserId } from '../auth/preview.js';
+import { withTenant } from '../db/withTenant.js';
 
 export const permissionsRouter: Router = Router();
 
@@ -17,23 +17,31 @@ permissionsRouter.get('/permissions', async (req, res) => {
   const actingId = actingUserId(req);
   if (!actingId) return res.status(401).json({ error: 'Not authenticated' });
 
-  const actingUser =
-    actingId === req.user.id
-      ? req.user
-      : await prisma.user.findUnique({ where: { id: actingId } });
-  if (!actingUser) return res.status(404).json({ error: 'Preview user not found' });
+  const result = await withTenant(req.tenantId!, async (db) => {
+    const actingUser =
+      actingId === req.user!.id
+        ? req.user!
+        : await db.user.findUnique({ where: { id: actingId } });
+    if (!actingUser) return null;
 
-  const { roleIds, rules, effective } = await buildEffectiveForUser(actingId);
-  const allowedTracks = await userAllowedTracks(actingId);
+    const [{ roleIds, rules, effective }, allowedTracks] = await Promise.all([
+      buildEffectiveForUser(actingId, db),
+      userAllowedTracks(actingId, db),
+    ]);
+
+    return { actingUser, roleIds, rules, effective, allowedTracks };
+  });
+
+  if (!result) return res.status(404).json({ error: 'Preview user not found' });
 
   res.json({
     tenantId: req.user?.tenantId,
     platformAdmin: req.user?.platformAdmin ?? false,
-    roleIds,
-    scopeType: actingUser.scopeType,
-    scopeNodeId: actingUser.scopeNodeId,
-    allowedTracks,
-    rules,
-    effective,
+    roleIds: result.roleIds,
+    scopeType: result.actingUser.scopeType,
+    scopeNodeId: result.actingUser.scopeNodeId,
+    allowedTracks: result.allowedTracks,
+    rules: result.rules,
+    effective: result.effective,
   });
 });

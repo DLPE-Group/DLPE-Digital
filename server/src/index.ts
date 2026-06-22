@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { env, isProd, serveStatic, corsOrigins } from './env.js';
+import { appPrisma } from './db/withTenant.js';
 import { requireAuth } from './auth/middleware.js';
 import { requireAdmin } from './auth/preview.js';
 import { tenantContext } from './auth/tenantContext.js';
@@ -141,6 +142,34 @@ if (serveStatic) {
   }
 }
 
-app.listen(env.PORT, () => {
-  console.log(`Intelligence Layer API listening on http://localhost:${env.PORT} (${env.NODE_ENV})`);
-});
+async function assertAppRoleIfProd(): Promise<void> {
+  if (!isProd) return;
+  try {
+    const rows = await appPrisma.$queryRaw<{ rolbypassrls: boolean; rolsuper: boolean }[]>`
+      SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user
+    `;
+    const role = rows[0];
+    if (role && (role.rolbypassrls === true || role.rolsuper === true)) {
+      console.error(
+        'FATAL: The app database connection (APP_DATABASE_URL) is running as a superuser or ' +
+          'RLS-bypassing role. Postgres Row-Level Security is disabled for this connection, ' +
+          'which means tenant isolation is defeated. Set APP_DATABASE_URL to the il_app role ' +
+          '(non-superuser, no BYPASSRLS). Exiting.',
+      );
+      process.exit(1);
+    }
+  } catch (err) {
+    // Transient DB hiccup — log a warning but do not crash.
+    // The env guard in env.ts is the hard synchronous gate; this is defense-in-depth.
+    console.warn('WARN: Could not verify app DB role at startup (transient error):', err);
+  }
+}
+
+(async () => {
+  await assertAppRoleIfProd();
+  app.listen(env.PORT, () => {
+    console.log(
+      `Intelligence Layer API listening on http://localhost:${env.PORT} (${env.NODE_ENV})`,
+    );
+  });
+})();

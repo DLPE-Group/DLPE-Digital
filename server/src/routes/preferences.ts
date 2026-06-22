@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { prisma } from '../prisma.js';
+import { withTenant } from '../db/withTenant.js';
 
 export const preferencesRouter: Router = Router();
 
@@ -29,7 +29,7 @@ export const prefsSchema = z
 preferencesRouter.get('/preferences', async (req, res) => {
   const userId = req.user?.id;
   if (!userId) return res.status(401).json({ error: 'Not authenticated' });
-  const row = await prisma.userPreference.findUnique({ where: { userId } });
+  const row = await withTenant(req.tenantId!, (db) => db.userPreference.findUnique({ where: { userId } }));
   res.json({ ...DEFAULTS, ...((row?.prefs as object) ?? {}) });
 });
 
@@ -39,12 +39,14 @@ preferencesRouter.put('/preferences', async (req, res) => {
   if (!userId) return res.status(401).json({ error: 'Not authenticated' });
   const parsed = prefsSchema.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid preferences' });
-  const existing = await prisma.userPreference.findUnique({ where: { userId } });
-  const merged = { ...DEFAULTS, ...((existing?.prefs as object) ?? {}), ...parsed.data };
-  const row = await prisma.userPreference.upsert({
-    where: { userId },
-    update: { prefs: merged },
-    create: { userId, prefs: merged, tenantId: req.tenantId! },
+  const row = await withTenant(req.tenantId!, async (db) => {
+    const existing = await db.userPreference.findUnique({ where: { userId } });
+    const merged = { ...DEFAULTS, ...((existing?.prefs as object) ?? {}), ...parsed.data };
+    return db.userPreference.upsert({
+      where: { userId },
+      update: { prefs: merged },
+      create: { userId, prefs: merged, tenantId: req.tenantId! },
+    });
   });
   res.json(row.prefs);
 });

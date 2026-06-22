@@ -38,7 +38,7 @@ cardsRouter.post('/', async (req, res) => {
   const parsed = createCardSchema.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   try {
-    res.json(await createCard(parsed.data, actor(req), req.tenantId!));
+    res.json(await withTenant(req.tenantId!, (tx) => createCard(parsed.data, actor(req), req.tenantId!, tx)));
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }
@@ -46,7 +46,7 @@ cardsRouter.post('/', async (req, res) => {
 
 cardsRouter.delete('/:id', async (req, res) => {
   try {
-    await deleteCard(req.params.id, actor(req), req.tenantId!);
+    await withTenant(req.tenantId!, (tx) => deleteCard(req.params.id, actor(req), req.tenantId!, tx));
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
@@ -54,7 +54,7 @@ cardsRouter.delete('/:id', async (req, res) => {
 });
 
 cardsRouter.get('/:id', async (req, res) => {
-  const card = await getCard(req.params.id, actingUserId(req));
+  const card = await withTenant(req.tenantId!, (tx) => getCard(req.params.id, actingUserId(req), tx));
   if (!card) return res.status(404).json({ error: 'Card not found' });
   res.json(card);
 });
@@ -64,7 +64,7 @@ cardsRouter.put('/:id/stage', async (req, res) => {
   const parsed = stageSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'stageId required' });
   try {
-    res.json(await moveStage(req.params.id, parsed.data.stageId, actor(req), req.user?.id, req.tenantId!));
+    res.json(await withTenant(req.tenantId!, (tx) => moveStage(req.params.id, parsed.data.stageId, actor(req), req.user?.id, req.tenantId!, tx)));
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }
@@ -72,7 +72,7 @@ cardsRouter.put('/:id/stage', async (req, res) => {
 
 cardsRouter.patch('/:id', async (req, res) => {
   try {
-    res.json(await patchCard(req.params.id, req.body ?? {}));
+    res.json(await withTenant(req.tenantId!, (tx) => patchCard(req.params.id, req.body ?? {}, tx)));
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
   }
@@ -92,7 +92,7 @@ cardsRouter.post('/:id/actions/:action', async (req, res) => {
   const action = req.params.action as ActionName;
   if (!ACTIONS.has(action)) return res.status(400).json({ error: `Unknown action: ${action}` });
   try {
-    const result = await runAction(req.params.id, action, req.body?.state ?? {}, actor(req));
+    const result = await withTenant(req.tenantId!, (db) => runAction(req.params.id, action, req.body?.state ?? {}, actor(req), req.tenantId!, db));
     res.json(result);
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });

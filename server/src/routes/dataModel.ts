@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { prisma } from '../prisma.js';
+import type { FieldDef } from '@prisma/client';
+import { withTenant } from '../db/withTenant.js';
 
 // GET /admin/data-model — the data-driven meta-model (tracks + entity types +
 // fields), plus no-code authoring (create/edit). Mounted under /api/admin, so
@@ -14,17 +15,17 @@ async function nextOrder<T extends { order: number }>(rows: T[]): Promise<number
   return rows.reduce((m, r) => Math.max(m, r.order), -1) + 1;
 }
 
-dataModelRouter.get('/data-model', async (_req, res) => {
-  const [tracks, types] = await Promise.all([
-    prisma.trackDef.findMany({
+dataModelRouter.get('/data-model', async (req, res) => {
+  const [tracks, types] = await withTenant(req.tenantId!, async (db) => Promise.all([
+    db.trackDef.findMany({
       orderBy: { order: 'asc' },
       include: { stages: { orderBy: { order: 'asc' } } },
     }),
-    prisma.entityType.findMany({
+    db.entityType.findMany({
       orderBy: { order: 'asc' },
       include: { fieldDefs: { orderBy: { order: 'asc' } }, track: true },
     }),
-  ]);
+  ]));
 
   res.json({
     tracks: tracks.map((t) => ({
@@ -50,23 +51,33 @@ const TrackCreate = z.object({ key: KEY, label: z.string().min(1), color: z.stri
 dataModelRouter.post('/data-model/tracks', async (req, res) => {
   const p = TrackCreate.safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: p.error.issues[0].message });
-  if (await prisma.trackDef.findUnique({ where: { key: p.data.key } }))
-    return res.status(409).json({ error: `Track "${p.data.key}" already exists` });
-  const order = await nextOrder(await prisma.trackDef.findMany());
-  const row = await prisma.trackDef.create({
-    data: { key: p.data.key, label: p.data.label, color: p.data.color ?? null, order, builtin: false, tenantId: req.tenantId! },
-  });
-  res.json({ key: row.key, label: row.label, color: row.color });
+  try {
+    const row = await withTenant(req.tenantId!, async (db) => {
+      if (await db.trackDef.findUnique({ where: { key: p.data.key } }))
+        throw Object.assign(new Error(`Track "${p.data.key}" already exists`), { code: 409 });
+      const order = await nextOrder(await db.trackDef.findMany());
+      return db.trackDef.create({
+        data: { key: p.data.key, label: p.data.label, color: p.data.color ?? null, order, builtin: false, tenantId: req.tenantId! },
+      });
+    });
+    res.json({ key: row.key, label: row.label, color: row.color });
+  } catch (e: any) {
+    if (e.code === 409) return res.status(409).json({ error: e.message });
+    res.status(400).json({ error: (e as Error).message });
+  }
 });
 
 const TrackPatch = z.object({ label: z.string().min(1).optional(), color: z.string().optional() });
 dataModelRouter.patch('/data-model/tracks/:key', async (req, res) => {
   const p = TrackPatch.safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: p.error.issues[0].message });
-  const existing = await prisma.trackDef.findUnique({ where: { key: req.params.key } });
-  if (!existing) return res.status(404).json({ error: 'Track not found' });
-  const row = await prisma.trackDef.update({ where: { key: req.params.key }, data: p.data });
-  res.json({ key: row.key, label: row.label, color: row.color });
+  const result = await withTenant(req.tenantId!, async (db) => {
+    const existing = await db.trackDef.findUnique({ where: { key: req.params.key } });
+    if (!existing) return null;
+    return db.trackDef.update({ where: { key: req.params.key }, data: p.data });
+  });
+  if (!result) return res.status(404).json({ error: 'Track not found' });
+  res.json({ key: result.key, label: result.label, color: result.color });
 });
 
 // ---- Entity types ----
@@ -79,31 +90,42 @@ const TypeCreate = z.object({
 dataModelRouter.post('/data-model/types', async (req, res) => {
   const p = TypeCreate.safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: p.error.issues[0].message });
-  if (await prisma.entityType.findUnique({ where: { key: p.data.key } }))
-    return res.status(409).json({ error: `Type "${p.data.key}" already exists` });
+  if (p.data.kind === 'pipeline' && !p.data.trackKey)
+    return res.status(400).json({ error: 'A pipeline type needs a track' });
+  try {
+    const row = await withTenant(req.tenantId!, async (db) => {
+      if (await db.entityType.findUnique({ where: { key: p.data.key } }))
+        throw Object.assign(new Error(`Type "${p.data.key}" already exists`), { code: 409 });
 
-  let trackId: string | null = null;
-  if (p.data.kind === 'pipeline') {
-    if (!p.data.trackKey) return res.status(400).json({ error: 'A pipeline type needs a track' });
-    const track = await prisma.trackDef.findUnique({ where: { key: p.data.trackKey } });
-    if (!track) return res.status(400).json({ error: `Unknown track "${p.data.trackKey}"` });
-    trackId = track.id;
+      let trackId: string | null = null;
+      if (p.data.kind === 'pipeline') {
+        const track = await db.trackDef.findUnique({ where: { key: p.data.trackKey! } });
+        if (!track) throw new Error(`Unknown track "${p.data.trackKey}"`);
+        trackId = track.id;
+      }
+      const order = await nextOrder(await db.entityType.findMany());
+      return db.entityType.create({
+        data: { key: p.data.key, label: p.data.label, kind: p.data.kind, trackId, order, builtin: false, tenantId: req.tenantId! },
+      });
+    });
+    res.json({ key: row.key, label: row.label, kind: row.kind });
+  } catch (e: any) {
+    if (e.code === 409) return res.status(409).json({ error: e.message });
+    res.status(400).json({ error: (e as Error).message });
   }
-  const order = await nextOrder(await prisma.entityType.findMany());
-  const row = await prisma.entityType.create({
-    data: { key: p.data.key, label: p.data.label, kind: p.data.kind, trackId, order, builtin: false, tenantId: req.tenantId! },
-  });
-  res.json({ key: row.key, label: row.label, kind: row.kind });
 });
 
 const TypePatch = z.object({ label: z.string().min(1).optional(), color: z.string().optional(), icon: z.string().optional() });
 dataModelRouter.patch('/data-model/types/:key', async (req, res) => {
   const p = TypePatch.safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: p.error.issues[0].message });
-  const existing = await prisma.entityType.findUnique({ where: { key: req.params.key } });
-  if (!existing) return res.status(404).json({ error: 'Type not found' });
-  const row = await prisma.entityType.update({ where: { key: req.params.key }, data: p.data });
-  res.json({ key: row.key, label: row.label });
+  const result = await withTenant(req.tenantId!, async (db) => {
+    const existing = await db.entityType.findUnique({ where: { key: req.params.key } });
+    if (!existing) return null;
+    return db.entityType.update({ where: { key: req.params.key }, data: p.data });
+  });
+  if (!result) return res.status(404).json({ error: 'Type not found' });
+  res.json({ key: result.key, label: result.label });
 });
 
 // ---- Fields ----
@@ -116,15 +138,23 @@ const FieldCreate = z.object({
 dataModelRouter.post('/data-model/types/:key/fields', async (req, res) => {
   const p = FieldCreate.safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: p.error.issues[0].message });
-  const type = await prisma.entityType.findUnique({ where: { key: req.params.key }, include: { fieldDefs: true } });
-  if (!type) return res.status(404).json({ error: 'Type not found' });
-  if (type.fieldDefs.some((f) => f.key === p.data.key))
-    return res.status(409).json({ error: `Field "${p.data.key}" already exists on this type` });
-  const order = await nextOrder(type.fieldDefs);
-  const row = await prisma.fieldDef.create({
-    data: { entityTypeId: type.id, key: p.data.key, label: p.data.label, category: p.data.category ?? null, dataKind: p.data.dataKind, order, builtin: false, tenantId: req.tenantId! },
-  });
-  res.json({ key: row.key, label: row.label, category: row.category, dataKind: row.dataKind });
+  try {
+    const row = await withTenant(req.tenantId!, async (db) => {
+      const type = await db.entityType.findUnique({ where: { key: req.params.key }, include: { fieldDefs: true } });
+      if (!type) throw Object.assign(new Error('Type not found'), { code: 404 });
+      if (type.fieldDefs.some((f) => f.key === p.data.key))
+        throw Object.assign(new Error(`Field "${p.data.key}" already exists on this type`), { code: 409 });
+      const order = await nextOrder(type.fieldDefs);
+      return db.fieldDef.create({
+        data: { entityTypeId: type.id, key: p.data.key, label: p.data.label, category: p.data.category ?? null, dataKind: p.data.dataKind, order, builtin: false, tenantId: req.tenantId! },
+      });
+    });
+    res.json({ key: row.key, label: row.label, category: row.category, dataKind: row.dataKind });
+  } catch (e: any) {
+    if (e.code === 404) return res.status(404).json({ error: e.message });
+    if (e.code === 409) return res.status(409).json({ error: e.message });
+    res.status(400).json({ error: (e as Error).message });
+  }
 });
 
 const FieldPatch = z.object({
@@ -135,44 +165,70 @@ const FieldPatch = z.object({
 dataModelRouter.patch('/data-model/types/:key/fields/:fieldKey', async (req, res) => {
   const p = FieldPatch.safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: p.error.issues[0].message });
-  const type = await prisma.entityType.findUnique({ where: { key: req.params.key }, include: { fieldDefs: true } });
-  if (!type) return res.status(404).json({ error: 'Type not found' });
-  const field = type.fieldDefs.find((f) => f.key === req.params.fieldKey);
-  if (!field) return res.status(404).json({ error: 'Field not found' });
-  const row = await prisma.fieldDef.update({ where: { id: field.id }, data: p.data });
-  res.json({ key: row.key, label: row.label, category: row.category, dataKind: row.dataKind });
+  const result = await withTenant(req.tenantId!, async (db): Promise<{ notFound: 'type' | 'field' } | FieldDef> => {
+    const type = await db.entityType.findUnique({ where: { key: req.params.key }, include: { fieldDefs: true } });
+    if (!type) return { notFound: 'type' as const };
+    const field = type.fieldDefs.find((f) => f.key === req.params.fieldKey);
+    if (!field) return { notFound: 'field' as const };
+    const row = await db.fieldDef.update({ where: { id: field.id }, data: p.data });
+    return row;
+  });
+  if ('notFound' in result) {
+    return res.status(404).json({ error: result.notFound === 'type' ? 'Type not found' : 'Field not found' });
+  }
+  res.json({ key: result.key, label: result.label, category: result.category, dataKind: result.dataKind });
 });
 
 dataModelRouter.delete('/data-model/types/:key/fields/:fieldKey', async (req, res) => {
-  const type = await prisma.entityType.findUnique({ where: { key: req.params.key }, include: { fieldDefs: true } });
-  if (!type) return res.status(404).json({ error: 'Type not found' });
-  const field = type.fieldDefs.find((f) => f.key === req.params.fieldKey);
-  if (!field) return res.status(404).json({ error: 'Field not found' });
-  if (field.builtin) return res.status(400).json({ error: 'Built-in fields cannot be deleted (they govern existing data).' });
-  await prisma.fieldDef.delete({ where: { id: field.id } });
+  const result = await withTenant(req.tenantId!, async (db) => {
+    const type = await db.entityType.findUnique({ where: { key: req.params.key }, include: { fieldDefs: true } });
+    if (!type) return { notFound: 'type' } as const;
+    const field = type.fieldDefs.find((f) => f.key === req.params.fieldKey);
+    if (!field) return { notFound: 'field' } as const;
+    if (field.builtin) return { builtin: true } as const;
+    await db.fieldDef.delete({ where: { id: field.id } });
+    return { ok: true } as const;
+  });
+  if ('notFound' in result) {
+    return res.status(404).json({ error: result.notFound === 'type' ? 'Type not found' : 'Field not found' });
+  }
+  if ('builtin' in result) return res.status(400).json({ error: 'Built-in fields cannot be deleted (they govern existing data).' });
   res.json({ ok: true });
 });
 
 // Delete an entity type (non-builtin, and only when no entities use it).
 dataModelRouter.delete('/data-model/types/:key', async (req, res) => {
-  const type = await prisma.entityType.findUnique({ where: { key: req.params.key } });
-  if (!type) return res.status(404).json({ error: 'Type not found' });
-  if (type.builtin) return res.status(400).json({ error: 'Built-in types cannot be deleted.' });
-  const inUse = await prisma.entity.count({ where: { entityTypeId: type.id } });
-  if (inUse > 0) return res.status(400).json({ error: `Type has ${inUse} item(s) — delete or reassign them first.` });
-  await prisma.entityType.delete({ where: { id: type.id } }); // cascades fieldDefs
+  const result = await withTenant(req.tenantId!, async (db) => {
+    const type = await db.entityType.findUnique({ where: { key: req.params.key } });
+    if (!type) return { notFound: true } as const;
+    if (type.builtin) return { builtin: true } as const;
+    const inUse = await db.entity.count({ where: { entityTypeId: type.id } });
+    if (inUse > 0) return { inUse } as const;
+    await db.entityType.delete({ where: { id: type.id } }); // cascades fieldDefs
+    return { ok: true } as const;
+  });
+  if ('notFound' in result) return res.status(404).json({ error: 'Type not found' });
+  if ('builtin' in result) return res.status(400).json({ error: 'Built-in types cannot be deleted.' });
+  if ('inUse' in result) return res.status(400).json({ error: `Type has ${result.inUse} item(s) — delete or reassign them first.` });
   res.json({ ok: true });
 });
 
 // Delete a track (non-builtin, and only when no types/entities reference it).
 dataModelRouter.delete('/data-model/tracks/:key', async (req, res) => {
-  const track = await prisma.trackDef.findUnique({ where: { key: req.params.key } });
-  if (!track) return res.status(404).json({ error: 'Track not found' });
-  if (track.builtin) return res.status(400).json({ error: 'Built-in tracks cannot be deleted.' });
-  const types = await prisma.entityType.count({ where: { trackId: track.id } });
-  if (types > 0) return res.status(400).json({ error: `Track has ${types} entity type(s) — remove them first.` });
-  const ents = await prisma.entity.count({ where: { trackId: req.params.key } });
-  if (ents > 0) return res.status(400).json({ error: `Track has ${ents} item(s) — remove them first.` });
-  await prisma.trackDef.delete({ where: { id: track.id } }); // cascades stageDefs
+  const result = await withTenant(req.tenantId!, async (db) => {
+    const track = await db.trackDef.findUnique({ where: { key: req.params.key } });
+    if (!track) return { notFound: true } as const;
+    if (track.builtin) return { builtin: true } as const;
+    const types = await db.entityType.count({ where: { trackId: track.id } });
+    if (types > 0) return { types } as const;
+    const ents = await db.entity.count({ where: { trackId: req.params.key } });
+    if (ents > 0) return { ents } as const;
+    await db.trackDef.delete({ where: { id: track.id } }); // cascades stageDefs
+    return { ok: true } as const;
+  });
+  if ('notFound' in result) return res.status(404).json({ error: 'Track not found' });
+  if ('builtin' in result) return res.status(400).json({ error: 'Built-in tracks cannot be deleted.' });
+  if ('types' in result) return res.status(400).json({ error: `Track has ${result.types} entity type(s) — remove them first.` });
+  if ('ents' in result) return res.status(400).json({ error: `Track has ${result.ents} item(s) — remove them first.` });
   res.json({ ok: true });
 });
