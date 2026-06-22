@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { prisma } from '../prisma.js';
+import { withTenant } from '../db/withTenant.js';
 import { trackKeyToEnum } from '../domain/cards.service.js';
 
 export const stageConfigRouter: Router = Router();
@@ -15,7 +15,7 @@ stageConfigRouter.get('/stage-config', async (req, res) => {
       return res.status(400).json({ error: (e as Error).message });
     }
   }
-  const rows = await prisma.stageConfig.findMany({ where, orderBy: [{ track: 'asc' }, { order: 'asc' }] });
+  const rows = await withTenant(req.tenantId!, (db) => db.stageConfig.findMany({ where, orderBy: [{ track: 'asc' }, { order: 'asc' }] }));
   res.json(rows);
 });
 
@@ -39,13 +39,13 @@ stageConfigRouter.put('/stage-config/:track', async (req, res) => {
   const parsed = putSchema.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid stage-config payload' });
 
-  const rows = await prisma.$transaction(async (tx) => {
-    await tx.stageConfig.deleteMany({ where: { track: trackEnum } });
+  const rows = await withTenant(req.tenantId!, async (db) => {
+    await db.stageConfig.deleteMany({ where: { track: trackEnum } });
     const created = [];
     for (let i = 0; i < parsed.data.stages.length; i++) {
       const s = parsed.data.stages[i];
       created.push(
-        await tx.stageConfig.create({
+        await db.stageConfig.create({
           data: { track: trackEnum, order: i, stageId: s.stageId, label: s.label, sla: s.sla, lock: s.lock ?? null, cta: s.cta, tenantId: req.tenantId! },
         }),
       );
