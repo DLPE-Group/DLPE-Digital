@@ -3,13 +3,14 @@ import { z } from 'zod';
 import argon2 from 'argon2';
 import { prisma } from '../prisma.js';
 import { loadEntitlements } from '../domain/billing/entitlements.js';
+import { withTenant } from '../db/withTenant.js';
 
 export const usersRouter: Router = Router();
 
 const userInclude = { role: true, scopeNode: true, secondary: { include: { role: true, scopeNode: true } } } as const;
 
-usersRouter.get('/users', async (_req, res) => {
-  const users = await prisma.user.findMany({ include: userInclude, orderBy: { id: 'asc' } });
+usersRouter.get('/users', async (req, res) => {
+  const users = await withTenant(req.tenantId!, (db) => db.user.findMany({ include: userInclude, orderBy: { id: 'asc' } }));
   res.json(users);
 });
 

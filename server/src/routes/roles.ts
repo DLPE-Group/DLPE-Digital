@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma.js';
+import { withTenant } from '../db/withTenant.js';
 
 export const rolesRouter: Router = Router();
 
-rolesRouter.get('/roles', async (_req, res) => {
-  const roles = await prisma.role.findMany({ orderBy: { id: 'asc' } });
+rolesRouter.get('/roles', async (req, res) => {
+  const roles = await withTenant(req.tenantId!, (db) => db.role.findMany({ orderBy: { id: 'asc' } }));
   res.json(roles);
 });
 
