@@ -46,6 +46,18 @@ export type Env = typeof env;
 export const appDatabaseUrl = env.APP_DATABASE_URL || env.DATABASE_URL;
 
 export const isProd = env.NODE_ENV === 'production';
+
+// PRODUCTION BOOT GUARD: fail fast if APP_DATABASE_URL is missing or
+// identical to DATABASE_URL (which is the superuser/owner connection that
+// bypasses all RLS policies and defeats tenant isolation).
+if (isProd && (!env.APP_DATABASE_URL || appDatabaseUrl === env.DATABASE_URL)) {
+  throw new Error(
+    'FATAL: APP_DATABASE_URL must be set to the non-superuser il_app connection in production ' +
+      '(it must differ from DATABASE_URL), otherwise Postgres RLS is bypassed and tenants are not ' +
+      'isolated. See docs/DEPLOYMENT-RULES.md rule 9.',
+  );
+}
+
 export const serveStatic = isProd || env.SERVE_STATIC === '1' || env.SERVE_STATIC === 'true';
 
 /** Origins allowlist parsed from CORS_ORIGIN (comma-separated). */
