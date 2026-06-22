@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import argon2 from 'argon2';
-import { prisma } from '../prisma.js';
 import { loadEntitlements } from '../domain/billing/entitlements.js';
 import { withTenant } from '../db/withTenant.js';
 
@@ -15,7 +14,7 @@ usersRouter.get('/users', async (req, res) => {
 });
 
 usersRouter.get('/users/:id', async (req, res) => {
-  const user = await prisma.user.findUnique({ where: { id: req.params.id }, include: userInclude });
+  const user = await withTenant(req.tenantId!, (db) => db.user.findUnique({ where: { id: req.params.id }, include: userInclude }));
   if (!user) return res.status(404).json({ error: 'User not found' });
   res.json(user);
 });
@@ -40,8 +39,8 @@ usersRouter.post('/users', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: 'Invalid user payload', detail: parsed.error.flatten() });
   const d = parsed.data;
 
-  // Enforce plan maxUsers limit before creating
-  const current = await prisma.user.count({ where: { tenantId: req.tenantId! } });
+  // Enforce plan maxUsers limit before creating (billing check uses owner prisma; user count scoped via withTenant)
+  const current = await withTenant(req.tenantId!, (db) => db.user.count());
   const ent = await loadEntitlements(req.tenantId!);
   const limit = ent.limits.maxUsers;
   if (typeof limit === 'number' && current >= limit) {
@@ -51,7 +50,7 @@ usersRouter.post('/users', async (req, res) => {
   const id = d.id ?? 'u-' + d.email.split('@')[0].replace(/[^a-z0-9]+/gi, '-').toLowerCase();
   const passwordHash = await argon2.hash(d.password ?? 'demo1234');
   try {
-    const user = await prisma.user.create({
+    const user = await withTenant(req.tenantId!, (db) => db.user.create({
       data: {
         id,
         name: d.name,
@@ -66,7 +65,7 @@ usersRouter.post('/users', async (req, res) => {
         tenantId: req.tenantId!,
       },
       include: userInclude,
-    });
+    }));
     res.json(user);
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
@@ -91,11 +90,11 @@ usersRouter.patch('/users/:id', async (req, res) => {
     return res.status(400).json({ error: 'You cannot deactivate your own account.' });
   }
   try {
-    const user = await prisma.user.update({
+    const user = await withTenant(req.tenantId!, (db) => db.user.update({
       where: { id: req.params.id },
       data: parsed.data,
       include: userInclude,
-    });
+    }));
     res.json(user);
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
@@ -114,7 +113,7 @@ usersRouter.post('/users/:id/scopes', async (req, res) => {
   const parsed = scopeSchema.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid scope payload' });
   try {
-    const scope = await prisma.userScope.create({
+    const scope = await withTenant(req.tenantId!, (db) => db.userScope.create({
       data: {
         userId: req.params.id,
         roleId: parsed.data.roleId ?? null,
@@ -125,7 +124,7 @@ usersRouter.post('/users/:id/scopes', async (req, res) => {
         tenantId: req.tenantId!,
       },
       include: { role: true, scopeNode: true },
-    });
+    }));
     res.json(scope);
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
@@ -155,7 +154,7 @@ usersRouter.post('/users/import', async (req, res) => {
     const id = 'u-' + email.split('@')[0].replace(/[^a-z0-9]+/gi, '-').toLowerCase();
     try {
       const passwordHash = await argon2.hash('demo1234');
-      await prisma.user.create({
+      await withTenant(req.tenantId!, (db) => db.user.create({
         data: {
           id, name, email, passwordHash, roleId,
           initials: name.split(/\s+/).map((s) => s[0]).join('').toUpperCase(),
@@ -164,7 +163,7 @@ usersRouter.post('/users/import', async (req, res) => {
           status: (col(cells, 'status') as never) ?? 'active',
           tenantId: req.tenantId!,
         },
-      });
+      }));
       created.push(email);
     } catch (e) {
       errors.push({ row: r + 1, error: (e as Error).message });
@@ -174,8 +173,8 @@ usersRouter.post('/users/import', async (req, res) => {
 });
 
 usersRouter.delete('/users/:id/scopes/:scopeId', async (req, res) => {
-  await prisma.userScope
-    .delete({ where: { id: req.params.scopeId } })
+  await withTenant(req.tenantId!, (db) => db.userScope
+    .delete({ where: { id: req.params.scopeId } }))
     .catch(() => undefined);
   res.json({ ok: true });
 });
