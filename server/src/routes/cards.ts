@@ -92,7 +92,7 @@ cardsRouter.post('/:id/actions/:action', async (req, res) => {
   const action = req.params.action as ActionName;
   if (!ACTIONS.has(action)) return res.status(400).json({ error: `Unknown action: ${action}` });
   try {
-    const result = await runAction(req.params.id, action, req.body?.state ?? {}, actor(req));
+    const result = await withTenant(req.tenantId!, (db) => runAction(req.params.id, action, req.body?.state ?? {}, actor(req), req.tenantId!, db));
     res.json(result);
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });

@@ -55,8 +55,9 @@ export interface StageDef { id: string; label: string; sla: number; lock: string
 // Load the ordered stage set for a track from the DB (admin-editable), falling
 // back to the static shared STAGE_CONFIG if none persisted. This makes Stage
 // Config editor changes (labels / SLA / lock) actually drive runtime behavior.
-export async function loadStages(trackEnum: Track): Promise<StageDef[]> {
-  const rows = await prisma.stageConfig.findMany({ where: { track: trackEnum }, orderBy: { order: 'asc' } });
+// Pass `db` (from withTenant) when called from a request context so RLS is enforced.
+export async function loadStages(trackEnum: Track, db: Prisma.TransactionClient | typeof prisma = prisma): Promise<StageDef[]> {
+  const rows = await db.stageConfig.findMany({ where: { track: trackEnum }, orderBy: { order: 'asc' } });
   if (rows.length) return rows.map((r) => ({ id: r.stageId, label: r.label, sla: r.sla, lock: r.lock, cta: r.cta }));
   const key = TRACK_KEY_FROM_ENUM[trackEnum] as TrackKey;
   return ((STAGE_CONFIG[key] ?? []) as unknown) as StageDef[];
@@ -84,7 +85,7 @@ export async function listCards(track?: string, userId?: string, tx: Prisma.Tran
   // Preload DB stage config (admin-editable SLAs) for the tracks present.
   const stagesByTrack: Partial<Record<Track, StageDef[]>> = {};
   if (autoEscalate) {
-    for (const tr of [...new Set(cards.map((c) => c.track))] as Track[]) stagesByTrack[tr] = await loadStages(tr);
+    for (const tr of [...new Set(cards.map((c) => c.track))] as Track[]) stagesByTrack[tr] = await loadStages(tr, tx);
   }
 
   return cards.map((c0) => {
@@ -151,7 +152,7 @@ export async function moveStage(
   const card = entityToCardDTO(row as unknown as EntityRow) as unknown as Card;
 
   const trackKey = TRACK_KEY_FROM_ENUM[card.track] as TrackKey;
-  const stages = await loadStages(card.track as Track);
+  const stages = await loadStages(card.track as Track, db);
   const stage = stages.find((s) => s.id === stageId);
   const stageName = stage?.label ?? stageId;
 
@@ -237,7 +238,7 @@ export async function createCard(
   if (!type) throw new Error(`No entity type for track ${trackKey}`);
   if (!input.customer?.trim()) throw new Error('A title/customer is required');
 
-  const stages = await loadStages(trackKeyToEnum(trackKey));
+  const stages = await loadStages(trackKeyToEnum(trackKey), db);
   const stage = stages.find((s) => s.id === input.stageId) ?? stages[0];
   const id = `e-${Date.now().toString(36)}-${Math.round(Math.random() * 1e6).toString(36)}`;
 

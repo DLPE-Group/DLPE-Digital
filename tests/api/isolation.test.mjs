@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import { get, patch, del, token, TEST_DB_URL } from '../helpers.mjs';
+import { get, patch, del, post, token, TEST_DB_URL } from '../helpers.mjs';
 import { ensureTenantB, destroyTenantB, TENANT_B_TOKEN } from '../iso-helper.mjs';
 const prisma = new PrismaClient({ datasources: { db: { url: TEST_DB_URL } } });
 const A = () => token('u-robert', 'r.mertens@group.eu', 'group-admin'); // demo admin (tenant A)
@@ -350,5 +350,37 @@ describe('isolation: domain/entity', () => {
     expect(aResAfter.status).toBe(200);
     expect(aResAfter.body.customer).toBe(originalCustomer);
     expect(aResAfter.body.customer).not.toBe('HACKED');
+  });
+});
+
+describe('isolation: cards actions endpoint', () => {
+  // Demo card 's1' (Rotterdam Logistics) exists in tenant A and supports sendFollowUp.
+  // Tenant B must NOT be able to mutate it via POST /cards/:id/actions/:action.
+  const DEMO_CARD_ID = 's1';
+  const ACTION = 'sendFollowUp';
+
+  it('tenant B POST /cards/:id/actions/:action on a demo card id does NOT mutate tenant A card', async () => {
+    // Read the card as tenant A before the attack attempt
+    const before = await get(`/cards/${DEMO_CARD_ID}`, A());
+    expect(before.status).toBe(200);
+    const originalStatus = before.body.status;
+    const originalDaysLabel = before.body.daysLabel;
+
+    // Tenant B attempts to run the action on a tenant A card — must fail (404/403/400/500)
+    const actionRes = await post(`/cards/${DEMO_CARD_ID}/actions/${ACTION}`, {}, TENANT_B_TOKEN());
+    // RLS makes the entity invisible to tenant B → entity.findUnique returns null → 'Card not found' → 400
+    // Either a 4xx or 5xx is acceptable; 200 is NOT.
+    expect(actionRes.status).not.toBe(200);
+    // Must not return tenant A's card data in the response body
+    if (actionRes.body && typeof actionRes.body === 'object' && actionRes.body.card) {
+      expect(actionRes.body.card.id).not.toBe(DEMO_CARD_ID);
+    }
+
+    // Re-read the demo card as tenant A — confirm it is unchanged
+    const after = await get(`/cards/${DEMO_CARD_ID}`, A());
+    expect(after.status).toBe(200);
+    // sendFollowUp sets status:'amber' and daysLabel:'just now' — neither must have been applied
+    expect(after.body.status).toBe(originalStatus);
+    expect(after.body.daysLabel).toBe(originalDaysLabel);
   });
 });
