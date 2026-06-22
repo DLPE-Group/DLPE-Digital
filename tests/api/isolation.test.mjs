@@ -276,3 +276,79 @@ describe('isolation: reporting + me', () => {
     expect(bRes.body.roleIds.includes('sales-mgr')).toBe(false);
   });
 });
+
+describe('isolation: domain/entity', () => {
+  it('GET /vehicles as tenant B returns none of demo vehicles (B has none → empty)', async () => {
+    // Confirm demo (tenant A) has vehicles
+    const aRes = await get('/vehicles', A());
+    expect(aRes.status).toBe(200);
+    expect(aRes.body.length).toBeGreaterThan(0);
+
+    const demoVehicleIds = aRes.body.map((v) => v.id);
+
+    // Tenant B has no vehicles — must see empty array
+    const bRes = await get('/vehicles', TENANT_B_TOKEN());
+    expect(bRes.status).toBe(200);
+    expect(Array.isArray(bRes.body)).toBe(true);
+    expect(bRes.body.length).toBe(0);
+    // None of demo vehicle ids must appear
+    expect(bRes.body.every((v) => !demoVehicleIds.includes(v.id))).toBe(true);
+  });
+
+  it('GET /portal/messages as tenant B returns none of demo messages (B has none → empty)', async () => {
+    // Seed a portal message as tenant A (seed doesn't include them, POST one directly)
+    const { post: postHelper } = await import('../helpers.mjs');
+    const postRes = await postHelper('/portal/messages', { body: 'isolation-test-msg', operator: 'Test Operator' }, A());
+    expect(postRes.status).toBe(200);
+    expect(postRes.body.id).toBeTruthy();
+    const demoMsgId = postRes.body.id;
+
+    try {
+      // Confirm tenant A can read it
+      const aRes = await get('/portal/messages', A());
+      expect(aRes.status).toBe(200);
+      expect(aRes.body.some((m) => m.id === demoMsgId)).toBe(true);
+
+      // Tenant B has no messages — must see empty array, never A's messages
+      const bRes = await get('/portal/messages', TENANT_B_TOKEN());
+      expect(bRes.status).toBe(200);
+      expect(Array.isArray(bRes.body)).toBe(true);
+      expect(bRes.body.every((m) => m.id !== demoMsgId)).toBe(true);
+    } finally {
+      // Clean up: delete the test message directly via owner prisma
+      await prisma.portalMessage.delete({ where: { id: demoMsgId } }).catch(() => {});
+    }
+  });
+
+  it('GET /cards/:id as tenant B targeting a demo card id returns 404 (RLS hides it)', async () => {
+    // Get a demo card id from tenant A (sales track)
+    const aRes = await get('/cards?track=sales', A());
+    expect(aRes.status).toBe(200);
+    expect(aRes.body.length).toBeGreaterThan(0);
+    const demoCardId = aRes.body[0].id;
+
+    // Tenant B cannot see tenant A's card — must get 404
+    const bRes = await get(`/cards/${demoCardId}`, TENANT_B_TOKEN());
+    expect(bRes.status).toBe(404);
+  });
+
+  it('PATCH /cards/:id as tenant B targeting a demo card id does NOT modify it', async () => {
+    // Get a demo card id from tenant A
+    const aRes = await get('/cards?track=sales', A());
+    expect(aRes.status).toBe(200);
+    expect(aRes.body.length).toBeGreaterThan(0);
+    const demoCard = aRes.body[0];
+    const demoCardId = demoCard.id;
+    const originalCustomer = demoCard.customer;
+
+    // Attempt to patch as tenant B — RLS makes the row invisible → 404 or error
+    const patchRes = await patch(`/cards/${demoCardId}`, { customer: 'HACKED' }, TENANT_B_TOKEN());
+    expect([400, 404, 500]).toContain(patchRes.status);
+
+    // Re-read as tenant A — card must be unchanged
+    const aResAfter = await get(`/cards/${demoCardId}`, A());
+    expect(aResAfter.status).toBe(200);
+    expect(aResAfter.body.customer).toBe(originalCustomer);
+    expect(aResAfter.body.customer).not.toBe('HACKED');
+  });
+});

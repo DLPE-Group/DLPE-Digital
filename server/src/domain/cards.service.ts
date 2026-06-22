@@ -67,17 +67,17 @@ export async function listCards(track?: string, userId?: string, tx: Prisma.Tran
   if (!userId) return cards;
 
   // Functional access: hide tracks the caller's role(s) cannot view.
-  const allowed = await userAllowedTracks(userId);
+  const allowed = await userAllowedTracks(userId, tx);
   cards = cards.filter((c) => allowed.includes(TRACK_KEY_FROM_ENUM[c.track]));
 
   // Row-level scope: hide companies outside the caller's scope (null = all).
-  const visible = await visibleCompanyIds(userId);
+  const visible = await visibleCompanyIds(userId, tx);
   if (visible) cards = cards.filter((c) => c.companyId != null && visible.has(c.companyId));
 
   // Per-caller: field-level RBAC (always) + auto-escalate (if the pref is on).
   const [pref, eff] = await Promise.all([
-    prisma.userPreference.findUnique({ where: { userId } }),
-    buildEffectiveForUser(userId),
+    tx.userPreference.findUnique({ where: { userId } }),
+    buildEffectiveForUser(userId, tx),
   ]);
   const autoEscalate = (pref?.prefs as { autoEscalate?: boolean } | null)?.autoEscalate ?? true;
 
@@ -99,17 +99,17 @@ export async function listCards(track?: string, userId?: string, tx: Prisma.Tran
   });
 }
 
-export async function getCard(id: string, userId?: string): Promise<Card | null> {
-  const row = await prisma.entity.findUnique({ where: { id } });
+export async function getCard(id: string, userId?: string, db: Prisma.TransactionClient | typeof prisma = prisma): Promise<Card | null> {
+  const row = await db.entity.findUnique({ where: { id } });
   if (!row) return null;
   const card = entityToCardDTO(row as unknown as EntityRow) as unknown as Card;
   if (!userId) return card;
   // Track + row-level scope: a user can't fetch a card outside their access.
-  const allowed = await userAllowedTracks(userId);
+  const allowed = await userAllowedTracks(userId, db);
   if (!allowed.includes(TRACK_KEY_FROM_ENUM[card.track])) return null;
-  const visible = await visibleCompanyIds(userId);
+  const visible = await visibleCompanyIds(userId, db);
   if (visible && (card.companyId == null || !visible.has(card.companyId))) return null;
-  const { effective } = await buildEffectiveForUser(userId);
+  const { effective } = await buildEffectiveForUser(userId, db);
   return filterCard(card, effective);
 }
 
@@ -144,8 +144,9 @@ export async function moveStage(
   actor: { name: string; roleId: string },
   userId?: string,
   tenantId: string = DEMO_TENANT_ID,
+  db: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<Card> {
-  const row = await prisma.entity.findUnique({ where: { id } });
+  const row = await db.entity.findUnique({ where: { id } });
   if (!row) throw new Error('Card not found');
   const card = entityToCardDTO(row as unknown as EntityRow) as unknown as Card;
 
@@ -158,7 +159,7 @@ export async function moveStage(
   // (the default), block a forward jump into a stage whose lock prerequisite
   // hasn't been reached. Moving backward / one step forward stays allowed.
   if (userId && stage?.lock) {
-    const pref = await prisma.userPreference.findUnique({ where: { userId } });
+    const pref = await db.userPreference.findUnique({ where: { userId } });
     const enforce = (pref?.prefs as { enforceLocks?: boolean } | null)?.enforceLocks ?? true;
     if (enforce) {
       const orderOf = (sid: string) => stages.findIndex((s) => s.id === sid);
@@ -174,7 +175,7 @@ export async function moveStage(
     }
   }
 
-  const updatedRow = await prisma.entity.update({
+  const updatedRow = await db.entity.update({
     where: { id },
     data: {
       stageId,
@@ -200,16 +201,16 @@ export async function moveStage(
       prevStageName: card.stageName,
       prevCta: card.cta,
     },
-  }, undefined, tenantId);
+  }, db as Prisma.TransactionClient, tenantId);
 
   return updated;
 }
 
-export async function patchCard(id: string, patch: Partial<Card>): Promise<Card> {
-  const row = await prisma.entity.findUnique({ where: { id } });
+export async function patchCard(id: string, patch: Partial<Card>, db: Prisma.TransactionClient | typeof prisma = prisma): Promise<Card> {
+  const row = await db.entity.findUnique({ where: { id } });
   if (!row) throw new Error('Card not found');
   const data = cardPatchToEntityData(patch, (row.fields ?? {}) as Record<string, unknown>);
-  const updated = await prisma.entity.update({ where: { id }, data });
+  const updated = await db.entity.update({ where: { id }, data });
   return entityToCardDTO(updated as unknown as EntityRow) as unknown as Card;
 }
 
@@ -227,11 +228,12 @@ export async function createCard(
   input: CreateCardInput,
   actor: { name: string; roleId: string; userId?: string },
   tenantId: string = DEMO_TENANT_ID,
+  db: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<Card> {
   const trackKey = input.track.toLowerCase();
   const typeKey = PIPELINE_TYPE_KEY[trackKey];
   if (!typeKey) throw new Error(`Unknown track: ${input.track}`);
-  const type = await prisma.entityType.findUnique({ where: { key: typeKey } });
+  const type = await db.entityType.findUnique({ where: { key: typeKey } });
   if (!type) throw new Error(`No entity type for track ${trackKey}`);
   if (!input.customer?.trim()) throw new Error('A title/customer is required');
 
@@ -239,7 +241,7 @@ export async function createCard(
   const stage = stages.find((s) => s.id === input.stageId) ?? stages[0];
   const id = `e-${Date.now().toString(36)}-${Math.round(Math.random() * 1e6).toString(36)}`;
 
-  const created = await prisma.entity.create({
+  const created = await db.entity.create({
     data: {
       id,
       tenantId,
@@ -266,17 +268,17 @@ export async function createCard(
     actor: actor.name, actorRole: actor.roleId, verb: 'created item',
     target: `${created.title}${created.value ? ' · €' + created.value.toLocaleString() : ''}`,
     track: trackKey, kind: 'normal', icon: 'plus',
-  }, undefined, tenantId);
+  }, db as Prisma.TransactionClient, tenantId);
   return entityToCardDTO(created as unknown as EntityRow) as unknown as Card;
 }
 
 // Delete any entity (pipeline item or reference record).
-export async function deleteCard(id: string, actor: { name: string; roleId: string }, tenantId: string = DEMO_TENANT_ID): Promise<void> {
-  const row = await prisma.entity.findUnique({ where: { id } });
+export async function deleteCard(id: string, actor: { name: string; roleId: string }, tenantId: string = DEMO_TENANT_ID, db: Prisma.TransactionClient | typeof prisma = prisma): Promise<void> {
+  const row = await db.entity.findUnique({ where: { id } });
   if (!row) throw new Error('Item not found');
-  await prisma.entity.delete({ where: { id } });
+  await db.entity.delete({ where: { id } });
   await writeAudit({
     actor: actor.name, actorRole: actor.roleId, verb: 'deleted item',
     target: row.title, track: row.trackId ?? 'sales', kind: 'normal', icon: 'close',
-  }, undefined, tenantId);
+  }, db as Prisma.TransactionClient, tenantId);
 }
