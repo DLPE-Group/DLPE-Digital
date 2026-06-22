@@ -216,3 +216,63 @@ describe('isolation: integrations + triggers', () => {
     expect(found.note).not.toBe('HACKED');
   });
 });
+
+describe('isolation: reporting + me', () => {
+  it('GET /reports as tenant B returns none of demo reports', async () => {
+    // Confirm tenant A has reports
+    const aRes = await get('/reports', A());
+    expect(aRes.status).toBe(200);
+    const demoIds = aRes.body.map((r) => r.id);
+
+    // Tenant B has no reports seeded — must see empty array
+    const bRes = await get('/reports', TENANT_B_TOKEN());
+    expect(bRes.status).toBe(200);
+    expect(Array.isArray(bRes.body)).toBe(true);
+    // None of demo report ids must appear
+    expect(bRes.body.every((r) => !demoIds.includes(r.id))).toBe(true);
+  });
+
+  it('GET /audit as tenant B returns none of demo audit entries', async () => {
+    // Tenant A has audit entries; confirm
+    const aRes = await get('/audit', A());
+    expect(aRes.status).toBe(200);
+    expect(aRes.body.length).toBeGreaterThan(0);
+    const demoIds = aRes.body.map((e) => e.id);
+
+    // Tenant B sees only its own audit entries (none seeded)
+    const bRes = await get('/audit', TENANT_B_TOKEN());
+    expect(bRes.status).toBe(200);
+    expect(Array.isArray(bRes.body)).toBe(true);
+    expect(bRes.body.every((e) => !demoIds.includes(e.id))).toBe(true);
+  });
+
+  it('DELETE /reports/:id as tenant B does not delete a tenant A report', async () => {
+    // Get a demo report id (tenant A). Demo may have no reports seeded — skip if so.
+    const aRes = await get('/reports', A());
+    expect(aRes.status).toBe(200);
+    if (aRes.body.length === 0) return; // no demo reports to test against
+
+    const demoReportId = aRes.body[0].id;
+
+    // Attempt delete as tenant B — RLS makes the row invisible → 404
+    const delRes = await del(`/reports/${demoReportId}`, TENANT_B_TOKEN());
+    expect([400, 404, 500]).toContain(delRes.status);
+
+    // Re-read as tenant A — report must still exist
+    const aResAfter = await get('/reports', A());
+    expect(aResAfter.status).toBe(200);
+    expect(aResAfter.body.some((r) => r.id === demoReportId)).toBe(true);
+  });
+
+  it('GET /me/permissions as tenant B resolves against B roles only (no 500)', async () => {
+    const bRes = await get('/me/permissions', TENANT_B_TOKEN());
+    // Must succeed
+    expect(bRes.status).toBe(200);
+    // roleIds must only contain B's own role(s)
+    expect(Array.isArray(bRes.body.roleIds)).toBe(true);
+    expect(bRes.body.roleIds.every((id) => !id.startsWith('group-admin') || id === 'iso-b-group-admin')).toBe(true);
+    // Must not contain demo-specific field rules
+    expect(bRes.body.roleIds.includes('group-admin')).toBe(false);
+    expect(bRes.body.roleIds.includes('sales-mgr')).toBe(false);
+  });
+});

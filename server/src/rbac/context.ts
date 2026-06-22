@@ -3,6 +3,7 @@
 // effective rule per (dataType, field) via most-restrictive-wins.
 
 import { prisma } from '../prisma.js';
+import type { Prisma } from '@prisma/client';
 import { DATA_TYPES, DEFAULT_RULE, type FieldRuleShape } from '@dlpe/shared';
 import { effRule, mergeRules, type RuleMap } from './effectiveRules.js';
 
@@ -45,17 +46,19 @@ function resolveEffective(map: RuleMap, roleIds: string[]): EffectiveMap {
 // Build the effective rule map for a single user (primary + secondary scope roles).
 // Scope ANY for now; scope-specific rows (matching the user's country/node) are merged
 // in too if present, so the most-restrictive country override wins.
+// Pass `db` (from withTenant) when called from a request context so RLS is enforced.
 export async function buildEffectiveForUser(
   userId: string,
+  db: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<{ roleIds: string[]; rules: RuleMap; effective: EffectiveMap }> {
-  const user = await prisma.user.findUnique({ where: { id: userId }, include: { secondary: true } });
+  const user = await db.user.findUnique({ where: { id: userId }, include: { secondary: true } });
   if (!user) throw new Error(`Unknown user ${userId}`);
 
   const roleIds = Array.from(
     new Set([user.roleId, ...user.secondary.map((s) => s.roleId).filter((r): r is string => !!r)]),
   );
 
-  const rows = await prisma.fieldRule.findMany({ where: { roleId: { in: roleIds } } });
+  const rows = await db.fieldRule.findMany({ where: { roleId: { in: roleIds } } });
   const map = toRuleMap(rows);
   return { roleIds, rules: map, effective: resolveEffective(map, roleIds) };
 }
@@ -63,8 +66,9 @@ export async function buildEffectiveForUser(
 // Build the effective rule map for a single role id (used by ?role= preview).
 export async function buildEffectiveForRole(
   roleId: string,
+  db: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<{ roleIds: string[]; rules: RuleMap; effective: EffectiveMap }> {
-  const rows = await prisma.fieldRule.findMany({ where: { roleId } });
+  const rows = await db.fieldRule.findMany({ where: { roleId } });
   const map = toRuleMap(rows);
   return { roleIds: [roleId], rules: map, effective: resolveEffective(map, [roleId]) };
 }

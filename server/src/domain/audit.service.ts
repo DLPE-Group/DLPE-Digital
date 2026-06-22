@@ -55,8 +55,8 @@ export async function writeAudit(input: WriteAuditInput, tx?: Prisma.Transaction
 }
 
 // filter ∈ all | cascades | system | sales | operations | workshop | finance
-export async function listAudit(filter = 'all') {
-  const entries = await prisma.auditEntry.findMany({
+export async function listAudit(filter = 'all', db: Prisma.TransactionClient | typeof prisma = prisma) {
+  const entries = await db.auditEntry.findMany({
     include: { cascades: { orderBy: { order: 'asc' } } },
     orderBy: { createdAt: 'desc' },
   });
@@ -86,11 +86,14 @@ export class RevertError extends Error {
 // Revert an audit entry transactionally.
 // - sign cascade: delete o1/f1, reset s5 to the awaiting-signature contract state.
 // - stage move: restore the prior stage if recorded in meta, else 422.
+// Pass `db` (from withTenant) when called from a request context so RLS is enforced.
 export async function revertAudit(
   auditId: string,
   actor: { name: string; roleId: string },
+  db: Prisma.TransactionClient | typeof prisma = prisma,
+  tenantId: string = DEMO_TENANT_ID,
 ): Promise<RevertResult> {
-  const full = await prisma.auditEntry.findUnique({
+  const full = await db.auditEntry.findUnique({
     where: { id: auditId },
     include: { cascades: { orderBy: { order: 'asc' } } },
   });
@@ -143,6 +146,7 @@ export async function revertAudit(
           ],
         },
         tx,
+        tenantId,
       );
 
       return { reverted: true, removedCardIds, restoredCardId };
@@ -178,6 +182,7 @@ export async function revertAudit(
           icon: 'undo',
         },
         tx,
+        tenantId,
       );
       return { reverted: true, removedCardIds: [], restoredCardId: meta.cardId! };
     });

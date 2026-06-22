@@ -39,11 +39,12 @@ export function allowedFromTracksText(tracksArr: string[]): string[] {
 }
 
 // Union of track keys the user may view across primary + secondary roles.
-export async function userAllowedTracks(userId: string): Promise<string[]> {
-  const user = await prisma.user.findUnique({ where: { id: userId }, include: { secondary: true } });
+// Pass `db` (from withTenant) when called from a request context so RLS is enforced.
+export async function userAllowedTracks(userId: string, db: Prisma.TransactionClient | typeof prisma = prisma): Promise<string[]> {
+  const user = await db.user.findUnique({ where: { id: userId }, include: { secondary: true } });
   if (!user) return ALL_TRACKS;
   const roleIds = Array.from(new Set([user.roleId, ...user.secondary.map((s) => s.roleId).filter((r): r is string => !!r)]));
-  const roles = await prisma.role.findMany({ where: { id: { in: roleIds } } });
+  const roles = await db.role.findMany({ where: { id: { in: roleIds } } });
   const set = new Set<string>();
   for (const r of roles) allowedFromTracksText(r.tracks).forEach((k) => set.add(k));
   return [...set];
