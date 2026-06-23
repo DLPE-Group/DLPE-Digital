@@ -5,6 +5,7 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 
 ## 2026-06-22
 
+- `8272448` fix(provisioning): clean-customer onboarding template + namespace seed ids
 - `f721c01` docs: drop stray boot-guard plan from generated index
 - `2975f70` docs: MkDocs site + auto-generating pre-commit hook
 - `7b7ac14` Local production-parity Docker stack (1:1 with DigitalOcean)
@@ -160,5 +161,5 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 - `a8c1e03` Implement Intelligence Layer as Vite + React app
 - `6fede3e` Claude Design handoff: Dlpe Digital
 
-<small>139 commits.</small>
+<small>140 commits.</small>
 
