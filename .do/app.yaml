@@ -1,0 +1,102 @@
+# DigitalOcean App Platform spec — declarative deploy for DLPE Digital.
+#
+#   doctl apps create --spec .do/app.yaml          # first deploy
+#   doctl apps update <app-id> --spec .do/app.yaml # apply changes
+#
+# Builds the one container from the repo Dockerfile (API serves the SPA) and binds a
+# managed Postgres cluster. `deploy_on_push: true` → every push to `main` auto-deploys
+# (requires the one-time DO<->GitHub authorization in the DO dashboard).
+#
+# SECRET values are placeholders here — DO NOT commit real secrets. Fill them in a
+# local copy before `doctl apps create`, or set them after with `doctl apps update`
+# / the dashboard. See docs/DEPLOY-DIGITALOCEAN.md for the full runbook.
+name: dlpe-digital
+region: fra            # Frankfurt (EU). Use ams3-adjacent regions for data residency.
+
+services:
+  - name: web
+    github:
+      repo: DLPE-Group/DLPE-Digital
+      branch: main
+      deploy_on_push: true          # auto-deploy on every push to main
+    dockerfile_path: Dockerfile
+    source_dir: /
+    http_port: 4000
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-1gb
+    health_check:
+      http_path: /api/health
+      initial_delay_seconds: 40     # allow `prisma migrate deploy` to run on boot
+      period_seconds: 10
+    envs:
+      - key: NODE_ENV
+        scope: RUN_AND_BUILD_TIME
+        value: production
+      # Owner connection (managed-DB default user) — bound from the `db` cluster below.
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        value: ${db.DATABASE_URL}
+      # RLS-enforced non-superuser (il_app) connection. MUST differ from DATABASE_URL or
+      # the production boot guard refuses to start. Set as a SECRET (see runbook).
+      - key: APP_DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+        value: REPLACE_ME_il_app_connection_string
+      - key: JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+        value: REPLACE_ME_openssl_rand_hex_32
+      - key: JWT_REFRESH_SECRET
+        scope: RUN_TIME
+        type: SECRET
+        value: REPLACE_ME_openssl_rand_hex_32
+      # Same-origin (the API serves the SPA). Set to your custom domain origin(s) if split.
+      - key: CORS_ORIGIN
+        scope: RUN_TIME
+        value: ""
+
+# POST_DEPLOY job: apply migrations (idempotent) + create the first platform admin.
+# Runs after each deploy; bootstrap-admin is idempotent and never resets an existing
+# admin's password, so re-runs are safe.
+jobs:
+  - name: bootstrap-admin
+    kind: POST_DEPLOY
+    github:
+      repo: DLPE-Group/DLPE-Digital
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: Dockerfile
+    source_dir: /
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: npx prisma migrate deploy && npm run bootstrap:admin
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        value: ${db.DATABASE_URL}
+      - key: APP_DATABASE_URL          # required by the boot guard even for the job
+        type: SECRET
+        value: REPLACE_ME_il_app_connection_string
+      - key: JWT_SECRET
+        type: SECRET
+        value: REPLACE_ME_openssl_rand_hex_32
+      - key: JWT_REFRESH_SECRET
+        type: SECRET
+        value: REPLACE_ME_openssl_rand_hex_32
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        type: SECRET
+        value: REPLACE_ME_you@company.com
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        type: SECRET
+        value: REPLACE_ME_strong_password
+      - key: BOOTSTRAP_ADMIN_NAME
+        value: Platform Admin
+
+# Managed Postgres. Reference an EXISTING cluster (created via doctl — see runbook) so
+# the DB survives app re-creates and you control its size/region/backups.
+databases:
+  - name: db
+    engine: PG
+    version: "16"
+    production: true
+    cluster_name: dlpe-pg

@@ -84,7 +84,10 @@ async function main(): Promise<void> {
       platformAdmin: true,
       tenantId,
     },
-    update: { name, passwordHash, platformAdmin: true, status: 'active' as Prisma.UserUpdateInput['status'] },
+    // Re-runs (e.g. a POST_DEPLOY job on every deploy) must NOT reset an existing
+    // admin's password — only ensure they remain an active platform admin. The
+    // password is set once, on create. (Reset by deleting the user, or in-app.)
+    update: { platformAdmin: true, status: 'active' as Prisma.UserUpdateInput['status'] },
   });
 
   // The S0 backfill migration (20260618180000) unconditionally inserts a
