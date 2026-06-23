@@ -90,3 +90,20 @@ git push origin main      # CI runs tests; on green + secrets set, it deploys
 - **`APP_DATABASE_URL` is mandatory** in production (boot guard). If it's missing or equals `DATABASE_URL`, the app intentionally refuses to start.
 - **Custom domain / TLS:** App Platform issues a default `*.ondigitalocean.app` host with TLS. Add a custom domain in the spec (`domains:`) or dashboard when ready (and set `CORS_ORIGIN` if you split the SPA off).
 - **Still simulated:** email (invite links are logged, not sent) and Stripe billing. You can run + onboard via the control plane; wire those before charging money / emailing customers.
+
+## Future optimization — serve the SPA from the free CDN static site
+
+Today the API container serves the built SPA (`app/dist`) itself — simplest, $0 extra,
+same origin. When you want faster global load times, split the frontend onto App
+Platform's **free Static Site** component (served from DO's global CDN, 3 included free):
+
+- Add a `static_sites:` component that builds the frontend (`npm --workspace app run build`,
+  output `app/dist`) and an ingress rule routing `/` → static site, `/api` → the `web`
+  service. Same app, same domain → still same-origin, **no CORS**.
+- The `web` service then serves only the API, so it can stay comfortably on the
+  **$5 (512 MB)** instance.
+
+Trade-off: **cost ≈ neutral** (the SPA is already free inside the container) — this is a
+*performance* win (edge caching), not a cost saving. It adds a second build config, so
+defer it until global latency actually matters. (The single-container setup is the
+current, tested default.)

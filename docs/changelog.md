@@ -5,6 +5,7 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 
 ## 2026-06-23
 
+- `8df527a` ci: test-gated deploy — run suite on push, deploy to DO only on green
 - `0c1d456` deploy: DigitalOcean App Platform spec + doctl runbook (auto-deploy on push)
 - `59e49e5` feat(deploy): bootstrap-admin command for first platform admin (no demo seed)
 - `bb239b9` fix(rls): NO FORCE so managed-Postgres (non-superuser owner) can provision
@@ -167,5 +168,5 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 - `a8c1e03` Implement Intelligence Layer as Vite + React app
 - `6fede3e` Claude Design handoff: Dlpe Digital
 
-<small>143 commits.</small>
+<small>144 commits.</small>
 
