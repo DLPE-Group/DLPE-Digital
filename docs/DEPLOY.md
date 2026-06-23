@@ -19,9 +19,33 @@ serves the built frontend, so it ships as **one container** plus Postgres.
 | `CORS_ORIGIN` | no | comma-separated allowlist; empty = same-origin only |
 | `STATIC_DIR` | no | path to `app/dist`; the image sets it |
 | `PORT` | no | default `4000` |
-| `APP_DATABASE_URL` | no | Non-superuser (`il_app`) connection string used to serve requests once RLS is enabled. Empty → falls back to `DATABASE_URL` (no isolation; fine for single-tenant dev). |
+| `APP_DATABASE_URL` | **yes in production** | Non-superuser (`il_app`) connection string used to serve requests with RLS enforced. **Must differ from `DATABASE_URL`** — in `production` the app refuses to boot if it's unset or equal (otherwise RLS is bypassed). Empty is allowed only in dev/test, where it falls back to `DATABASE_URL`. |
 
 Copy `.env.example` → `.env` and fill in secrets. **Never commit `.env`** (gitignored).
+
+## First-time production bootstrap (the first platform admin)
+
+A fresh production database has **no users**. The slim runtime image cannot run the
+demo seed (`prisma db seed` needs `src/` + tsx), and you do **not** want the demo data
+in production anyway. Instead, after migrations have run, create the first platform
+admin with the bundled, idempotent command (it ships in the runtime image):
+
+```bash
+# Against the running app container (DigitalOcean: use the App Platform console):
+BOOTSTRAP_ADMIN_EMAIL=you@company.com \
+BOOTSTRAP_ADMIN_PASSWORD='<strong-password>' \
+BOOTSTRAP_ADMIN_NAME='Your Name' \
+  npm run bootstrap:admin            # == node dist/scripts/bootstrap-admin.js
+```
+
+It creates a `platform` tenant + a `platformAdmin` user (and removes the empty
+`dlpe-demo` placeholder that the tenant-backfill migration leaves on a fresh DB — it
+only deletes it when it has no users, so a real seeded demo is never touched). Log in
+with that account and use the **Control plane** to provision real customers from the
+`dlpe-starter` (config-only) blueprint — no per-customer deploy needed.
+
+> Optional: to also have the full demo dataset in a non-prod environment, run
+> `npm run db:seed` from a source checkout (not the slim image) pointed at that database.
 
 ## Local development
 

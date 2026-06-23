@@ -7,7 +7,7 @@ import { defineConfig } from 'tsup';
 //   external so they resolve from the installed node_modules at runtime —
 //   notably argon2 and @prisma/client have native/engine binaries.
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ['src/index.ts', 'src/scripts/bootstrap-admin.ts'],
   format: ['esm'],
   platform: 'node',
   target: 'node22',
