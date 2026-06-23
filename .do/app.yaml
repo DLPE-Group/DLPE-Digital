@@ -4,8 +4,9 @@
 #   doctl apps update <app-id> --spec .do/app.yaml # apply changes
 #
 # Builds the one container from the repo Dockerfile (API serves the SPA) and binds a
-# managed Postgres cluster. `deploy_on_push: true` → every push to `main` auto-deploys
-# (requires the one-time DO<->GitHub authorization in the DO dashboard).
+# managed Postgres cluster. deploy_on_push is FALSE: the GitHub Actions CI workflow
+# (.github/workflows/ci.yml) runs the test suite on push to main and triggers the
+# deploy via `doctl apps create-deployment` ONLY when tests pass (test-gated deploy).
 #
 # SECRET values are placeholders here — DO NOT commit real secrets. Fill them in a
 # local copy before `doctl apps create`, or set them after with `doctl apps update`
@@ -18,7 +19,7 @@ services:
     github:
       repo: DLPE-Group/DLPE-Digital
       branch: main
-      deploy_on_push: true          # auto-deploy on every push to main
+      deploy_on_push: false   # CI (.github/workflows/ci.yml) deploys only after tests pass          # auto-deploy on every push to main
     dockerfile_path: Dockerfile
     source_dir: /
     http_port: 4000
@@ -64,7 +65,7 @@ jobs:
     github:
       repo: DLPE-Group/DLPE-Digital
       branch: main
-      deploy_on_push: true
+      deploy_on_push: false   # CI (.github/workflows/ci.yml) deploys only after tests pass
     dockerfile_path: Dockerfile
     source_dir: /
     instance_size_slug: apps-s-1vcpu-1gb

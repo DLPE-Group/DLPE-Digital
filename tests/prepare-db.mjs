@@ -25,7 +25,13 @@ const truncate =
   "DO $$ DECLARE r RECORD; BEGIN " +
   "FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename <> '_prisma_migrations') LOOP " +
   "EXECUTE 'TRUNCATE TABLE \"' || r.tablename || '\" RESTART IDENTITY CASCADE'; END LOOP; END $$;";
-run('truncate', 'docker', ['exec', 'il_postgres', 'psql', '-U', 'postgres', '-d', 'intelligence_test', '-c', truncate]);
+// Local dev truncates inside the `il_postgres` container; CI (no such container)
+// truncates over TCP with psql against TEST_DB_URL. `PREPARE_DB_PSQL=1` forces psql.
+if (process.env.CI || process.env.PREPARE_DB_PSQL === '1') {
+  run('truncate', 'psql', [TEST_DB_URL, '-v', 'ON_ERROR_STOP=1', '-c', truncate]);
+} else {
+  run('truncate', 'docker', ['exec', 'il_postgres', 'psql', '-U', 'postgres', '-d', 'intelligence_test', '-c', truncate]);
+}
 
 console.log('[prepare-db] seeding …');
 run('seed', 'npx', ['prisma', 'db', 'seed'], { cwd: serverDir, env });

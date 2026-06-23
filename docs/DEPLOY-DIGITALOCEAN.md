@@ -70,13 +70,20 @@ Open the app's URL, log in with the BOOTSTRAP_ADMIN_* credentials, open the **Co
 plane**, and provision real customers from the **`dlpe-starter`** (config-only)
 blueprint. The empty `dlpe-demo` placeholder is auto-removed by bootstrap.
 
-## 5. Auto-deploy on push
-With `deploy_on_push: true` already in the spec, **every `git push` to `main` triggers a
-new build + deploy** (and the POST_DEPLOY job re-runs migrations + idempotent bootstrap).
-To push the first time (you're currently local-only, ~85 commits ahead):
+## 5. Test-gated auto-deploy on push
+The spec sets `deploy_on_push: false`; instead, **GitHub Actions** (`.github/workflows/ci.yml`)
+runs the full test suite on every push to `main` and triggers the deploy via
+`doctl apps create-deployment` **only when tests pass**. So a red build never reaches
+production. Enable it by adding two repo secrets (Settings → Secrets → Actions):
+
+- `DIGITALOCEAN_ACCESS_TOKEN` — a DO API token
+- `DO_APP_ID` — from `doctl apps list` after the first `doctl apps create`
+
+First-time push (you're currently local-only, ~85 commits ahead):
 ```bash
-git push origin main
+git push origin main      # CI runs tests; on green + secrets set, it deploys
 ```
+(Until those secrets are set, the CI deploy step no-ops and the build stays green.)
 
 ## Notes / caveats
 - **Secrets in the spec:** `doctl apps create` encrypts `type: SECRET` values on apply. The committed `.do/app.yaml` only has placeholders; keep real values in your filled local copy (or set them later with `doctl apps update` / the dashboard).

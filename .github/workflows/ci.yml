@@ -1,0 +1,65 @@
+# CI: run the full test suite on every push/PR, and on `main` deploy to DigitalOcean
+# ONLY if tests pass. This is the gate — the DO app spec sets deploy_on_push: false so
+# this workflow is the single (test-gated) deploy trigger.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: intelligence_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d intelligence_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build (server + frontend)
+        run: npm run build
+      - name: API test suite (incl. tenant-isolation)
+        run: npm run test:api          # global-setup runs prepare-db (psql in CI) + boots the server
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Re-seed test DB for UI journeys
+        run: node tests/prepare-db.mjs
+      - name: UI tests (Playwright)
+        run: npm run test:ui
+
+  deploy:
+    needs: test                         # only runs if `test` succeeded
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      # Set repo secrets DIGITALOCEAN_ACCESS_TOKEN + DO_APP_ID to enable deploys.
+      # Until then this job no-ops (so CI stays green before the app exists).
+      DO_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      DO_APP_ID: ${{ secrets.DO_APP_ID }}
+    steps:
+      - name: Trigger DigitalOcean deployment (test-gated)
+        if: ${{ env.DO_TOKEN != '' && env.DO_APP_ID != '' }}
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - name: Create deployment
+        if: ${{ env.DO_TOKEN != '' && env.DO_APP_ID != '' }}
+        run: doctl apps create-deployment "$DO_APP_ID" --wait
+      - name: Skipped notice
+        if: ${{ env.DO_TOKEN == '' || env.DO_APP_ID == '' }}
+        run: echo "Deploy skipped — set DIGITALOCEAN_ACCESS_TOKEN + DO_APP_ID repo secrets to enable test-gated deploys."
