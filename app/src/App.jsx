@@ -462,13 +462,6 @@ const App = () => {
           <div className="right">
             <button className="iconBtn" title="Refresh"><Icon name="refresh" size={15} /></button>
             <button className="iconBtn" title="Filter"><Icon name="filter" size={15} /></button>
-            <button className="demoTrigger" onClick={() => openFlow(sales.find(s => s.id === 's5'))}
-                    disabled={sales.find(s => s.id === 's5')?.stageId === 'signed'}
-                    title="Run the Sales → Ops → Finance cascade demo">
-              {sales.find(s => s.id === 's5')?.stageId !== 'signed' && <span className="pulseDot" />}
-              <Icon name="bolt" size={12} strokeWidth={2} />
-              {sales.find(s => s.id === 's5')?.stageId === 'signed' ? t('top.cascadeComplete') : t('top.demoSign')}
-            </button>
           </div>
         </div>
 
@@ -525,18 +518,6 @@ const App = () => {
                  flashIds={flashIds} />
         )}
 
-        {!isDept && <div style={{ marginTop: 28, padding: '14px 18px', background: 'var(--bg-muted)',
-                      border: '1px dashed var(--border-strong)', borderRadius: 8,
-                      fontSize: 12, color: 'var(--text-tertiary)', display: 'flex',
-                      gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Icon name="bolt" size={13} />
-          <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>How this is wired:</span>
-          Data is unified through a single <strong style={{ color: 'var(--text)' }}>DataSource</strong> abstraction —
-          <span className="src talend" style={{ fontFamily: 'var(--mono)', padding: '1px 5px', border: '1px solid var(--track-workshop)', borderRadius: 3 }}>Talend</span> ETL,
-          <span className="src peppol" style={{ fontFamily: 'var(--mono)', padding: '1px 5px', border: '1px solid var(--track-finance)', borderRadius: 3 }}>PEPPOL</span> e-invoicing,
-          <span className="src crm" style={{ fontFamily: 'var(--mono)', padding: '1px 5px', border: '1px solid var(--track-sales)', borderRadius: 3 }}>CRM</span> leads,
-          and <span style={{ fontFamily: 'var(--mono)' }}>CSV / API</span> for the long tail. Stage definitions, lock conditions and cross-track triggers live in JSON config — never hard-coded.
-        </div>}
       </>
     );
   };
