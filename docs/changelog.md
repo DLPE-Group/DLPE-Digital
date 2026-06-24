@@ -5,6 +5,7 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 
 ## 2026-06-24
 
+- `536f976` frontend Task 3: Reports metrics from real /aggregations (drop SEED_* fixtures)
 - `1d5ab07` frontend Task 2: Overview snapshot + hero tiles use real counts (no demo numbers)
 - `c90775c` frontend Task 1: Vehicles + search + timeline use real /vehicles (no demo fixtures)
 - `53866fc` plan: frontend real+generic (wire views to APIs, remove demo fixtures/chrome)
@@ -177,5 +178,5 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 - `a8c1e03` Implement Intelligence Layer as Vite + React app
 - `6fede3e` Claude Design handoff: Dlpe Digital
 
-<small>150 commits.</small>
+<small>151 commits.</small>
 
