@@ -39,27 +39,25 @@ const trackKey = (t) => String(t || '').toLowerCase();
 
 /* Main App — v1 with side menu, accordion tracks, action flows */
 
-const Snapshot = ({ urgent, watch, allOk }) => {
+const Snapshot = ({ urgent, watch, allOk, total }) => {
   const { t } = useT();
   return (
     <div className="snapshot">
       <div className="text">
         {urgent > 0 ? (
-          <>
-            <strong>{t('snap.thursdayPrefix')}</strong>{' '}
-            <span dangerouslySetInnerHTML={{
-              __html: t('snap.headlineUrgent', {
-                red: `<span class="red">${urgent} ${urgent === 1 ? t('track.item') : t('track.items')}</span>`,
-                item: '',
-                andWatch: watch > 0 ? `<span class="amber">${t('snap.andWatch', { n: watch })}</span>` : '',
-              })
-            }} />
-          </>
+          <span dangerouslySetInnerHTML={{
+            __html: t('snap.headlineUrgent', {
+              red: `<span class="red">${urgent} ${urgent === 1 ? t('track.item') : t('track.items')}</span>`,
+              item: '',
+              andWatch: watch > 0 ? `<span class="amber">${t('snap.andWatch', { n: watch })}</span>` : '',
+            })
+          }} />
         ) : (
-          <>
-            <strong>{t('snap.thursdayPrefix')}</strong>{' '}
-            <span className="green">{t('snap.allClear')}</span>
-          </>
+          <span className="green">
+            {total === 0
+              ? t('snap.allClearEmpty')
+              : t('snap.allClear', { n: total, items: total === 1 ? t('track.item') : t('track.items') })}
+          </span>
         )}
       </div>
       <div className="snapshotPills">
@@ -474,7 +472,7 @@ const App = () => {
           </div>
         </div>
 
-        {!isDept && <Snapshot urgent={urgent} watch={watch} allOk={okay} />}
+        {!isDept && <Snapshot urgent={urgent} watch={watch} allOk={okay} total={allItems.length} />}
 
         <ScorecardRow sales={sales} ops={ops} workshop={workshop} finance={finance}
                       openTracks={openTracks} focused={focusTrack}

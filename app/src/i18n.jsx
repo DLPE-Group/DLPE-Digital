@@ -64,8 +64,8 @@ const T = {
 
     'snap.headlineUrgent': 'You have {red} blocked {item} needing action today {andWatch} Everything else is on track.',
     'snap.andWatch': 'and {n} approaching SLA this week.',
-    'snap.allClear': 'Nothing is blocked. 23 items progressing normally across all four tracks.',
-    'snap.thursdayPrefix': 'Thursday morning.',
+    'snap.allClear': '{n} {items} progressing normally. Nothing is blocked.',
+    'snap.allClearEmpty': 'No items yet. Nothing is blocked.',
 
     'greet.morning': 'Good morning, {name}',
     'greet.itemsNeed': '{n} {items} need attention · Thursday, 28 May 2026',
@@ -149,8 +149,8 @@ const T = {
 
     'snap.headlineUrgent': 'Je hebt {red} geblokkeerd {item} dat vandaag actie vereist {andWatch} De rest verloopt volgens plan.',
     'snap.andWatch': 'en {n} naderen de SLA deze week.',
-    'snap.allClear': 'Niets is geblokkeerd. 23 items verlopen normaal in alle vier de trajecten.',
-    'snap.thursdayPrefix': 'Donderdagochtend.',
+    'snap.allClear': '{n} {items} verlopen normaal. Niets is geblokkeerd.',
+    'snap.allClearEmpty': 'Nog geen items. Niets is geblokkeerd.',
 
     'greet.morning': 'Goedemorgen, {name}',
     'greet.itemsNeed': '{n} {items} vereisen aandacht · donderdag 28 mei 2026',
@@ -230,8 +230,8 @@ const T = {
 
     'snap.headlineUrgent': 'Vous avez {red} {item} bloqué nécessitant une action aujourd’hui {andWatch} Tout le reste est en cours.',
     'snap.andWatch': 'et {n} approchant le SLA cette semaine.',
-    'snap.allClear': 'Rien n’est bloqué. 23 éléments progressent normalement sur les quatre pistes.',
-    'snap.thursdayPrefix': 'Jeudi matin.',
+    'snap.allClear': '{n} {items} en cours normal. Tout est débloqué.',
+    'snap.allClearEmpty': 'Aucun élément pour le moment. Rien de bloqué.',
 
     'greet.morning': 'Bonjour, {name}',
     'greet.itemsNeed': '{n} {items} nécessitent votre attention · jeudi 28 mai 2026',
@@ -311,8 +311,8 @@ const T = {
 
     'snap.headlineUrgent': 'Sie haben {red} blockierten {item} mit Handlungsbedarf heute {andWatch} Alles andere läuft planmäßig.',
     'snap.andWatch': 'und {n} mit SLA-Nähe diese Woche.',
-    'snap.allClear': 'Nichts ist blockiert. 23 Einträge entwickeln sich normal über alle vier Bereiche.',
-    'snap.thursdayPrefix': 'Donnerstagmorgen.',
+    'snap.allClear': '{n} {items} entwickeln sich normal. Nichts ist blockiert.',
+    'snap.allClearEmpty': 'Noch keine Einträge. Nichts ist blockiert.',
 
     'greet.morning': 'Guten Morgen, {name}',
     'greet.itemsNeed': '{n} {items} erfordern Aufmerksamkeit · Donnerstag, 28. Mai 2026',
