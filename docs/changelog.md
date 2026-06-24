@@ -5,6 +5,7 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 
 ## 2026-06-24
 
+- `1d5ab07` frontend Task 2: Overview snapshot + hero tiles use real counts (no demo numbers)
 - `c90775c` frontend Task 1: Vehicles + search + timeline use real /vehicles (no demo fixtures)
 - `53866fc` plan: frontend real+generic (wire views to APIs, remove demo fixtures/chrome)
 - `1df5d69` fix(tenant): remove DEMO_TENANT_ID request-path fallbacks (FK-safe in prod) + login regression test
@@ -176,5 +177,5 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 - `a8c1e03` Implement Intelligence Layer as Vite + React app
 - `6fede3e` Claude Design handoff: Dlpe Digital
 
-<small>149 commits.</small>
+<small>150 commits.</small>
 
