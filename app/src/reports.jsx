@@ -2,7 +2,6 @@ import React from 'react';
 import { Icon } from './icons.jsx';
 import { useT } from './i18n.jsx';
 import { DashboardTab } from './dashboard.jsx';
-import { SEED_SALES, SEED_OPS, SEED_WORKSHOP, SEED_FINANCE } from './data.js';
 import { api } from './api/client.js';
 
 /* ============================================================
@@ -22,96 +21,93 @@ const TRACK_META = {
 };
 const ALL_TRACKS = ['sales', 'operations', 'workshop', 'finance'];
 
-const SOURCE_NAMES = {
-  CRM: 'Salesforce CRM', API: 'Supplier APIs', Talend: 'Talend ETL',
-  CSV: 'Bulk CSV', PEPPOL: 'PEPPOL', Exact: 'Exact Online',
-};
-const sourcesFrom = (items) => {
-  const set = new Set();
-  items.forEach(it => (it.sources || []).forEach(s => set.add(s)));
-  return [...set].map(s => SOURCE_NAMES[s] || s);
-};
-
-/* ---- Compute the real numbers per track ---- */
-const computeTrack = (track) => {
-  if (track === 'sales') {
-    const s = SEED_SALES;
-    const pipeline = s.reduce((a, x) => a + x.value, 0);
-    const risk = s.filter(x => x.status === 'red');
-    const riskVal = risk.reduce((a, x) => a + x.value, 0);
-    const stageVal = (id) => s.filter(x => x.stageId === id).reduce((a, x) => a + x.value, 0);
-    return {
-      metrics: [
-        { label: 'Open pipeline', value: repMoney(pipeline) },
-        { label: 'Open deals', value: s.length },
-        { label: 'At risk', value: repMoney(riskVal), tone: 'bad', sub: `${risk.length} deals` },
-        { label: 'In contract', value: s.filter(x => x.stageId === 'contract').length },
-      ],
-      chart: { kind: 'bar', title: 'Pipeline value by stage', bars: [
-        { label: 'Meeting', value: stageVal('meeting') },
-        { label: 'Offer', value: stageVal('offer') },
-        { label: 'Contract', value: stageVal('contract') },
-      ].map(b => ({ ...b, display: repMoney(b.value) })) },
-      sources: sourcesFrom(s),
-    };
-  }
-  if (track === 'operations') {
-    const o = SEED_OPS;
-    const attention = o.filter(x => x.status !== 'green');
-    return {
-      metrics: [
-        { label: 'Vehicles in flow', value: o.length },
-        { label: 'Needs attention', value: attention.length, tone: attention.length ? 'warn' : 'good' },
-        { label: 'Delayed', value: o.filter(x => /late/.test(x.daysLabel || '')).length },
-        { label: 'Service due', value: o.filter(x => x.stageId === 'service_due').length },
-      ],
-      chart: { kind: 'bar', title: 'Vehicles by status', bars: [
-        { label: 'On track', value: o.filter(x => x.status === 'green').length },
-        { label: 'Attention', value: o.filter(x => x.status === 'amber').length },
-        { label: 'Late', value: o.filter(x => x.status === 'red').length },
-      ].map(b => ({ ...b, display: String(b.value) })) },
-      sources: sourcesFrom(o),
-    };
-  }
-  if (track === 'workshop') {
-    const w = SEED_WORKSHOP;
-    const stageCount = (id) => w.filter(x => x.stageId === id).length;
-    return {
-      metrics: [
-        { label: 'Open work orders', value: w.length },
-        { label: 'In repair', value: stageCount('in_repair') },
-        { label: 'Ready for pickup', value: w.filter(x => /pickup|released/i.test(x.stageName)).length, tone: 'good' },
-        { label: 'Supplier invoices', value: repMoney(w.filter(x => x.value).reduce((a, x) => a + x.value, 0)) },
-      ],
-      chart: { kind: 'bar', title: 'Work orders by stage', bars: [
-        { label: 'Parts', value: stageCount('parts') },
-        { label: 'In repair', value: stageCount('in_repair') },
-        { label: 'Released', value: stageCount('released') },
-        { label: 'Invoice in', value: stageCount('invoice_in') },
-      ].map(b => ({ ...b, display: String(b.value) })) },
-      sources: sourcesFrom(w),
-    };
-  }
-  // finance
-  const f = SEED_FINANCE;
-  const receivable = f.filter(x => x.type === 'INVOICE');
-  const overdue = receivable.filter(x => x.stageId === 'overdue');
-  const awaiting = receivable.filter(x => x.stageId === 'awaiting');
-  const payable = f.filter(x => x.type === 'SUPPLIER');
-  const sum = (arr) => arr.reduce((a, x) => a + x.value, 0);
-  return {
+/* ---- Zero/empty fallback aggregate (for loading / empty tenant) ---- */
+const EMPTY_AGG = {
+  sales: {
     metrics: [
-      { label: 'Receivables', value: repMoney(sum(receivable)) },
-      { label: 'Overdue', value: repMoney(sum(overdue)), tone: 'bad', sub: `${overdue.length} invoice` },
-      { label: 'Awaiting', value: repMoney(sum(awaiting)) },
-      { label: 'Supplier payable', value: repMoney(sum(payable)) },
+      { label: 'Open pipeline', value: repMoney(0) },
+      { label: 'Open deals', value: 0 },
+      { label: 'At risk', value: repMoney(0), tone: 'bad', sub: '0 deals' },
+      { label: 'In contract', value: 0 },
+    ],
+    chart: { kind: 'bar', title: 'Pipeline value by stage', bars: [
+      { label: 'Meeting', value: 0, display: repMoney(0) },
+      { label: 'Offer', value: 0, display: repMoney(0) },
+      { label: 'Contract', value: 0, display: repMoney(0) },
+    ] },
+    sources: [],
+  },
+  operations: {
+    metrics: [
+      { label: 'Vehicles in flow', value: 0 },
+      { label: 'Needs attention', value: 0, tone: 'good' },
+      { label: 'Delayed', value: 0 },
+      { label: 'Service due', value: 0 },
+    ],
+    chart: { kind: 'bar', title: 'Vehicles by status', bars: [
+      { label: 'On track', value: 0, display: '0' },
+      { label: 'Attention', value: 0, display: '0' },
+      { label: 'Late', value: 0, display: '0' },
+    ] },
+    sources: [],
+  },
+  workshop: {
+    metrics: [
+      { label: 'Open work orders', value: 0 },
+      { label: 'In repair', value: 0 },
+      { label: 'Ready for pickup', value: 0, tone: 'good' },
+      { label: 'Supplier invoices', value: repMoney(0) },
+    ],
+    chart: { kind: 'bar', title: 'Work orders by stage', bars: [
+      { label: 'Parts', value: 0, display: '0' },
+      { label: 'In repair', value: 0, display: '0' },
+      { label: 'Released', value: 0, display: '0' },
+      { label: 'Invoice in', value: 0, display: '0' },
+    ] },
+    sources: [],
+  },
+  finance: {
+    metrics: [
+      { label: 'Receivables', value: repMoney(0) },
+      { label: 'Overdue', value: repMoney(0), tone: 'bad', sub: '0 invoice' },
+      { label: 'Awaiting', value: repMoney(0) },
+      { label: 'Supplier payable', value: repMoney(0) },
     ],
     chart: { kind: 'bar', title: 'Receivables aging', bars: [
-      { label: 'Current', value: sum(awaiting) },
-      { label: '31d+', value: sum(overdue) },
-    ].map(b => ({ ...b, display: repMoney(b.value) })) },
-    sources: sourcesFrom(f),
-  };
+      { label: 'Current', value: 0, display: repMoney(0) },
+      { label: '31d+', value: 0, display: repMoney(0) },
+    ] },
+    sources: [],
+  },
+};
+
+/* ---- Hook: fetch /aggregations/track/:track for a set of tracks ---- */
+const useTrackAggregates = (tracks) => {
+  const [aggs, setAggs] = React.useState({});
+  const [loading, setLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!tracks || tracks.length === 0) return;
+    let cancelled = false;
+    setLoading(true);
+    Promise.all(
+      tracks.map(t =>
+        api.get('/aggregations/track/' + t)
+          .then(data => [t, data])
+          .catch(() => [t, EMPTY_AGG[t] || null])
+      )
+    ).then(results => {
+      if (cancelled) return;
+      const map = {};
+      results.forEach(([t, data]) => { if (data) map[t] = data; });
+      setAggs(map);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [tracks.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const get = (track) => aggs[track] || EMPTY_AGG[track] || null;
+  return { get, loading };
 };
 
 const TREND = { title: 'Records synced · last 7 days',
@@ -136,27 +132,6 @@ const REPORT_TEMPLATES = [
 
 const PERIODS = ['This week', 'This month', 'This quarter'];
 const FORMATS = ['Executive brief', 'Detailed breakdown', 'Board summary'];
-
-/* ---- AI prose (live + scripted fallback) ---- */
-const scriptedProse = (scope) => {
-  const d = {}; scope.forEach(t => d[t] = computeTrack(t));
-  const tracks = {};
-  if (d.sales) tracks.sales = `Open pipeline stands at ${d.sales.metrics[0].value} across ${d.sales.metrics[1].value} deals. ${d.sales.metrics[2].value} is at risk across red deals needing follow-up, while three deals sit in contract — led by the Brussels Energy renewal awaiting signature.`;
-  if (d.operations) tracks.operations = `${d.operations.metrics[0].value} vehicles are active in the flow. One delivery is running late and two vehicles are due for service; the remainder are on track.`;
-  if (d.workshop) tracks.workshop = `${d.workshop.metrics[0].value} work orders are open — one in repair, one released and ready for pickup, and a Bosch PEPPOL invoice awaiting approval.`;
-  if (d.finance) tracks.finance = `${d.finance.metrics[0].value} in receivables outstanding, of which ${d.finance.metrics[1].value} is 31+ days overdue. A supplier invoice is queued for payment.`;
-  const clauses = [];
-  if (d.sales) clauses.push(`${d.sales.metrics[0].value} in open pipeline`);
-  if (d.finance) clauses.push(`${d.finance.metrics[0].value} in receivables`);
-  const risks = [];
-  if (d.sales) risks.push(`${d.sales.metrics[2].value} of at-risk deals`);
-  if (d.finance) risks.push(`a ${d.finance.metrics[1].value} overdue invoice`);
-  const headline = `${clauses.join(' and ') || 'Operations across the fleet are steady'}${clauses.length ? '.' : '.'} ${risks.length ? 'Key risks: ' + risks.join(' and ') + '.' : ''} ${d.operations ? 'Operations are largely on track with one late delivery.' : ''}`.trim();
-  return { headline, tracks };
-};
-
-/* Report prose is generated server-side (Anthropic + scripted fallback) via
-   POST /api/reports — see runGenerate. scriptedProse stays for the seed fallback. */
 
 /* ---- Charts ---- */
 const BarChart = ({ bars, color }) => {
@@ -202,7 +177,11 @@ const SourceChips = ({ sources }) => (
 
 /* ---- Report document (the view) ---- */
 const ReportDoc = ({ report, onBack }) => {
-  const allSources = [...new Set(report.spec.scope.flatMap(t => computeTrack(t).sources))];
+  const scope = report.spec.scope;
+  const { get, loading } = useTrackAggregates(scope);
+
+  const allSources = [...new Set(scope.flatMap(t => (get(t) || EMPTY_AGG[t]).sources))];
+
   return (
     <div className="repDocWrap">
       <div className="repDocActions">
@@ -235,9 +214,12 @@ const ReportDoc = ({ report, onBack }) => {
           <TrendLine points={TREND.points} labels={TREND.labels} color="var(--brand)" />
         </section>
 
-        {report.spec.scope.map(track => {
-          const data = computeTrack(track);
+        {loading && <div className="repLoading">Loading track metrics…</div>}
+
+        {scope.map(track => {
+          const data = get(track);
           const meta = TRACK_META[track];
+          if (!data) return null;
           return (
             <section className="repTrack" key={track}>
               <div className="repTrackHead">
@@ -319,29 +301,50 @@ const ReportBuilder = ({ draft, setDraft, onGenerate, busy }) => {
   );
 };
 
-/* ---- Main view ---- */
-const makeSeedReports = () => ([
-  { id: 'seed-1', spec: { title: 'Weekly fleet summary', prompt: 'Weekly fleet summary', period: 'This week', format: 'Executive brief', scope: ['sales', 'operations', 'workshop', 'finance'] },
-    when: 'May 26 · 08:40', prose: scriptedProse(['sales', 'operations', 'workshop', 'finance']) },
-  { id: 'seed-2', spec: { title: 'Q2 cashflow & receivables', prompt: 'Cashflow and receivables review', period: 'This quarter', format: 'Detailed breakdown', scope: ['finance'] },
-    when: 'May 22 · 16:12', prose: scriptedProse(['finance']) },
-]);
+/* ---- Library card: sources shown from report spec scope count ---- */
+const LibraryCard = ({ r, onOpen, onDelete }) => {
+  return (
+    <button className="repCard" onClick={() => onOpen(r)}>
+      <div className="repCardTop">
+        <span className="repBadge sm"><Icon name="sparkles" size={10} strokeWidth={1.8} /> AI</span>
+        <span className="repCardWhen">{r.when}</span>
+        <span className="repCardDel" role="button" tabIndex={0} title="Delete report"
+              onClick={(e) => onDelete(r.id, e)}
+              onKeyDown={(e) => { if (e.key === 'Enter') onDelete(r.id, e); }}>
+          <Icon name="close" size={12} strokeWidth={2} />
+        </span>
+      </div>
+      <div className="repCardTitle">{r.spec.title}</div>
+      <div className="repCardMeta">{r.spec.period} · {r.spec.format}</div>
+      <div className="repCardScope">
+        {r.spec.scope.map(s => (
+          <span className="repTrackChip mini" key={s}><span className="sw" style={{ background: TRACK_META[s].color }} />{TRACK_META[s].label}</span>
+        ))}
+      </div>
+      <div className="repCardSources">{r.spec.scope.length} track{r.spec.scope.length === 1 ? '' : 's'}</div>
+    </button>
+  );
+};
 
+/* ---- Main view ---- */
 export const ReportsView = () => {
   const { t } = useT();
   const [tab, setTab] = React.useState('dashboard'); // dashboard | create | library
-  const [reports, setReports] = React.useState(makeSeedReports);
+  const [reports, setReports] = React.useState([]);
   const [open, setOpen] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
   const [draft, setDraft] = React.useState(null);
+  const [reportsLoading, setReportsLoading] = React.useState(true);
 
-  // Load the report library from the API (fallback to seed on failure).
+  // Load the report library from the API.
   React.useEffect(() => {
     let cancelled = false;
     api.get('/reports').then((rows) => {
       if (cancelled || !Array.isArray(rows)) return;
       setReports(rows);
-    }).catch(() => { /* keep seed fallback */ });
+    }).catch(() => { /* empty on failure */ }).finally(() => {
+      if (!cancelled) setReportsLoading(false);
+    });
     return () => { cancelled = true; };
   }, []);
 
@@ -398,7 +401,7 @@ export const ReportsView = () => {
           <div className="repComposer">
             <span className="repComposerIcon"><Icon name="sparkles" size={16} strokeWidth={1.8} /></span>
             <input
-              placeholder={"Ask for a report… e.g. “How did sales perform this week and what’s at risk?”"}
+              placeholder="Ask for a report… e.g. how did sales perform this week and what's at risk?"
               onKeyDown={e => { if (e.key === 'Enter' && e.target.value.trim()) startFromPrompt(e.target.value.trim()); }}
               defaultValue={draft ? draft.prompt : ''}
               key={draft ? draft.prompt : 'empty'} />
@@ -431,31 +434,11 @@ export const ReportsView = () => {
         </div>
       ) : (
         <div className="repLibrary">
-          {reports.length === 0 && <div className="repEmpty">No reports yet — create one from the Create tab.</div>}
-          {reports.map(r => {
-            const srcs = [...new Set(r.spec.scope.flatMap(tk => computeTrack(tk).sources))];
-            return (
-              <button key={r.id} className="repCard" onClick={() => setOpen(r)}>
-                <div className="repCardTop">
-                  <span className="repBadge sm"><Icon name="sparkles" size={10} strokeWidth={1.8} /> AI</span>
-                  <span className="repCardWhen">{r.when}</span>
-                  <span className="repCardDel" role="button" tabIndex={0} title="Delete report"
-                        onClick={(e) => deleteReport(r.id, e)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') deleteReport(r.id, e); }}>
-                    <Icon name="close" size={12} strokeWidth={2} />
-                  </span>
-                </div>
-                <div className="repCardTitle">{r.spec.title}</div>
-                <div className="repCardMeta">{r.spec.period} · {r.spec.format}</div>
-                <div className="repCardScope">
-                  {r.spec.scope.map(s => (
-                    <span className="repTrackChip mini" key={s}><span className="sw" style={{ background: TRACK_META[s].color }} />{TRACK_META[s].label}</span>
-                  ))}
-                </div>
-                <div className="repCardSources">{srcs.length} source{srcs.length === 1 ? '' : 's'} · {srcs.slice(0, 2).join(', ')}{srcs.length > 2 ? '…' : ''}</div>
-              </button>
-            );
-          })}
+          {reportsLoading && <div className="repLoading">Loading library…</div>}
+          {!reportsLoading && reports.length === 0 && <div className="repEmpty">No reports yet — create one from the Create tab.</div>}
+          {reports.map(r => (
+            <LibraryCard key={r.id} r={r} onOpen={setOpen} onDelete={deleteReport} />
+          ))}
         </div>
       )}
     </div>

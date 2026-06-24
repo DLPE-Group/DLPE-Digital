@@ -23,9 +23,6 @@ const T = {
     'nav.integrations': 'Integrations',
     'nav.audit': 'Audit log',
     'nav.settings': 'Settings',
-    'nav.synced': 'All sources synced',
-    'nav.minAgo': '{n} minutes ago',
-
     'track.sales': 'Sales',
     'track.operations': 'Operations',
     'track.workshop': 'Own workshop',
@@ -64,14 +61,11 @@ const T = {
 
     'snap.headlineUrgent': 'You have {red} blocked {item} needing action today {andWatch} Everything else is on track.',
     'snap.andWatch': 'and {n} approaching SLA this week.',
-    'snap.allClear': 'Nothing is blocked. 23 items progressing normally across all four tracks.',
-    'snap.thursdayPrefix': 'Thursday morning.',
+    'snap.allClear': '{n} {items} progressing normally. Nothing is blocked.',
+    'snap.allClearEmpty': 'No items yet. Nothing is blocked.',
 
     'greet.morning': 'Good morning, {name}',
     'greet.itemsNeed': '{n} {items} need attention · Thursday, 28 May 2026',
-
-    'top.demoSign': 'Demo: sign Brussels Energy',
-    'top.cascadeComplete': 'Cascade complete',
 
     'common.search': 'Search',
     'common.cancel': 'Cancel',
@@ -108,9 +102,6 @@ const T = {
     'nav.integrations': 'Integraties',
     'nav.audit': 'Auditlogboek',
     'nav.settings': 'Instellingen',
-    'nav.synced': 'Alle bronnen gesynchroniseerd',
-    'nav.minAgo': '{n} minuten geleden',
-
     'track.sales': 'Verkoop',
     'track.operations': 'Operaties',
     'track.workshop': 'Eigen werkplaats',
@@ -149,14 +140,11 @@ const T = {
 
     'snap.headlineUrgent': 'Je hebt {red} geblokkeerd {item} dat vandaag actie vereist {andWatch} De rest verloopt volgens plan.',
     'snap.andWatch': 'en {n} naderen de SLA deze week.',
-    'snap.allClear': 'Niets is geblokkeerd. 23 items verlopen normaal in alle vier de trajecten.',
-    'snap.thursdayPrefix': 'Donderdagochtend.',
+    'snap.allClear': '{n} {items} verlopen normaal. Niets is geblokkeerd.',
+    'snap.allClearEmpty': 'Nog geen items. Niets is geblokkeerd.',
 
     'greet.morning': 'Goedemorgen, {name}',
     'greet.itemsNeed': '{n} {items} vereisen aandacht · donderdag 28 mei 2026',
-
-    'top.demoSign': 'Demo: teken Brussels Energy',
-    'top.cascadeComplete': 'Cascade voltooid',
 
     'common.search': 'Zoeken',
     'common.cancel': 'Annuleren',
@@ -189,9 +177,6 @@ const T = {
     'nav.integrations': 'Intégrations',
     'nav.audit': 'Journal d’audit',
     'nav.settings': 'Paramètres',
-    'nav.synced': 'Toutes les sources synchronisées',
-    'nav.minAgo': 'il y a {n} minutes',
-
     'track.sales': 'Ventes',
     'track.operations': 'Opérations',
     'track.workshop': 'Atelier interne',
@@ -230,14 +215,11 @@ const T = {
 
     'snap.headlineUrgent': 'Vous avez {red} {item} bloqué nécessitant une action aujourd’hui {andWatch} Tout le reste est en cours.',
     'snap.andWatch': 'et {n} approchant le SLA cette semaine.',
-    'snap.allClear': 'Rien n’est bloqué. 23 éléments progressent normalement sur les quatre pistes.',
-    'snap.thursdayPrefix': 'Jeudi matin.',
+    'snap.allClear': '{n} {items} en cours normal. Tout est débloqué.',
+    'snap.allClearEmpty': 'Aucun élément pour le moment. Rien de bloqué.',
 
     'greet.morning': 'Bonjour, {name}',
     'greet.itemsNeed': '{n} {items} nécessitent votre attention · jeudi 28 mai 2026',
-
-    'top.demoSign': 'Démo : signer Brussels Energy',
-    'top.cascadeComplete': 'Cascade terminée',
 
     'common.search': 'Rechercher',
     'common.cancel': 'Annuler',
@@ -270,9 +252,6 @@ const T = {
     'nav.integrations': 'Integrationen',
     'nav.audit': 'Audit-Protokoll',
     'nav.settings': 'Einstellungen',
-    'nav.synced': 'Alle Quellen synchronisiert',
-    'nav.minAgo': 'vor {n} Minuten',
-
     'track.sales': 'Vertrieb',
     'track.operations': 'Betrieb',
     'track.workshop': 'Eigene Werkstatt',
@@ -311,14 +290,11 @@ const T = {
 
     'snap.headlineUrgent': 'Sie haben {red} blockierten {item} mit Handlungsbedarf heute {andWatch} Alles andere läuft planmäßig.',
     'snap.andWatch': 'und {n} mit SLA-Nähe diese Woche.',
-    'snap.allClear': 'Nichts ist blockiert. 23 Einträge entwickeln sich normal über alle vier Bereiche.',
-    'snap.thursdayPrefix': 'Donnerstagmorgen.',
+    'snap.allClear': '{n} {items} entwickeln sich normal. Nichts ist blockiert.',
+    'snap.allClearEmpty': 'Noch keine Einträge. Nichts ist blockiert.',
 
     'greet.morning': 'Guten Morgen, {name}',
     'greet.itemsNeed': '{n} {items} erfordern Aufmerksamkeit · Donnerstag, 28. Mai 2026',
-
-    'top.demoSign': 'Demo: Brussels Energy unterzeichnen',
-    'top.cascadeComplete': 'Kaskade abgeschlossen',
 
     'common.search': 'Suchen',
     'common.cancel': 'Abbrechen',

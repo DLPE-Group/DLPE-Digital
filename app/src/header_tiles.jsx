@@ -186,7 +186,7 @@ export const TrackScorecard = ({ trackId, label, items, hero, isOpen, focused, o
 export const ScorecardRow = ({ sales, ops, workshop, finance, openTracks, focused, only, onClearFilter, onToggle, onAct, allowedTracks }) => {
   const { t } = useT();
   const salesPipeline = sales.reduce((s, i) => s + (i.value || 0), 0);
-  const opsServiceDue = ops.filter(i => i.type === 'SERVICE').length + 11;
+  const opsServiceDue = ops.filter(i => i.type === 'SERVICE').length;
   const wsOpen = workshop.filter(i => i.stageId !== 'invoiced').length;
   const finOverdue = finance.filter(i => i.stageId === 'overdue').reduce((s, i) => s + (i.value || 0), 0);
 
@@ -209,7 +209,7 @@ export const ScorecardRow = ({ sales, ops, workshop, finance, openTracks, focuse
     { id: 'finance', el: (
       <TrackScorecard key="finance" trackId="finance" label={t('track.finance')}
         items={finance}
-        hero={{ value: fmtMoney(finOverdue || 94000), label: t('sc.overdue') }}
+        hero={{ value: fmtMoney(finOverdue), label: t('sc.overdue') }}
         isOpen={openTracks.finance} focused={focused === 'finance'} onToggle={onToggle} onAct={onAct} />) },
   ];
 

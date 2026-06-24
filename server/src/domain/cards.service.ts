@@ -6,7 +6,6 @@ import { buildEffectiveForUser } from '../rbac/context.js';
 import { filterCard } from '../rbac/applyCardRules.js';
 import { visibleCompanyIds } from '../rbac/scope.js';
 import { entityToCardDTO, type EntityRow } from './projection.js';
-import { DEMO_TENANT_ID } from './tenancy.js';
 
 // Phase 1b: Entity is the source of truth for pipeline items. Load pipeline
 // entities (optionally one track) and project them to the legacy Card shape so
@@ -143,8 +142,8 @@ export async function moveStage(
   id: string,
   stageId: string,
   actor: { name: string; roleId: string },
-  userId?: string,
-  tenantId: string = DEMO_TENANT_ID,
+  userId: string | undefined,
+  tenantId: string,
   db: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<Card> {
   const row = await db.entity.findUnique({ where: { id } });
@@ -228,7 +227,7 @@ export interface CreateCardInput {
 export async function createCard(
   input: CreateCardInput,
   actor: { name: string; roleId: string; userId?: string },
-  tenantId: string = DEMO_TENANT_ID,
+  tenantId: string,
   db: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<Card> {
   const trackKey = input.track.toLowerCase();
@@ -274,7 +273,7 @@ export async function createCard(
 }
 
 // Delete any entity (pipeline item or reference record).
-export async function deleteCard(id: string, actor: { name: string; roleId: string }, tenantId: string = DEMO_TENANT_ID, db: Prisma.TransactionClient | typeof prisma = prisma): Promise<void> {
+export async function deleteCard(id: string, actor: { name: string; roleId: string }, tenantId: string, db: Prisma.TransactionClient | typeof prisma = prisma): Promise<void> {
   const row = await db.entity.findUnique({ where: { id } });
   if (!row) throw new Error('Item not found');
   await db.entity.delete({ where: { id } });

@@ -9,63 +9,6 @@ import { AiMappingFlow } from './ai_mapping.jsx';
    INTEGRATIONS
    ============================================================ */
 
-const INTEGRATIONS = [
-  { id: 'sf', name: 'Salesforce CRM', kind: 'CRM · inbound leads & deal sync',
-    direction: 'inbound', logo: 'SF',
-    status: 'healthy', lastSync: '2 min ago',
-    throughput: '124 leads / day · 38 deals updated',
-    latency: 'p95 · 280 ms',
-    desc: 'Inbound leads land in the Sales track. Deal stage and contact updates flow both ways for active opportunities.' },
-  { id: 'peppol-in', name: 'PEPPOL inbox', kind: 'E-invoicing · AP-NL-002',
-    direction: 'inbound', logo: 'PEP',
-    status: 'healthy', lastSync: '14 min ago',
-    throughput: '23 invoices / day · 412 / month',
-    latency: 'real-time · webhook',
-    desc: 'Supplier e-invoices arrive here. Auto-matched against purchase order + goods receipt before they reach the workshop or finance.' },
-  { id: 'man-api', name: 'MAN Trucks AG', kind: 'Supplier API · order status',
-    direction: 'inbound', logo: 'MAN',
-    status: 'degraded', lastSync: '47 min ago',
-    throughput: '12 order updates / day',
-    latency: 'p95 · 4.2 s · elevated',
-    desc: 'Order status, expected delivery dates, build configuration confirmations for MAN commercial vehicles.' },
-  { id: 'merc-api', name: 'Mercedes-Benz Trucks', kind: 'Supplier API · order status',
-    direction: 'inbound', logo: 'MB',
-    status: 'healthy', lastSync: '3 min ago',
-    throughput: '18 order updates / day',
-    latency: 'p95 · 410 ms',
-    desc: 'Order and delivery confirmations from Mercedes-Benz commercial vehicles.' },
-  { id: 'bosch-api', name: 'Bosch Mobility', kind: 'Supplier API · parts catalogue',
-    direction: 'inbound', logo: 'BSH',
-    status: 'healthy', lastSync: '8 min ago',
-    throughput: '142 parts / day',
-    latency: 'p95 · 520 ms',
-    desc: 'Parts catalogue, lead times and order confirmations for own-workshop repairs.' },
-  { id: 'talend', name: 'Talend ETL', kind: 'Data pipeline · bi-directional',
-    direction: 'bi', logo: 'TLD',
-    status: 'healthy', lastSync: '12 min ago',
-    throughput: '1,240 records / sync · every 15 min',
-    latency: 'batch · 15 min',
-    desc: 'Cross-system data normalisation. Powers the unified DataSource abstraction the entire dashboard reads from.' },
-  { id: 'peppol-out', name: 'PEPPOL access point', kind: 'E-invoicing · outbound',
-    direction: 'outbound', logo: 'PEP',
-    status: 'healthy', lastSync: '1 hour ago',
-    throughput: '187 invoices / month',
-    latency: 'real-time',
-    desc: 'Outbound customer invoices to fleet operators registered on the PEPPOL network.' },
-  { id: 'fin-sys', name: 'Exact Online', kind: 'Accounting · bi-directional',
-    direction: 'bi', logo: 'EX',
-    status: 'healthy', lastSync: '5 min ago',
-    throughput: '210 entries / day',
-    latency: 'p95 · 740 ms',
-    desc: 'General ledger entries, payment confirmations, supplier payment scheduling.' },
-  { id: 'csv-bulk', name: 'Bulk CSV upload', kind: 'Manual import',
-    direction: 'inbound', logo: 'CSV',
-    status: 'idle', lastSync: '3 days ago',
-    throughput: '0 imports today',
-    latency: 'on-demand',
-    desc: 'Fallback for systems without API access. Used for legacy CRM exports and one-off data loads.' },
-];
-
 const IntegrationCard = ({ it, onTest, onLogs, onConfig, onDelete, busy }) => (
   <div className={`integrationCard ${it.nango ? 'viaNango' : ''}`}>
     <div className="integrationLogo" style={it.logoColor ? { background: it.logoColor, color: '#fff' } : undefined}>{it.logo}</div>
@@ -102,15 +45,15 @@ const CATEGORY_DIRECTION = {
 
 export const IntegrationsView = () => {
   const [added, setAdded] = React.useState([]);   // connected via Nango this session
-  const [live, setLive] = React.useState(null);   // real rows from the API
+  const [live, setLive] = React.useState(null);   // real rows from the API (null = loading)
   const [nangoOpen, setNangoOpen] = React.useState(false);
   const [mapping, setMapping] = React.useState(null); // provider being AI-mapped
   const [busyId, setBusyId] = React.useState(null);
   const [logs, setLogs] = React.useState(null);    // { integration, lines }
 
-  // Load real integrations from the API (fallback to the seed constant).
+  // Load real integrations from the API.
   const loadIntegrations = React.useCallback(() => {
-    return api.get('/integrations').then((rows) => { if (Array.isArray(rows) && rows.length) setLive(rows); }).catch(() => {});
+    return api.get('/integrations').then((rows) => { setLive(Array.isArray(rows) ? rows : []); }).catch(() => { setLive([]); });
   }, []);
   React.useEffect(() => { loadIntegrations(); }, [loadIntegrations]);
 
@@ -138,7 +81,7 @@ export const IntegrationsView = () => {
     if (!window.confirm(`Remove integration "${it.name}"?`)) return;
     setBusyId(it.id);
     try { await api.del(`/integrations/${it.id}`); } catch (e) { /* may be a local-only row */ }
-    setLive((prev) => (prev || INTEGRATIONS).filter((r) => r.id !== it.id));
+    setLive((prev) => (prev || []).filter((r) => r.id !== it.id));
     setAdded((prev) => prev.filter((r) => r.id !== it.id));
     setBusyId(null);
   };
@@ -168,7 +111,7 @@ export const IntegrationsView = () => {
     }, ...prev]);
   };
 
-  const all = [...added, ...(live || INTEGRATIONS)];
+  const all = [...added, ...(live || [])];
   const total = all.length;
   const healthy = all.filter(i => i.status === 'healthy').length;
   const degraded = all.filter(i => i.status === 'degraded').length;
@@ -188,33 +131,53 @@ export const IntegrationsView = () => {
         <button className="cta" onClick={() => setNangoOpen(true)}><Icon name="plus" size={12} strokeWidth={2} /> Add integration</button>
       </div>
 
-      <div className="viewStats">
-        <div className="viewStat good"><div className="l">Connected</div><div className="v">{total}</div><div className="s">{healthy} healthy · {degraded} degraded</div></div>
-        <div className="viewStat"><div className="l">Records today</div><div className="v">2,840</div><div className="s">across all sources</div></div>
-        <div className="viewStat warn"><div className="l">Latency p95</div><div className="v">740 ms</div><div className="s">elevated · MAN supplier API</div></div>
-        <div className="viewStat bad"><div className="l">Errors · 24h</div><div className="v">{errorsToday}</div><div className="s">all auto-retried</div></div>
-      </div>
+      {live === null && (
+        <div className="emptyHint" style={{ padding: '40px 0' }}>Loading integrations…</div>
+      )}
 
-      <div className="integrationGroup">
-        <div className="gh">Inbound · {inbound.length}</div>
-        <div className="integrationGrid">
-          {inbound.map(it => <IntegrationCard key={it.id} it={it} busy={busyId === it.id} onTest={onTest} onLogs={onLogs} onConfig={onConfig} onDelete={onDelete} />)}
-        </div>
-      </div>
+      {live !== null && (
+        <>
+          <div className="viewStats">
+            <div className="viewStat good"><div className="l">Connected</div><div className="v">{total}</div><div className="s">{healthy} healthy · {degraded} degraded</div></div>
+            <div className="viewStat bad"><div className="l">Errors · 24h</div><div className="v">{errorsToday}</div><div className="s">all auto-retried</div></div>
+          </div>
 
-      <div className="integrationGroup">
-        <div className="gh">Bi-directional · {bi.length}</div>
-        <div className="integrationGrid">
-          {bi.map(it => <IntegrationCard key={it.id} it={it} busy={busyId === it.id} onTest={onTest} onLogs={onLogs} onConfig={onConfig} onDelete={onDelete} />)}
-        </div>
-      </div>
+          {total === 0 ? (
+            <div className="emptyHint" style={{ padding: '48px 0', textAlign: 'center' }}>
+              No integrations configured. Use "Add integration" to connect your first source.
+            </div>
+          ) : (
+            <>
+              <div className="integrationGroup">
+                <div className="gh">Inbound · {inbound.length}</div>
+                <div className="integrationGrid">
+                  {inbound.length === 0
+                    ? <div className="emptyHint">No inbound integrations.</div>
+                    : inbound.map(it => <IntegrationCard key={it.id} it={it} busy={busyId === it.id} onTest={onTest} onLogs={onLogs} onConfig={onConfig} onDelete={onDelete} />)}
+                </div>
+              </div>
 
-      <div className="integrationGroup">
-        <div className="gh">Outbound · {outbound.length}</div>
-        <div className="integrationGrid">
-          {outbound.map(it => <IntegrationCard key={it.id} it={it} busy={busyId === it.id} onTest={onTest} onLogs={onLogs} onConfig={onConfig} onDelete={onDelete} />)}
-        </div>
-      </div>
+              <div className="integrationGroup">
+                <div className="gh">Bi-directional · {bi.length}</div>
+                <div className="integrationGrid">
+                  {bi.length === 0
+                    ? <div className="emptyHint">No bi-directional integrations.</div>
+                    : bi.map(it => <IntegrationCard key={it.id} it={it} busy={busyId === it.id} onTest={onTest} onLogs={onLogs} onConfig={onConfig} onDelete={onDelete} />)}
+                </div>
+              </div>
+
+              <div className="integrationGroup">
+                <div className="gh">Outbound · {outbound.length}</div>
+                <div className="integrationGrid">
+                  {outbound.length === 0
+                    ? <div className="emptyHint">No outbound integrations.</div>
+                    : outbound.map(it => <IntegrationCard key={it.id} it={it} busy={busyId === it.id} onTest={onTest} onLogs={onLogs} onConfig={onConfig} onDelete={onDelete} />)}
+                </div>
+              </div>
+            </>
+          )}
+        </>
+      )}
 
       {nangoOpen && <NangoConnect onClose={() => setNangoOpen(false)} onConnected={onConnected} />}
       {mapping && <AiMappingFlow provider={mapping} onClose={() => setMapping(null)} onComplete={onMapped} />}

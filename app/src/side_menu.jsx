@@ -91,13 +91,6 @@ export const SideMenu = ({ active, setActive, counts, onTrackSelect, allowedTrac
         )}
       </div>
 
-      <div className="sideFoot">
-        <span className="lamp" />
-        <div>
-          <div>{t('nav.synced')}</div>
-          <div style={{ color: 'var(--text-quiet)' }}>{t('nav.minAgo', { n: 2 })}</div>
-        </div>
-      </div>
     </nav>
   );
 };
