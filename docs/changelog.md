@@ -5,6 +5,7 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 
 ## 2026-06-24
 
+- `1df5d69` fix(tenant): remove DEMO_TENANT_ID request-path fallbacks (FK-safe in prod) + login regression test
 - `85f5b4f` fix(auth): stamp refresh Session with the user's tenant, not hardcoded demo
 
 ## 2026-06-23
@@ -173,5 +174,5 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 - `a8c1e03` Implement Intelligence Layer as Vite + React app
 - `6fede3e` Claude Design handoff: Dlpe Digital
 
-<small>146 commits.</small>
+<small>147 commits.</small>
 
