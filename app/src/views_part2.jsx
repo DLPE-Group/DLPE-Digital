@@ -122,53 +122,35 @@ export const SettingsView = () => {
    VEHICLES & TIMELINES
    ============================================================ */
 
-export const VEHICLE_DATA = [
-  { plate: 'TRK-7702', customer: 'Düsseldorf Bau B.V.',         model: 'MAN TGS 26.420',           year: 2024,
-    currentTrack: 'workshop',   stageIdx: 4, stageName: 'In repair · brake system',
-    status: 'busy',  statusLabel: 'In workshop',  nextEvent: 'Expected back · 02 Jun' },
-  { plate: 'VAN-3344', customer: 'Rotterdam Logistics B.V.',    model: 'Mercedes Sprinter 314',    year: 2023,
-    currentTrack: 'workshop',   stageIdx: 7, stageName: 'Released — pickup pending',
-    status: 'ok',    statusLabel: 'Ready for pickup', nextEvent: 'Today · 07:00–18:00' },
-  { plate: 'TRK-1108', customer: 'Amsterdam Cold Chain N.V.',   model: 'Volvo FH 460',             year: 2022,
-    currentTrack: 'operations', stageIdx: 4, stageName: 'Service due · 12 days',
-    status: 'warn',  statusLabel: 'Service due',  nextEvent: 'Workshop visit · 04 Jun' },
-  { plate: 'VAN-4421', customer: 'Köln Last Mile GmbH',         model: 'Mercedes Sprinter 317',    year: 2024,
-    currentTrack: 'operations', stageIdx: 1, stageName: 'Expected delivery · 3d late',
-    status: 'late',  statusLabel: 'Delivery slipping', nextEvent: 'Supplier confirm · Jun 04' },
-  { plate: 'TRK-5520', customer: 'Antwerp Retail Group NV',     model: 'DAF XF 480',               year: 2023,
-    currentTrack: 'workshop',   stageIdx: 4, stageName: 'In repair · transmission',
-    status: 'busy',  statusLabel: 'In workshop',  nextEvent: 'Expected back · 30 May' },
-  { plate: 'TRK-9012', customer: 'Hamburg Distribution GmbH',   model: 'MAN TGS 26.500',           year: 2022,
-    currentTrack: 'operations', stageIdx: 5, stageName: 'Replacement out · day 1 of 5',
-    status: 'busy',  statusLabel: 'Loaner active', nextEvent: 'Return · 02 Jun' },
-  { plate: 'VAN-8801', customer: 'Köln Last Mile GmbH',         model: 'Ford Transit Custom',      year: 2024,
-    currentTrack: 'operations', stageIdx: 3, stageName: 'In fleet · routine',
-    status: 'ok',    statusLabel: 'Active',       nextEvent: 'Next service · 47 days' },
-  { plate: 'VAN-2210', customer: 'Antwerp Retail Group NV',     model: 'Mercedes Sprinter 314',    year: 2023,
-    currentTrack: 'operations', stageIdx: 4, stageName: 'Inspection proof received',
-    status: 'ok',    statusLabel: 'Active',       nextEvent: 'Next service · 364 days' },
-  { plate: 'TRK-2284', customer: 'Rotterdam Logistics B.V.',    model: 'Volvo FH 460',             year: 2026,
-    currentTrack: 'operations', stageIdx: 1, stageName: 'Expected delivery · 18 Jun',
-    status: 'busy',  statusLabel: 'Awaiting delivery', nextEvent: 'Delivery · Jun 18' },
-  { plate: 'VAN-5571', customer: 'Rotterdam Logistics B.V.',    model: 'Ford Transit Custom',      year: 2022,
-    currentTrack: 'operations', stageIdx: 4, stageName: 'Service due · 21 days',
-    status: 'warn',  statusLabel: 'Service due',  nextEvent: 'Awaiting operator confirmation' },
-];
-
 export const VehiclesView = ({ onOpenTimeline }) => {
+  const [vehicles, setVehicles] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
   const [filter, setFilter] = React.useState('all');
   const [query, setQuery] = React.useState('');
 
-  const TOTAL_STAGES = 8;
-  const filtered = VEHICLE_DATA.filter(v => {
-    if (filter === 'all') {}
-    else if (filter === 'service') { if (v.status !== 'warn') return false; }
-    else if (filter === 'workshop') { if (v.currentTrack !== 'workshop') return false; }
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    api.get('/vehicles').then((data) => {
+      if (!cancelled) setVehicles(Array.isArray(data) ? data : []);
+    }).catch(() => {
+      if (!cancelled) setVehicles([]);
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const filtered = vehicles.filter(v => {
+    if (filter === 'service') { if (v.status !== 'warn') return false; }
+    else if (filter === 'workshop') { if (v.status !== 'busy') return false; }
     else if (filter === 'delivery') { if (v.statusLabel !== 'Awaiting delivery' && v.statusLabel !== 'Delivery slipping') return false; }
-    else if (filter === 'late')    { if (v.status !== 'late') return false; }
-    if (query && !`${v.plate} ${v.customer} ${v.model}`.toLowerCase().includes(query.toLowerCase())) return false;
+    else if (filter === 'late') { if (v.status !== 'late') return false; }
+    if (query && !`${v.plate} ${v.operator ?? ''} ${v.model ?? ''}`.toLowerCase().includes(query.toLowerCase())) return false;
     return true;
   });
+
+  const countBy = (fn) => vehicles.filter(fn).length;
 
   return (
     <div className="viewWrap">
@@ -180,61 +162,69 @@ export const VehiclesView = ({ onOpenTimeline }) => {
       </div>
 
       <div className="viewStats">
-        <div className="viewStat"><div className="l">Total fleet</div><div className="v">487</div><div className="s">across {new Set(VEHICLE_DATA.map(v => v.customer)).size}+ operators</div></div>
-        <div className="viewStat warn"><div className="l">Service due 90d</div><div className="v">14</div><div className="s">3 amber · 11 on track</div></div>
-        <div className="viewStat"><div className="l">In workshop</div><div className="v">3</div><div className="s">avg 4.2 days</div></div>
-        <div className="viewStat bad"><div className="l">Delivery slipping</div><div className="v">1</div><div className="s">VAN-4421 · 3 days late</div></div>
+        <div className="viewStat"><div className="l">Total fleet</div><div className="v">{vehicles.length}</div><div className="s">across {new Set(vehicles.map(v => v.operator).filter(Boolean)).size} operators</div></div>
+        <div className="viewStat warn"><div className="l">Service due</div><div className="v">{countBy(v => v.status === 'warn')}</div><div className="s">vehicles needing attention</div></div>
+        <div className="viewStat"><div className="l">In workshop</div><div className="v">{countBy(v => v.status === 'busy')}</div><div className="s">currently occupied</div></div>
+        <div className="viewStat bad"><div className="l">Delivery slipping</div><div className="v">{countBy(v => v.statusLabel === 'Delivery slipping')}</div><div className="s">late deliveries</div></div>
       </div>
 
       <div className="searchWrap" style={{ maxWidth: 'none', marginBottom: 12 }}>
         <Icon name="search" size={15} />
-        <input placeholder="Search by plate, VIN tail, customer name…"
+        <input placeholder="Search by plate, VIN tail, operator name…"
                value={query} onChange={e => setQuery(e.target.value)} />
         {query && <button className="miniBtn" onClick={() => setQuery('')}>Clear</button>}
       </div>
 
       <div className="vehicleFilters">
         {[
-          ['all', `All · ${VEHICLE_DATA.length}`],
-          ['service', `Service due · ${VEHICLE_DATA.filter(v => v.status === 'warn').length}`],
-          ['workshop', `In workshop · ${VEHICLE_DATA.filter(v => v.currentTrack === 'workshop').length}`],
-          ['delivery', `Awaiting delivery · ${VEHICLE_DATA.filter(v => v.statusLabel === 'Awaiting delivery' || v.statusLabel === 'Delivery slipping').length}`],
-          ['late', `Slipping · ${VEHICLE_DATA.filter(v => v.status === 'late').length}`],
+          ['all', `All · ${vehicles.length}`],
+          ['service', `Service due · ${countBy(v => v.status === 'warn')}`],
+          ['workshop', `In workshop · ${countBy(v => v.status === 'busy')}`],
+          ['delivery', `Awaiting delivery · ${countBy(v => v.statusLabel === 'Awaiting delivery' || v.statusLabel === 'Delivery slipping')}`],
+          ['late', `Slipping · ${countBy(v => v.status === 'late')}`],
         ].map(([id, label]) => (
           <button key={id} className={`filterChip ${filter === id ? 'active' : ''}`}
                   onClick={() => setFilter(id)}>{label}</button>
         ))}
       </div>
 
-      {filtered.map(v => (
-        <div key={v.plate} className="vehicleResult" onClick={() => onOpenTimeline(v)}>
+      {loading && (
+        <div className="rewardState"><div className="big">Loading…</div>Fetching vehicles from the API.</div>
+      )}
+
+      {!loading && vehicles.length === 0 && (
+        <div className="rewardState"><div className="big">No vehicles yet</div>No vehicles have been added to this tenant's fleet. Vehicles appear here once they are registered.</div>
+      )}
+
+      {!loading && vehicles.length > 0 && filtered.map(v => (
+        <div key={v.id} className="vehicleResult" onClick={() => onOpenTimeline(v)}>
           <span className="plate">{v.plate}</span>
           <div>
-            <div className="vrName">{v.customer}</div>
-            <div className="vrSub">{v.model} · {v.year}</div>
+            <div className="vrName">{v.operator ?? '—'}</div>
+            <div className="vrSub">{v.model ?? '—'}</div>
           </div>
           <div className="vrProgress">
             <div className="vrProgressLabel">
-              <span>Lifecycle</span>
-              <span>{v.stageName}</span>
+              <span>Status</span>
+              <span>{v.statusLabel ?? '—'}</span>
             </div>
             <div className="vrProgressBar">
-              {Array.from({ length: TOTAL_STAGES }).map((_, i) => (
-                <i key={i} className={i < v.stageIdx ? 'done' : i === v.stageIdx ? 'active' : ''} />
+              {Array.from({ length: 8 }).map((_, i) => (
+                <i key={i} />
               ))}
             </div>
           </div>
           <div className="vrNext">
-            <div className="l">Next event</div>
-            <div>{v.nextEvent}</div>
+            <div className="l">Note</div>
+            <div>{v.note ?? '—'}</div>
           </div>
-          <span className={`statusPill ${v.status}`}>
-            <span className="d" />{v.statusLabel}
+          <span className={`statusPill ${v.status ?? ''}`}>
+            <span className="d" />{v.statusLabel ?? 'Unknown'}
           </span>
         </div>
       ))}
 
-      {filtered.length === 0 && (
+      {!loading && vehicles.length > 0 && filtered.length === 0 && (
         <div className="rewardState"><div className="big">No matches</div>Try clearing filters or adjusting the search query.</div>
       )}
     </div>

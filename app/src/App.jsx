@@ -19,7 +19,6 @@ import { ControlPlaneView } from './admin_platform.jsx';
 import { ReportsView } from './reports.jsx';
 import {
   SALES_STAGES, OPS_STAGES, WORKSHOP_STAGES, FINANCE_STAGES,
-  VEHICLE_TIMELINE,
 } from './data.js';
 import { ADMIN_USERS, ROLES } from './admin_data.js';
 import { api, setPreviewAs } from './api/client.js';
@@ -73,34 +72,46 @@ const Snapshot = ({ urgent, watch, allOk }) => {
 };
 
 const VehicleSearchPanel = ({ onOpenTimeline }) => {
-  const vehicles = [
-    { plate: 'TRK-7702', customer: 'Düsseldorf Bau',          status: 'In workshop · brake-system overhaul' },
-    { plate: 'VAN-3344', customer: 'Rotterdam Logistics',     status: 'Ready for pickup · today' },
-    { plate: 'TRK-1108', customer: 'Amsterdam Cold Chain',    status: 'Service due in 12 days' },
-    { plate: 'VAN-4421', customer: 'Köln Last Mile',          status: 'Expected delivery · 3 days late' },
-    { plate: 'TRK-5520', customer: 'Antwerp Retail',          status: 'Workshop · in repair' },
-    { plate: 'TRK-9012', customer: 'Hamburg Distribution',    status: 'Replacement out · day 1 of 5' },
-    { plate: 'VAN-8801', customer: 'Köln Last Mile',          status: 'In fleet · 47d since service' },
-    { plate: 'VAN-2210', customer: 'Antwerp Retail',          status: 'Inspection proof received' },
-  ];
+  const [allVehicles, setAllVehicles] = React.useState([]);
+  const [query, setQuery] = React.useState('');
+  React.useEffect(() => {
+    api.get('/vehicles').then(data => {
+      setAllVehicles(Array.isArray(data) ? data : []);
+    }).catch(() => setAllVehicles([]));
+  }, []);
+  const vehicles = allVehicles.filter(v =>
+    !query.trim() ||
+    `${v.plate} ${v.operator ?? ''} ${v.model ?? ''}`.toLowerCase().includes(query.toLowerCase())
+  );
   return (
     <div className="searchPanel">
       <h2>Vehicle timelines</h2>
       <div className="sub">Search any vehicle to see its full lifecycle across Sales → Operations → Workshop → Finance. The killer "one vehicle, one timeline" view.</div>
       <div className="searchWrap" style={{ maxWidth: 'none', marginBottom: 16 }}>
         <Icon name="search" size={15} />
-        <input placeholder="Search by plate, VIN tail, customer name…" />
+        <input placeholder="Search by plate, VIN tail, operator name…" value={query}
+               onChange={e => setQuery(e.target.value)} />
       </div>
       <div className="vehicleList">
         {vehicles.map(v => (
-          <div key={v.plate} className="vehicleCard" onClick={onOpenTimeline}>
+          <div key={v.id} className="vehicleCard" onClick={onOpenTimeline}>
             <span className="plate">{v.plate}</span>
             <div className="info">
-              <div className="t">{v.customer}</div>
-              <div className="s">{v.status}</div>
+              <div className="t">{v.operator ?? '—'}</div>
+              <div className="s">{v.statusLabel ?? v.status ?? '—'}</div>
             </div>
           </div>
         ))}
+        {vehicles.length === 0 && allVehicles.length === 0 && (
+          <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>
+            No vehicles in this fleet yet.
+          </div>
+        )}
+        {vehicles.length === 0 && allVehicles.length > 0 && (
+          <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>
+            No matches — try a different search term.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -217,13 +228,14 @@ const App = () => {
   const [active, setActive] = React.useState('overview');
   const [timeline, setTimeline] = React.useState(null);
   const [vehTimeline, setVehTimeline] = React.useState(null);
-  // Load the real vehicle lifecycle timeline from the API (fallback to seed).
+  // Load the real vehicle lifecycle timeline from the API.
   React.useEffect(() => {
     api.get('/vehicles/timeline')
       .then((t) => { if (t && Array.isArray(t.events)) setVehTimeline(t); })
-      .catch(() => { /* keep VEHICLE_TIMELINE fallback */ });
+      .catch(() => { /* no timeline available */ });
   }, []);
-  const openTimeline = () => setTimeline(vehTimeline || VEHICLE_TIMELINE);
+  // Only open the timeline overlay when real data is available.
+  const openTimeline = () => { if (vehTimeline) setTimeline(vehTimeline); };
   const [previewUser, setPreviewUser] = React.useState(null);
   // Which tracks the *acting* user may view (role → track access). Re-runs when
   // preview changes so the menu/scorecards reflect the previewed user.
