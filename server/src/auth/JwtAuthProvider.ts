@@ -4,7 +4,6 @@ import { randomBytes, createHash } from 'node:crypto';
 import { prisma } from '../prisma.js';
 import { env } from '../env.js';
 import type { AuthProvider, AuthUser, LoginResult } from './AuthProvider.js';
-import { DEMO_TENANT_ID } from '../domain/tenancy.js';
 
 const ACCESS_TTL = '15m';
 const REFRESH_TTL_DAYS = 30;
@@ -45,11 +44,11 @@ function signAccess(user: AuthUser): string {
   );
 }
 
-async function issueRefresh(userId: string): Promise<string> {
+async function issueRefresh(userId: string, tenantId: string): Promise<string> {
   const raw = randomBytes(48).toString('hex');
   const expiresAt = new Date(Date.now() + REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000);
   const session = await prisma.session.create({
-    data: { userId, refreshTokenHash: hashToken(raw), expiresAt, tenantId: DEMO_TENANT_ID },
+    data: { userId, refreshTokenHash: hashToken(raw), expiresAt, tenantId },
   });
   // Embed the session id so we can find + rotate the row on refresh.
   return `${session.id}.${raw}`;
@@ -63,7 +62,7 @@ export class JwtAuthProvider implements AuthProvider {
     if (!ok) throw new Error('Invalid credentials');
     const authUser = await toAuthUser(user.id);
     const token = signAccess(authUser);
-    const refreshToken = await issueRefresh(user.id);
+    const refreshToken = await issueRefresh(user.id, authUser.tenantId);
     return { token, refreshToken, user: authUser };
   }
 
@@ -92,7 +91,7 @@ export class JwtAuthProvider implements AuthProvider {
     await prisma.session.update({ where: { id: session.id }, data: { revoked: true } });
     const authUser = await toAuthUser(session.userId);
     const token = signAccess(authUser);
-    const newRefresh = await issueRefresh(session.userId);
+    const newRefresh = await issueRefresh(session.userId, authUser.tenantId);
     return { token, refreshToken: newRefresh };
   }
 
