@@ -18,6 +18,7 @@ import { dlpeDemoBlueprint, demoInputs, DEMO_TENANT_ID } from '../src/domain/pro
 import { starterBlueprint, sampleBlueprint } from '../src/domain/provisioning/templates.js';
 import { provisionTenant } from '../src/domain/provisioning/provisionTenant.js';
 import { SharedDbTarget } from '../src/domain/provisioning/target.js';
+import { PLATFORM_PLANS } from '../src/domain/billing/plans.js';
 
 const prisma = new PrismaClient();
 
@@ -28,11 +29,7 @@ const COUNTRY_DEFAULTS = {
   DE: { vat: '19%', currency: 'EUR', peppol: 'BIS Billing 3.0 · DE profile', languages: 'German', fiscalYear: '1 Jan' },
 };
 
-const PLANS = [
-  { key: 'starter',    name: 'Starter',    tier: 1, priceMonthly: 4900,  entitlements: { features: ['reports'], limits: { maxUsers: 10 } } },
-  { key: 'pro',        name: 'Pro',        tier: 2, priceMonthly: 14900, entitlements: { features: ['reports', 'api_access'], limits: { maxUsers: 50 } } },
-  { key: 'enterprise', name: 'Enterprise', tier: 3, priceMonthly: 0,     entitlements: { features: ['reports', 'api_access', 'sso', 'custom_domain'], limits: {} } },
-];
+const PLANS = PLATFORM_PLANS;
 
 async function main() {
   // Wipe (idempotent) — order respects FK constraints.

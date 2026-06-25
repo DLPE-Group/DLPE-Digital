@@ -5,7 +5,7 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 
 ## 2026-06-25
 
-- `d517133` feat(provisioning): blueprint catalogue bootstrap + seed cross-ref namespacing
+- `78f5122` feat(provisioning): blueprint catalogue bootstrap + seed cross-ref namespacing
 
 ## 2026-06-24
 
