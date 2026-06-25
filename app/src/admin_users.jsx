@@ -1,6 +1,6 @@
 import React from 'react';
 import { Icon } from './icons.jsx';
-import { GROUP_TREE, ROLES, FIELD_RULES, DATA_TYPES, ADMIN_USERS, SCOPE_TYPE_LABEL, DEFAULT_RULE } from './admin_data.js';
+import { GROUP_TREE, ROLES, FIELD_RULES, DATA_TYPES, SCOPE_TYPE_LABEL, DEFAULT_RULE } from './admin_data.js';
 import { api } from './api/client.js';
 
 /* ============================================================
@@ -187,6 +187,35 @@ const SCOPE_TARGETS = {
   self: ['Own / assigned records only'],
 };
 
+// Generic (non-demo) scope targets used until the real org structure loads, and
+// as the fallback if it can't be fetched — never the demo Benelux/Rotterdam set.
+const GENERIC_SCOPE_TARGETS = {
+  group: ['Entire group'], region: [], country: [], multi_company: [], company: [],
+  self: ['Own / assigned records only'],
+};
+
+// Flatten the tenant's real org tree into scope-target option lists by node kind.
+function buildScopeTargets(root) {
+  const companies = [], countries = [], regions = [];
+  const walk = (n) => {
+    if (!n) return;
+    const k = String(n.kind || '').toLowerCase();
+    if (k === 'company') companies.push(n.name);
+    else if (k === 'country') countries.push(n.name);
+    else if (k === 'region') regions.push(n.name);
+    (n.children || []).forEach(walk);
+  };
+  walk(root);
+  return {
+    group: ['Entire group'],
+    region: regions,
+    country: countries,
+    multi_company: companies,
+    company: companies,
+    self: ['Own / assigned records only'],
+  };
+}
+
 /* Derive a live effective-permissions summary from the chosen role + scope.
    Pulls field restrictions straight out of the RBAC rule set so the invite
    preview matches what the configurator would produce. */
@@ -251,8 +280,9 @@ function adaptUser(u) {
   };
 }
 
-const ScopeEditor = ({ scopeType, setScopeType, target, setTarget, roleId, setRoleId, compact, roles }) => {
-  const targets = SCOPE_TARGETS[scopeType] || [];
+const ScopeEditor = ({ scopeType, setScopeType, target, setTarget, roleId, setRoleId, compact, roles, scopeTargets }) => {
+  const ST = scopeTargets || GENERIC_SCOPE_TARGETS;
+  const targets = ST[scopeType] || [];
   const multi = scopeType === 'multi_company';
   // Use the tenant's real roles when available; fall back to demo ROLES only if
   // the API list hasn't loaded (keeps the literal-id demo tenant working too).
@@ -262,7 +292,7 @@ const ScopeEditor = ({ scopeType, setScopeType, target, setTarget, roleId, setRo
       <div className="seGrid">
         <label className="seField">
           <span className="fl">Scope level</span>
-          <select className="textInput" value={scopeType} onChange={e => { setScopeType(e.target.value); setTarget(SCOPE_TARGETS[e.target.value][0] ? (e.target.value === 'multi_company' ? [] : SCOPE_TARGETS[e.target.value][0]) : ''); }}>
+          <select className="textInput" value={scopeType} onChange={e => { const v = e.target.value; setScopeType(v); setTarget(v === 'multi_company' ? [] : ((ST[v] || [])[0] || '')); }}>
             {Object.keys(SCOPE_TYPE_LABEL).map(k => <option key={k} value={k}>{SCOPE_TYPE_LABEL[k]}</option>)}
           </select>
         </label>
@@ -302,7 +332,8 @@ const ScopeEditor = ({ scopeType, setScopeType, target, setTarget, roleId, setRo
   );
 };
 
-export const CreateUserPanel = ({ onClose, onCreate, roles }) => {
+export const CreateUserPanel = ({ onClose, onCreate, roles, scopeTargets }) => {
+  const ST = scopeTargets || GENERIC_SCOPE_TARGETS;
   const genPw = () => {
     const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ', b = 'abcdefghijkmnpqrstuvwxyz', d = '23456789';
     const pick = s => s[Math.floor(Math.random() * s.length)];
@@ -318,7 +349,7 @@ export const CreateUserPanel = ({ onClose, onCreate, roles }) => {
   const [method, setMethod] = React.useState('password');
   const [pw, setPw] = React.useState(genPw);
   const [scopeType, setScopeType] = React.useState('company');
-  const [target, setTarget] = React.useState(SCOPE_TARGETS.company[0]);
+  const [target, setTarget] = React.useState((ST.company || [])[0] || '');
   const [roleId, setRoleId] = React.useState(defaultRoleId);
   const [secondary, setSecondary] = React.useState([]);
   const [addingSec, setAddingSec] = React.useState(false);
@@ -388,7 +419,7 @@ export const CreateUserPanel = ({ onClose, onCreate, roles }) => {
 
           <div className="panelSection">
             <div className="psHead">Primary scope &amp; role</div>
-            <ScopeEditor scopeType={scopeType} setScopeType={setScopeType} target={target} setTarget={setTarget} roleId={roleId} setRoleId={setRoleId} roles={roles} />
+            <ScopeEditor scopeType={scopeType} setScopeType={setScopeType} target={target} setTarget={setTarget} roleId={roleId} setRoleId={setRoleId} roles={roles} scopeTargets={scopeTargets} />
             <div className="roleHint"><Icon name="lock" size={11} /> {role.desc}</div>
           </div>
 
@@ -448,8 +479,9 @@ export const CreateUserPanel = ({ onClose, onCreate, roles }) => {
 };
 
 export const UsersView = ({ onPreviewAs }) => {
-  const [users, setUsers] = React.useState(ADMIN_USERS);
+  const [users, setUsers] = React.useState([]);
   const [roles, setRoles] = React.useState([]);
+  const [scopeTargets, setScopeTargets] = React.useState(null);
   const [openUser, setOpenUser] = React.useState(null);
   const [q, setQ] = React.useState('');
   const [scopeFilter, setScopeFilter] = React.useState('all');
@@ -462,10 +494,11 @@ export const UsersView = ({ onPreviewAs }) => {
   // Load users from the API (fallback to seed import on failure).
   React.useEffect(() => {
     let cancelled = false;
+    // The tenant's real users always win — even an empty list — so no demo user shows.
     api.get('/admin/users').then((rows) => {
-      if (cancelled || !Array.isArray(rows) || rows.length === 0) return;
+      if (cancelled || !Array.isArray(rows)) return;
       setUsers(rows.map(adaptUser));
-    }).catch(() => { /* keep ADMIN_USERS fallback */ });
+    }).catch(() => { /* leave empty on network error */ });
     // Real tenant roles for the create form's role picker (namespaced per tenant,
     // e.g. `<slug>-sales-rep`). Without this the picker offers literal demo ids
     // that don't exist in a provisioned tenant, so the create would FK-fail.
@@ -473,6 +506,12 @@ export const UsersView = ({ onPreviewAs }) => {
       if (cancelled || !Array.isArray(rows)) return;
       setRoles(rows.map((r) => ({ id: r.id, name: r.name, system: r.system })));
     }).catch(() => { /* fall back to demo ROLES in the picker */ });
+    // Real org structure → scope-target options (companies/countries/regions),
+    // so the scope picker shows THIS tenant's places, not the demo's Benelux.
+    api.get('/admin/structure').then((root) => {
+      if (cancelled || !root) return;
+      setScopeTargets(buildScopeTargets(root));
+    }).catch(() => { /* fall back to generic scope targets */ });
     return () => { cancelled = true; };
   }, []);
 
@@ -583,7 +622,7 @@ export const UsersView = ({ onPreviewAs }) => {
         ))}
       </div>
 
-      {creating && <CreateUserPanel onClose={() => setCreating(false)} onCreate={handleCreate} roles={roles} />}
+      {creating && <CreateUserPanel onClose={() => setCreating(false)} onCreate={handleCreate} roles={roles} scopeTargets={scopeTargets} />}
 
       {importing && (
         <div className="overlay" onClick={() => setImporting(false)}>

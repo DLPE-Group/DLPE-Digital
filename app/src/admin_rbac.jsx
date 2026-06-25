@@ -59,15 +59,17 @@ function maskValue(fieldId, val) {
 /* ---------------- Roles list ---------------- */
 export const RolesView = ({ onConfigure }) => {
   const [q, setQ] = React.useState('');
-  const [roles, setRoles] = React.useState(ROLES);
+  const [roles, setRoles] = React.useState([]);
   const [creating, setCreating] = React.useState(false);
   const [newName, setNewName] = React.useState('');
   const [busy, setBusy] = React.useState(false);
 
   const refresh = React.useCallback(() => {
     return api.get('/admin/roles')
-      .then((rows) => { if (Array.isArray(rows) && rows.length) setRoles(rows); })
-      .catch(() => { /* keep ROLES fallback */ });
+      // The tenant's real roles always win — even an empty list — so no demo
+      // role ever shows. (A provisioned tenant always has its system roles.)
+      .then((rows) => { if (Array.isArray(rows)) setRoles(rows); })
+      .catch(() => { /* leave list empty on network error */ });
   }, []);
   React.useEffect(() => { refresh(); }, [refresh]);
 
@@ -204,25 +206,39 @@ const MatrixRow = ({ field, rule, modified, onToggle }) => {
 
 /* ---------------- Configurator ---------------- */
 export const RbacConfigurator = ({ initialRole, onBack, onPreviewRole }) => {
-  const [roleId, setRoleId] = React.useState(initialRole || 'sales-rep');
+  const [roleId, setRoleId] = React.useState(initialRole || '');
+  // The tenant's real roles drive the dropdown + role meta (namespaced per tenant,
+  // e.g. `<slug>-sales-rep`) — never the demo ROLES fixture.
+  const [roles, setRoles] = React.useState([]);
   const [dtId, setDtId] = React.useState('contract');
   const [scope, setScope] = React.useState('any');
   const [dirty, setDirty] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
 
   // Local editable rules: roleId -> dtId -> fieldId -> rule (only stores diffs).
-  // Seeded from the imported FIELD_RULES, then overlaid with what the server has.
-  const [rules, setRules] = React.useState(() => JSON.parse(JSON.stringify(FIELD_RULES)));
+  // Starts empty and is filled from the server per role — no demo rules shown.
+  const [rules, setRules] = React.useState({});
 
-  // Version history loaded from the server (falls back to imported constants).
-  const [versions, setVersions] = React.useState(RBAC_VERSIONS);
-  const version = versions[0]?.v ?? 4;
+  // Version history loaded from the server (empty until loaded — no demo history).
+  const [versions, setVersions] = React.useState([]);
+  const version = versions[0]?.v ?? 1;
 
   // Server-enforced filtered record for the preview pane (source of truth).
   const [serverRecord, setServerRecord] = React.useState(null);
 
-  const role = ROLES.find(r => r.id === roleId);
+  const role = roles.find(r => r.id === roleId);
   const dt = DATA_TYPES.find(d => d.id === dtId);
+
+  // Load the tenant's real roles; default the selection to the first if unset/invalid.
+  React.useEffect(() => {
+    let cancelled = false;
+    api.get('/admin/roles').then((rows) => {
+      if (cancelled || !Array.isArray(rows)) return;
+      setRoles(rows);
+      setRoleId((cur) => (rows.some(r => r.id === cur) ? cur : (rows[0]?.id || '')));
+    }).catch(() => { /* leave empty on network error */ });
+    return () => { cancelled = true; };
+  }, []);
 
   // Load this role's persisted rules from the server when the role changes.
   React.useEffect(() => {
@@ -246,7 +262,7 @@ export const RbacConfigurator = ({ initialRole, onBack, onPreviewRole }) => {
   // Load version history once on mount.
   React.useEffect(() => {
     api.get('/admin/rbac/versions')
-      .then(vs => { if (Array.isArray(vs) && vs.length) setVersions(vs); })
+      .then(vs => { if (Array.isArray(vs)) setVersions(vs); })
       .catch(() => { /* keep imported RBAC_VERSIONS fallback */ });
   }, []);
 
@@ -321,7 +337,7 @@ export const RbacConfigurator = ({ initialRole, onBack, onPreviewRole }) => {
         note: `Updated ${dt.label} rules for ${role?.name || roleId}`,
       });
       const vs = await api.get('/admin/rbac/versions');
-      if (Array.isArray(vs) && vs.length) setVersions(vs);
+      if (Array.isArray(vs)) setVersions(vs);
       setDirty(false);
       refreshPreview();
     } catch {
@@ -338,7 +354,7 @@ export const RbacConfigurator = ({ initialRole, onBack, onPreviewRole }) => {
     try {
       await api.post(`/admin/rbac/versions/${v}/revert`, { actor: 'Console admin' });
       const vs = await api.get('/admin/rbac/versions');
-      if (Array.isArray(vs) && vs.length) setVersions(vs);
+      if (Array.isArray(vs)) setVersions(vs);
       const rows = await api.get(`/admin/field-rules?role=${encodeURIComponent(roleId)}`);
       const loaded = rowsToRuleMap(rows);
       setRules(prev => { const next = JSON.parse(JSON.stringify(prev)); next[roleId] = loaded[roleId] || {}; return next; });
@@ -380,9 +396,9 @@ export const RbacConfigurator = ({ initialRole, onBack, onPreviewRole }) => {
           <div className="ctxBlock">
             <div className="ctxLabel">Role</div>
             <select className="textInput" value={roleId} onChange={e => { setRoleId(e.target.value); }}>
-              {ROLES.map(r => <option key={r.id} value={r.id}>{r.name}{r.system ? '' : ' (custom)'}</option>)}
+              {roles.map(r => <option key={r.id} value={r.id}>{r.name}{r.system ? '' : ' (custom)'}</option>)}
             </select>
-            <div className="ctxRoleMeta">{role.desc}</div>
+            <div className="ctxRoleMeta">{role?.desc}</div>
           </div>
 
           <div className="ctxBlock">
