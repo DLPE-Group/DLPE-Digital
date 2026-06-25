@@ -15,6 +15,7 @@ import {
   FIELD_CATEGORIES,
 } from '@dlpe/shared';
 import { dlpeDemoBlueprint, demoInputs, DEMO_TENANT_ID } from '../src/domain/provisioning/dlpeDemoBlueprint.js';
+import { starterBlueprint, sampleBlueprint } from '../src/domain/provisioning/templates.js';
 import { provisionTenant } from '../src/domain/provisioning/provisionTenant.js';
 import { SharedDbTarget } from '../src/domain/provisioning/target.js';
 
@@ -126,39 +127,31 @@ async function main() {
     },
   });
 
-  // Publish a CONFIG-ONLY "starter" template — the correct blueprint for onboarding
-  // a real customer: the demo's structure/roles/tracks/entity-types/field-rules +
-  // runtime inputs, but NONE of the demo's seed business data or staff users. A new
-  // customer gets a clean, isolated tenant with only the admin set in the wizard
-  // (override the placeholder email below). This is what the provisioning wizard
-  // offers by default (PUBLISHED, sorted first).
-  const { seed: _omitSeed, users: _omitUsers, ...starterBase } = dlpeDemoBlueprint.spec;
-  void _omitSeed; void _omitUsers;
-  const starterSpec = {
-    ...starterBase,
-    adminUser: {
-      ...dlpeDemoBlueprint.spec.adminUser,
-      idPrefix: 'u-admin',
-      name: 'Account Admin',
-      email: 'admin@change-me.example', // placeholder — set the real admin email in the wizard
-    },
-  };
-  await prisma.blueprint.upsert({
-    where: { key: 'dlpe-starter' },
-    create: {
-      key: 'dlpe-starter',
-      name: 'Clean starter (config only)',
-      version: starterSpec.specVersion,
-      status: 'PUBLISHED',
-      spec: starterSpec as unknown as Prisma.InputJsonValue,
-    },
-    update: {
-      name: 'Clean starter (config only)',
-      version: starterSpec.specVersion,
-      status: 'PUBLISHED',
-      spec: starterSpec as unknown as Prisma.InputJsonValue,
-    },
-  });
+  // Publish the catalogue templates the provisioning wizard offers (derived from the
+  // single source of truth in templates.ts, shared with the prod bootstrap script):
+  //   - dlpe-starter (PUBLISHED): config only — the default for onboarding a real
+  //     customer (structure/roles/tracks/entity-types/field-rules, no business data,
+  //     no staff users; admin set per-onboarding in the wizard).
+  //   - dlpe-sample  (PUBLISHED): starter config + the demo's seed business data, no
+  //     staff users — a reusable populated demo, cloneable any number of times.
+  for (const t of [starterBlueprint, sampleBlueprint]) {
+    await prisma.blueprint.upsert({
+      where: { key: t.key },
+      create: {
+        key: t.key,
+        name: t.name,
+        version: t.spec.specVersion,
+        status: t.status,
+        spec: t.spec as unknown as Prisma.InputJsonValue,
+      },
+      update: {
+        name: t.name,
+        version: t.spec.specVersion,
+        status: t.status,
+        spec: t.spec as unknown as Prisma.InputJsonValue,
+      },
+    });
+  }
 
   // Sanity: ensure DATA_TYPES + FIELD_CATEGORIES catalogues are referenced.
   void DATA_TYPES;

@@ -3,8 +3,13 @@
 Auto-generated from git history (newest first). Refreshed on every commit by the `.githooks/pre-commit` hook; merge commits are omitted.
 
 
+## 2026-06-25
+
+- `d517133` feat(provisioning): blueprint catalogue bootstrap + seed cross-ref namespacing
+
 ## 2026-06-24
 
+- `0efc16f` frontend Task 5: remove demo chrome (How-this-is-wired footer, sources-synced footer, Demo-sign action)
 - `cb99033` frontend Task 4: Integrations + Portal render real API data only (drop demo fallbacks)
 - `536f976` frontend Task 3: Reports metrics from real /aggregations (drop SEED_* fixtures)
 - `1d5ab07` frontend Task 2: Overview snapshot + hero tiles use real counts (no demo numbers)
@@ -179,5 +184,5 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 - `a8c1e03` Implement Intelligence Layer as Vite + React app
 - `6fede3e` Claude Design handoff: Dlpe Digital
 
-<small>152 commits.</small>
+<small>154 commits.</small>
 

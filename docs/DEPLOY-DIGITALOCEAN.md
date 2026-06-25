@@ -67,8 +67,16 @@ POST_DEPLOY job → migrations + `bootstrap:admin` → your platform admin exist
 doctl apps list --format ID,DefaultIngress,ActiveDeployment.Phase
 ```
 Open the app's URL, log in with the BOOTSTRAP_ADMIN_* credentials, open the **Control
-plane**, and provision real customers from the **`dlpe-starter`** (config-only)
-blueprint. The empty `dlpe-demo` placeholder is auto-removed by bootstrap.
+plane**, and provision customers from the blueprint catalogue (created idempotently by
+the POST_DEPLOY `bootstrap:blueprints` step):
+
+- **`dlpe-starter`** (PUBLISHED) — config only. The default for a real customer: a clean,
+  empty, isolated tenant; set the admin email in the wizard.
+- **`dlpe-sample`** (PUBLISHED) — starter config **+ demo business data**, no staff users.
+  A reusable populated demo — provision it as many times as you like.
+- **`dlpe-demo`** (DRAFT) — the full demo incl. fixed-email staff users; one-time clone.
+
+The empty `dlpe-demo` placeholder tenant (S0 backfill artifact) is auto-removed by bootstrap.
 
 ## 5. Test-gated auto-deploy on push
 The spec sets `deploy_on_push: false`; instead, **GitHub Actions** (`.github/workflows/ci.yml`)

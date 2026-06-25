@@ -24,3 +24,6 @@ test-results/
 playwright-report/
 .playwright/
 site/
+
+# Claude Code local worktrees/state
+.claude/worktrees/
