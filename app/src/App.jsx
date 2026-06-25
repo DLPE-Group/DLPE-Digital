@@ -24,13 +24,20 @@ import { api, setPreviewAs } from './api/client.js';
 import { useAuth } from './api/auth.jsx';
 
 // Map a card to the server action that drives it — mirrors resolveFlow().
+// Keyed on generic signals (track + CTA + stage), not demo ids.
 const flowActionName = (item) => {
-  if (item.id === 's5' && item.stageId !== 'signed') return 'signContract';
-  if (item.id === 'f2') return 'sendDunning';
-  if (item.id === 'w4') return 'approvePeppol';
-  if (item.id === 'o3') return 'planWorkshopVisit';
-  if (item.id === 'o5' || item.stageId === 'pickup') return 'notifyPickup';
-  if (item.stageId === 'to_make') return 'generateInvoice';
+  const track = String(item.track || '').toLowerCase();
+  const cta = String(item.cta || '').toLowerCase();
+  const stage = String(item.stageId || '').toLowerCase();
+  const type = String(item.type || '').toUpperCase();
+  const isSales = track.includes('sale'), isFinance = track.includes('financ'),
+        isWorkshop = track.includes('workshop'), isOps = track.includes('oper');
+  if (isSales && (cta.includes('sign') || item.awaitingSign || stage === 'contract' || stage === 'signed')) return 'signContract';
+  if (isFinance && (cta.includes('dun') || cta.includes('remind') || stage === 'overdue' || item.status === 'red' || item.status === 'late')) return 'sendDunning';
+  if ((isFinance || type === 'INVOICE') && (cta.includes('invoice') || stage === 'to_make' || stage === 'to_create')) return 'generateInvoice';
+  if (isWorkshop && (cta.includes('approve') || stage.includes('approv'))) return 'approvePeppol';
+  if ((isOps || isWorkshop) && (cta.includes('pickup') || cta.includes('collect') || stage === 'pickup')) return 'notifyPickup';
+  if (isOps || isWorkshop) return 'planWorkshopVisit';
   return 'sendFollowUp';
 };
 
@@ -485,7 +492,7 @@ const App = () => {
         )}
 
         {openTracks.sales && (
-          <Track trackId="sales" title={t('track.sales')} owner="Eva de Vries"
+          <Track trackId="sales" title={t('track.sales')}
                  stages={SALES_STAGES} items={sales}
                  isOpen={true} onToggle={() => toggleTrack('sales')}
                  onOpenTimeline={openTimeline}
@@ -495,7 +502,7 @@ const App = () => {
         )}
 
         {openTracks.operations && (
-          <Track trackId="operations" title={t('track.operations')} owner="Tom Janssens"
+          <Track trackId="operations" title={t('track.operations')}
                  stages={OPS_STAGES} items={ops}
                  isOpen={true} onToggle={() => toggleTrack('operations')}
                  onOpenTimeline={openTimeline}
@@ -505,7 +512,7 @@ const App = () => {
         )}
 
         {openTracks.workshop && (
-          <Track trackId="workshop" title={t('track.workshop')} owner="Lars Pieters"
+          <Track trackId="workshop" title={t('track.workshop')}
                  stages={WORKSHOP_STAGES} items={workshop}
                  isOpen={true} onToggle={() => toggleTrack('workshop')}
                  onOpenTimeline={openTimeline}
@@ -515,7 +522,7 @@ const App = () => {
         )}
 
         {openTracks.finance && (
-          <Track trackId="finance" title={t('track.finance')} owner="Ines Vandeput"
+          <Track trackId="finance" title={t('track.finance')}
                  stages={FINANCE_STAGES} items={finance}
                  isOpen={true} onToggle={() => toggleTrack('finance')}
                  onOpenTimeline={openTimeline}

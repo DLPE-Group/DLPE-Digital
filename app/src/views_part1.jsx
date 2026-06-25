@@ -126,7 +126,7 @@ export const IntegrationsView = () => {
       <div className="viewHero">
         <div>
           <h1>Integrations</h1>
-          <div className="sub">All systems feeding the unified DataSource abstraction. Anything you see on the dashboard arrived via one of these. The UI never knows whether a data point came from CRM, PEPPOL, Talend, or a CSV — it just renders state.</div>
+          <div className="sub">All systems feeding the unified DataSource abstraction. Anything you see on the dashboard arrived via one of these. The UI never knows whether a data point came from a CRM, an e-invoice, an ETL sync, or a CSV — it just renders state.</div>
         </div>
         <button className="cta" onClick={() => setNangoOpen(true)}><Icon name="plus" size={12} strokeWidth={2} /> Add integration</button>
       </div>
@@ -207,63 +207,9 @@ export const IntegrationsView = () => {
    AUDIT LOG
    ============================================================ */
 
-const AUDIT = [
-  { id: 1, day: 'Today · 28 May', time: '09:14',
-    actor: 'Markus Weber', actorRole: 'Account Director',
-    verb: 'marked contract signed', target: 'Brussels Energy SA · €2.46M renewal',
-    track: 'sales', kind: 'critical', icon: 'bolt',
-    cascades: [
-      { track: 'operations', text: 'Created card · "Vehicle ordered · 78 vehicles"' },
-      { track: 'finance',    text: 'Created card · "Invoice to create · €2.46M"' },
-      { track: 'sales',      text: 'Customer portal updated · order confirmed' },
-    ] },
-  { id: 2, day: 'Today · 28 May', time: '08:47',
-    actor: 'System · Talend', actorRole: 'Automated ETL · 15-min cadence',
-    verb: 'sync completed', target: '1,240 records across 6 sources',
-    track: 'workshop', kind: 'info', icon: 'refresh', isSystem: true },
-  { id: 3, day: 'Today · 28 May', time: '08:22',
-    actor: 'Tom Janssens', actorRole: 'Fleet Operations',
-    verb: 'confirmed delivery date', target: 'Köln Last Mile · VAN-4421 · slipped to Jun 04',
-    track: 'operations', kind: 'normal', icon: 'truck' },
-  { id: 4, day: 'Today · 28 May', time: '07:55',
-    actor: 'System · PEPPOL', actorRole: 'Inbound webhook',
-    verb: 'invoice received', target: 'Bosch Mobility · €1,240 · matched to WO-2026-118',
-    track: 'workshop', kind: 'info', icon: 'receipt', isSystem: true },
-
-  { id: 5, day: 'Yesterday · 27 May', time: '16:32',
-    actor: 'Eva de Vries', actorRole: 'Account Manager · Benelux',
-    verb: 'sent follow-up email', target: 'Rotterdam Logistics B.V. · €1.24M offer (gentle nudge)',
-    track: 'sales', kind: 'normal', icon: 'mail' },
-  { id: 6, day: 'Yesterday · 27 May', time: '14:18',
-    actor: 'Hannah Müller', actorRole: 'Service Coordinator',
-    verb: 'scheduled workshop visit', target: 'Amsterdam Cold Chain · TRK-1108 · 4 Jun',
-    track: 'operations', kind: 'normal', icon: 'flash',
-    cascades: [
-      { track: 'workshop',   text: 'New work order WO-2026-119 · expected 4 Jun' },
-      { track: 'operations', text: 'Replacement vehicle VAN-7811 reserved' },
-    ] },
-  { id: 7, day: 'Yesterday · 27 May', time: '11:04',
-    actor: 'Ines Vandeput', actorRole: 'Accounts Payable',
-    verb: 'approved PEPPOL invoice', target: 'MAN Trucks AG · €87,500 · payment scheduled 27 Jun',
-    track: 'finance', kind: 'normal', icon: 'receipt' },
-  { id: 8, day: 'Yesterday · 27 May', time: '10:21',
-    actor: 'System · Salesforce', actorRole: 'Inbound CRM sync',
-    verb: 'imported new lead', target: 'Antwerp Retail Group NV · 22 vehicles · 3-year FSL',
-    track: 'sales', kind: 'info', icon: 'plus', isSystem: true },
-
-  { id: 9, day: 'Earlier this week', time: 'May 26 · 15:50',
-    actor: 'Sophie Janssen', actorRole: 'Account Manager · Benelux',
-    verb: 'logged qualification meeting', target: 'Antwerp Retail Group NV',
-    track: 'sales', kind: 'normal', icon: 'check' },
-  { id: 10, day: 'Earlier this week', time: 'May 25 · 09:33',
-    actor: 'Lars Pieters', actorRole: 'Workshop Manager',
-    verb: 'released for pickup', target: 'Rotterdam Logistics · VAN-3344 · brake-system overhaul',
-    track: 'workshop', kind: 'normal', icon: 'check' },
-  { id: 11, day: 'Earlier this week', time: 'May 25 · 08:18',
-    actor: 'System · MAN API', actorRole: 'Supplier API',
-    verb: 'flagged order overdue', target: 'Köln Last Mile · VAN-4421 · 3 days late',
-    track: 'operations', kind: 'warning', icon: 'bolt', isSystem: true },
-];
+// Audit entries come from GET /audit (tenant-scoped). No demo fallback —
+// a fresh tenant shows an empty log until real activity is recorded.
+const AUDIT = [];
 
 export const AuditView = () => {
   const [filter, setFilter] = React.useState('all');
@@ -327,7 +273,7 @@ export const AuditView = () => {
       <div className="viewHero">
         <div>
           <h1>Audit log</h1>
-          <div className="sub">Every action taken from this dashboard, with actor, timestamp, and downstream cascades. Reversible from this view. System events (Talend syncs, PEPPOL webhooks, supplier API callbacks) are interleaved so you can see the full state-of-the-world.</div>
+          <div className="sub">Every action taken from this dashboard, with actor, timestamp, and downstream cascades. Reversible from this view. System events (ETL syncs, PEPPOL webhooks, supplier API callbacks) are interleaved so you can see the full state-of-the-world.</div>
         </div>
         <button className="cta ghost" onClick={exportCsv}><Icon name="download" size={12} strokeWidth={2} /> Export CSV</button>
       </div>

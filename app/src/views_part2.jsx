@@ -62,7 +62,7 @@ export const SettingsView = () => {
           <div className="toggleRow">
             <div>
               <div className="t">PEPPOL outbound preferred</div>
-              <div className="d">For Benelux fleet operators, default to PEPPOL e-invoicing over email PDF. Falls back automatically if delivery fails.</div>
+              <div className="d">Where the customer supports it, default to PEPPOL e-invoicing over email PDF. Falls back automatically if delivery fails.</div>
             </div>
             <div className={`toggle ${toggles.peppol ? 'on' : ''}`} onClick={() => flip('peppol')} />
           </div>
@@ -109,7 +109,7 @@ export const SettingsView = () => {
               <tr><td style={{ color: 'var(--text-tertiary)' }}>Currency</td><td>EUR · two-decimal · DE/NL number formatting</td></tr>
               <tr><td style={{ color: 'var(--text-tertiary)' }}>Working calendar</td><td>5-day · public holidays per country</td></tr>
               <tr><td style={{ color: 'var(--text-tertiary)' }}>Languages</td><td>English (default) · Dutch · French · German</td></tr>
-              <tr><td style={{ color: 'var(--text-tertiary)' }}>Timezone</td><td>Europe/Brussels</td></tr>
+              <tr><td style={{ color: 'var(--text-tertiary)' }}>Timezone</td><td>UTC</td></tr>
             </tbody>
           </table>
         </div>
