@@ -20,7 +20,6 @@ import { ReportsView } from './reports.jsx';
 import {
   SALES_STAGES, OPS_STAGES, WORKSHOP_STAGES, FINANCE_STAGES,
 } from './data.js';
-import { ADMIN_USERS, ROLES } from './admin_data.js';
 import { api, setPreviewAs } from './api/client.js';
 import { useAuth } from './api/auth.jsx';
 
@@ -441,9 +440,14 @@ const App = () => {
     if (active === 'users') return <UsersView onPreviewAs={isAdmin ? ((u) => setPreviewUser(u)) : null} />;
     if (active === 'roles') return rbacRole
       ? <RbacConfigurator initialRole={rbacRole} onBack={() => setRbacRole(null)}
-                          onPreviewRole={(rid) => {
-                            const u = ADMIN_USERS.find(x => x.role.toLowerCase().includes((ROLES.find(r => r.id === rid)?.name || '').toLowerCase().split(' ')[0])) || ADMIN_USERS[3];
-                            setPreviewUser(u);
+                          onPreviewRole={async (rid) => {
+                            // Preview as a REAL user holding this role in the tenant — never a demo user.
+                            try {
+                              const rows = await api.get('/admin/users');
+                              const u = Array.isArray(rows) ? rows.find(x => x.roleId === rid) : null;
+                              if (!u) { window.alert('No user holds this role yet — create one to preview as them.'); return; }
+                              setPreviewUser({ id: u.id, name: u.name, role: u.role?.name || rid });
+                            } catch { window.alert('Could not load users to preview.'); }
                           }} />
       : <RolesView onConfigure={(rid) => setRbacRole(rid)} />;
     if (active === 'reports') return <ReportsView />;
@@ -458,7 +462,7 @@ const App = () => {
       <>
         <div className="contextBar">
           <div>
-            <h1>{t('greet.morning', { name: (me?.name || 'Markus').split(' ')[0] })}</h1>
+            <h1>{t('greet.morning', { name: (me?.name || '').split(' ')[0] || 'there' })}</h1>
             <div className="pageSub">{t('greet.itemsNeed', { n: counts.urgent, items: counts.urgent === 1 ? t('track.item') : t('track.items') })}</div>
           </div>
           <div className="right">
@@ -551,7 +555,7 @@ const App = () => {
             <NotificationsBell />
             <button className="iconBtn" title="Help"><Icon name="document" size={16} /></button>
             <button className="iconBtn" title="Sign out" onClick={logout}><Icon name="close" size={16} /></button>
-            <Avatar name={me?.name || 'Markus Weber'} size="" />
+            <Avatar name={me?.name || 'Account'} size="" />
           </div>
         </header>
 

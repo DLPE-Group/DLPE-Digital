@@ -1,6 +1,6 @@
 import React from 'react';
 import { Icon } from './icons.jsx';
-import { GROUP_TREE, ROLES, FIELD_RULES, DATA_TYPES, SCOPE_TYPE_LABEL, DEFAULT_RULE } from './admin_data.js';
+import { ROLES, FIELD_RULES, DATA_TYPES, SCOPE_TYPE_LABEL, DEFAULT_RULE } from './admin_data.js';
 import { api } from './api/client.js';
 
 /* ============================================================
@@ -11,11 +11,16 @@ import { api } from './api/client.js';
 const statusPillClass = { active: 'ok', invited: 'warn', disabled: 'late' };
 const statusLabel = { active: 'Active', invited: 'Invited', disabled: 'Disabled' };
 
-export const UserDetail = ({ user, onBack, onPreviewAs }) => {
+export const UserDetail = ({ user, onBack, onPreviewAs, roles, scopeTargets }) => {
   const [secondary, setSecondary] = React.useState(user.secondary);
   const [adding, setAdding] = React.useState(false);
   const [summary] = React.useState(user.summary);
   const [status, setStatus] = React.useState(user.status);
+  // Real tenant roles + scope places for the secondary-scope adder (no demo).
+  const roleList = roles && roles.length ? roles : ROLES;
+  const scopeChoices = (scopeTargets?.company && scopeTargets.company.length)
+    ? scopeTargets.company
+    : (scopeTargets?.country || []);
 
   const toggleStatus = async () => {
     const next = status === 'disabled' ? 'active' : 'disabled';
@@ -40,17 +45,19 @@ export const UserDetail = ({ user, onBack, onPreviewAs }) => {
     return () => { cancelled = true; };
   }, [user.id]);
 
-  const addScope = async (scope, role) => {
-    const roleId = (ROLES.find((r) => r.name === role) || {}).id || null;
+  // roleId comes straight from the real-roles dropdown; resolve its label for display.
+  const addScope = async (scopeLabel, roleId) => {
+    const roleLabel = (roleList.find((r) => r.id === roleId) || {}).name || roleId;
     let created;
     try {
       created = await api.post(`/admin/users/${user.id}/scopes`,
-        { scopeType: 'company', scopeLabel: scope, roleLabel: role, roleId });
+        { scopeType: 'company', scopeLabel, roleLabel, roleId });
     } catch (e) {
-      console.error('Failed to add scope', e);
-      created = { id: 'tmp-' + Date.now() };
+      // Surface the failure instead of faking success with a temp row.
+      window.alert(e?.message || 'Failed to add scope');
+      return;
     }
-    setSecondary((s) => [...s, { id: created.id, scope, role }]);
+    setSecondary((s) => [...s, { id: created.id, scope: scopeLabel, role: roleLabel }]);
     setAdding(false);
   };
 
@@ -131,13 +138,14 @@ export const UserDetail = ({ user, onBack, onPreviewAs }) => {
           ))}
           {adding && (
             <div className="addScopeRow">
-              <select className="textInput" id="newScopeSel" defaultValue="Belgium">
-                <option>Belgium</option><option>Netherlands</option><option>Germany</option><option>Luxembourg</option><option>Amsterdam Branch</option>
+              <select className="textInput" id="newScopeSel" defaultValue={scopeChoices[0] || ''}>
+                {scopeChoices.length === 0 && <option value="">No companies in scope</option>}
+                {scopeChoices.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
-              <select className="textInput" id="newRoleSel" defaultValue="Sales manager — read only">
-                <option>Sales manager — read only</option><option>Sales rep</option><option>Ops coordinator</option><option>Finance manager</option>
+              <select className="textInput" id="newRoleSel" defaultValue={(roleList[0] || {}).id || ''}>
+                {roleList.map(r => <option key={r.id} value={r.id}>{r.name}{r.system ? '' : ' (custom)'}</option>)}
               </select>
-              <button className="cta" onClick={() => addScope(document.getElementById('newScopeSel').value, document.getElementById('newRoleSel').value)}>Add</button>
+              <button className="cta" disabled={!scopeChoices.length} onClick={() => addScope(document.getElementById('newScopeSel').value, document.getElementById('newRoleSel').value)}>Add</button>
               <button className="cta ghost" onClick={() => setAdding(false)}>Cancel</button>
             </div>
           )}
@@ -167,24 +175,6 @@ export const UserDetail = ({ user, onBack, onPreviewAs }) => {
       </div>
     </div>
   );
-};
-
-/* ---- scope targets, walked from the group tree ---- */
-const ALL_COMPANIES = [];
-const ALL_COUNTRIES = [];
-(function walk(n) {
-  if (n.kind === 'company') ALL_COMPANIES.push(n.name);
-  if (n.kind === 'country') ALL_COUNTRIES.push(n.name);
-  (n.children || []).forEach(walk);
-})(GROUP_TREE);
-
-const SCOPE_TARGETS = {
-  group: ['Entire group'],
-  region: ['Benelux'],
-  country: ALL_COUNTRIES,
-  multi_company: ALL_COMPANIES,   // pick 2+
-  company: ALL_COMPANIES,
-  self: ['Own / assigned records only'],
 };
 
 // Generic (non-demo) scope targets used until the real org structure loads, and
@@ -396,7 +386,7 @@ export const CreateUserPanel = ({ onClose, onCreate, roles, scopeTargets }) => {
               <label className="seField"><span className="fl">Full name</span>
                 <input className="textInput" autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Marie Dubois" /></label>
               <label className="seField"><span className="fl">Work email</span>
-                <input className="textInput" value={email} onChange={e => setEmail(e.target.value)} placeholder="name@group.eu" /></label>
+                <input className="textInput" value={email} onChange={e => setEmail(e.target.value)} placeholder="name@example.com" /></label>
             </div>
           </div>
 
@@ -439,13 +429,13 @@ export const CreateUserPanel = ({ onClose, onCreate, roles, scopeTargets }) => {
             ))}
             {addingSec && (
               <div className="addScopeRow">
-                <select className="textInput" id="secScope" defaultValue={ALL_COUNTRIES[1]}>
-                  {[...ALL_COUNTRIES, ...ALL_COMPANIES].map(c => <option key={c} value={c}>{c}</option>)}
+                <select className="textInput" id="secScope" defaultValue={(ST.company || [])[0] || ''}>
+                  {[...(ST.country || []), ...(ST.company || [])].map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
-                <select className="textInput" id="secRole" defaultValue="Sales manager — read only">
-                  <option>Sales manager — read only</option><option>Sales rep</option><option>Ops coordinator</option><option>Finance manager</option><option>Read-only group viewer</option>
+                <select className="textInput" id="secRole" defaultValue={(roleList[0] || {}).id || ''}>
+                  {roleList.map(r => <option key={r.id} value={r.id}>{r.name}{r.system ? '' : ' (custom)'}</option>)}
                 </select>
-                <button className="cta" onClick={() => { setSecondary(a => [...a, { scope: document.getElementById('secScope').value, role: document.getElementById('secRole').value, scopeType: 'company' }]); setAddingSec(false); }}>Add</button>
+                <button className="cta" onClick={() => { const rid = document.getElementById('secRole').value; const rl = (roleList.find(r => r.id === rid) || {}).name || rid; setSecondary(a => [...a, { scope: document.getElementById('secScope').value, role: rl, roleId: rid, scopeType: 'company' }]); setAddingSec(false); }}>Add</button>
                 <button className="cta ghost" onClick={() => setAddingSec(false)}>Cancel</button>
               </div>
             )}
@@ -487,7 +477,7 @@ export const UsersView = ({ onPreviewAs }) => {
   const [scopeFilter, setScopeFilter] = React.useState('all');
   const [creating, setCreating] = React.useState(false);
   const [importing, setImporting] = React.useState(false);
-  const [csvText, setCsvText] = React.useState('name,email,roleId\nJane Doe,j.doe@group.eu,sales-rep');
+  const [csvText, setCsvText] = React.useState('name,email,roleId\nJane Doe,jane@example.com,<role-id>');
   const [importMsg, setImportMsg] = React.useState(null);
   const [flashId, setFlashId] = React.useState(null);
 
@@ -516,7 +506,7 @@ export const UsersView = ({ onPreviewAs }) => {
   }, []);
 
   if (openUser) {
-    return <UserDetail user={openUser} onBack={() => setOpenUser(null)} onPreviewAs={onPreviewAs} />;
+    return <UserDetail user={openUser} onBack={() => setOpenUser(null)} onPreviewAs={onPreviewAs} roles={roles} scopeTargets={scopeTargets} />;
   }
 
   const handleCreate = async (u) => {

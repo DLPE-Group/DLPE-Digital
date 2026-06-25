@@ -371,9 +371,9 @@ export const GroupStructureView = () => {
       </div>
 
       <div className="viewStats" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
-        <div className="viewStat"><div className="l">Countries</div><div className="v">{counts.countries}</div><div className="s">NL · BE · LU · DE</div></div>
+        <div className="viewStat"><div className="l">Countries</div><div className="v">{counts.countries}</div><div className="s">in the org tree</div></div>
         <div className="viewStat"><div className="l">Companies</div><div className="v">{counts.companies}</div><div className="s">legal entities / branches</div></div>
-        <div className="viewStat"><div className="l">Regions</div><div className="v">{counts.regions}</div><div className="s">Benelux + DE direct</div></div>
+        <div className="viewStat"><div className="l">Regions</div><div className="v">{counts.regions}</div><div className="s">grouping countries</div></div>
         <div className="viewStat good"><div className="l">Users</div><div className="v">{userCount ?? '—'}</div><div className="s">across all scopes</div></div>
       </div>
 

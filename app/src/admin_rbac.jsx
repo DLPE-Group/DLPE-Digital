@@ -1,9 +1,8 @@
 import React from 'react';
 import { Icon } from './icons.jsx';
-import { ROLES, DATA_TYPES, FIELD_RULES, DEFAULT_RULE, SAMPLE_RECORDS, RBAC_VERSIONS, FIELD_CATEGORIES } from './admin_data.js';
+import { DATA_TYPES, FIELD_RULES, DEFAULT_RULE, SAMPLE_RECORDS, FIELD_CATEGORIES } from './admin_data.js';
 import { api } from './api/client.js';
 
-const SCOPE_QUERY = { any: 'ANY', nl: 'NL', be: 'BE', de: 'DE', rotterdam: 'ROTTERDAM' };
 
 /* Convert the server's flat FieldRule rows into the configurator's nested
    roleId -> dtId -> fieldId -> {visible,editable,masked,note} diff map. */
@@ -210,8 +209,10 @@ export const RbacConfigurator = ({ initialRole, onBack, onPreviewRole }) => {
   // The tenant's real roles drive the dropdown + role meta (namespaced per tenant,
   // e.g. `<slug>-sales-rep`) — never the demo ROLES fixture.
   const [roles, setRoles] = React.useState([]);
+  // Scope-refinement options built from the tenant's real org (no demo places).
+  const [scopeOpts, setScopeOpts] = React.useState([{ value: 'ANY', label: 'Any scope (default)' }]);
   const [dtId, setDtId] = React.useState('contract');
-  const [scope, setScope] = React.useState('any');
+  const [scope, setScope] = React.useState('ANY');
   const [dirty, setDirty] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
 
@@ -237,6 +238,19 @@ export const RbacConfigurator = ({ initialRole, onBack, onPreviewRole }) => {
       setRoles(rows);
       setRoleId((cur) => (rows.some(r => r.id === cur) ? cur : (rows[0]?.id || '')));
     }).catch(() => { /* leave empty on network error */ });
+    // Scope-refinement options from the tenant's real org (countries + companies).
+    api.get('/admin/structure').then((root) => {
+      if (cancelled || !root) return;
+      const opts = [{ value: 'ANY', label: 'Any scope (default)' }];
+      const walk = (n) => {
+        if (!n) return;
+        const k = String(n.kind || '').toLowerCase();
+        if (k === 'country' || k === 'company') opts.push({ value: n.name, label: `${n.name} only` });
+        (n.children || []).forEach(walk);
+      };
+      walk(root);
+      setScopeOpts(opts);
+    }).catch(() => { /* keep just 'Any scope' on network error */ });
     return () => { cancelled = true; };
   }, []);
 
@@ -329,7 +343,7 @@ export const RbacConfigurator = ({ initialRole, onBack, onPreviewRole }) => {
   const save = async () => {
     setSaving(true);
     try {
-      const scopeEnum = SCOPE_QUERY[scope] || 'ANY';
+      const scopeEnum = scope || 'ANY';
       const diffs = diffsForRole(rules, roleId, dtId, scopeEnum);
       await api.put('/admin/field-rules', {
         diffs,
@@ -404,11 +418,7 @@ export const RbacConfigurator = ({ initialRole, onBack, onPreviewRole }) => {
           <div className="ctxBlock">
             <div className="ctxLabel">Scope <span className="opt">optional</span></div>
             <select className="textInput" value={scope} onChange={e => setScope(e.target.value)}>
-              <option value="any">Any scope (default)</option>
-              <option value="nl">Netherlands only</option>
-              <option value="be">Belgium only</option>
-              <option value="de">Germany only</option>
-              <option value="rotterdam">Rotterdam Branch only</option>
+              {scopeOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
             <div className="ctxRoleMeta">Apply this rule only when the role is exercised at a given company or country.</div>
           </div>
