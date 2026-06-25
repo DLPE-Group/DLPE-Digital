@@ -18,6 +18,7 @@ export const ProvisionWizard = ({ onProvisioned }) => {
   const [inputs, setInputs] = React.useState({});
   const [adminName, setAdminName] = React.useState('');
   const [adminEmail, setAdminEmail] = React.useState('');
+  const [adminPassword, setAdminPassword] = React.useState('');
   const [planKey, setPlanKey] = React.useState('');
 
   const [preflight, setPreflight] = React.useState(null);
@@ -75,7 +76,7 @@ export const ProvisionWizard = ({ onProvisioned }) => {
     try {
       const r = await api.post('/platform/tenants', {
         blueprintKey: bpKey, inputs,
-        admin: { name: adminName || undefined, email: adminEmail || undefined },
+        admin: { name: adminName || undefined, email: adminEmail || undefined, password: adminPassword || undefined },
         planKey: planKey || undefined,
         idempotencyKey: `wiz-${bpKey}-${idempotencySuffix}`,
       });
@@ -87,7 +88,7 @@ export const ProvisionWizard = ({ onProvisioned }) => {
   };
 
   const reset = () => {
-    setStep(0); setBpKey(''); setInputs({}); setAdminName(''); setAdminEmail('');
+    setStep(0); setBpKey(''); setInputs({}); setAdminName(''); setAdminEmail(''); setAdminPassword('');
     setPlanKey(''); setPreflight(null); setResult(null); setErr(null); setCopied(false);
   };
 
@@ -96,10 +97,11 @@ export const ProvisionWizard = ({ onProvisioned }) => {
   };
 
   // Per-step Next gate
+  const adminPasswordOk = adminPassword === '' || adminPassword.length >= 8;
   const canNext =
     step === 0 ? !!bpKey :
     step === 1 ? requiredFilled :
-    step === 2 ? true :
+    step === 2 ? adminPasswordOk :
     false;
 
   const go = (n) => { setErr(null); setStep(n); };
@@ -166,6 +168,16 @@ export const ProvisionWizard = ({ onProvisioned }) => {
           <label style={fieldLabel}>Admin email
             <input type="email" value={adminEmail} onChange={(e) => { setAdminEmail(e.target.value); setPreflight(null); }} style={inputStyle} data-testid="wiz-admin-email" />
           </label>
+          <label style={fieldLabel}>Admin password <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}>(optional)</span>
+            <input type="password" value={adminPassword} autoComplete="new-password"
+              onChange={(e) => { setAdminPassword(e.target.value); setPreflight(null); }}
+              style={inputStyle} data-testid="wiz-admin-password" placeholder="min 8 chars" />
+            <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-tertiary)' }}>
+              {adminPassword
+                ? (adminPassword.length >= 8 ? 'Admin can log in immediately with this password.' : 'Too short — needs at least 8 characters.')
+                : 'Leave blank to create the admin via an invite link instead.'}
+            </span>
+          </label>
           <label style={fieldLabel}>Plan
             <select value={planKey} onChange={(e) => { setPlanKey(e.target.value); setPreflight(null); }} style={selectStyle} data-testid="wiz-plan">
               <option value="">— blueprint default —</option>
@@ -186,6 +198,9 @@ export const ProvisionWizard = ({ onProvisioned }) => {
                 <span style={preflight.slugAvailable ? okPill : badPill}>{preflight.slugAvailable ? 'available' : 'taken'}</span>
                 <strong style={{ marginLeft: 12 }}>Plan</strong> <code style={codeChip}>{preflight.resolvedPlanKey}</code>
                 <strong style={{ marginLeft: 12 }}>Admin</strong> <span style={{ fontSize: 12 }}>{preflight.adminEmail}</span>
+                <span style={adminPassword ? okPill : neutralPill} data-testid="wiz-admin-access">
+                  {adminPassword ? 'password set · can log in now' : 'invite link'}
+                </span>
               </div>
               <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-secondary)' }} data-testid="wiz-summary">
                 {Object.entries(preflight.summary).map(([k, v]) => (
@@ -246,6 +261,7 @@ const errBar = { padding: '8px 12px', borderRadius: 6, background: 'var(--bg-mut
 const successBar = { padding: '8px 12px', borderRadius: 6, background: 'rgba(0,160,80,0.08)', border: '1px solid rgba(0,160,80,0.25)', color: 'var(--status-green, #0a0)', fontSize: 13 };
 const okPill = { fontSize: 10, padding: '1px 6px', borderRadius: 3, background: 'rgba(0,160,80,0.12)', color: 'var(--status-green, #0a0)', border: '1px solid rgba(0,160,80,0.25)' };
 const badPill = { fontSize: 10, padding: '1px 6px', borderRadius: 3, background: 'rgba(224,0,85,0.1)', color: 'var(--status-red, #e05)', border: '1px solid rgba(224,0,85,0.25)' };
+const neutralPill = { fontSize: 10, padding: '1px 6px', borderRadius: 3, background: 'var(--bg)', color: 'var(--text-tertiary)', border: '1px solid var(--border)' };
 const issueErr = { fontSize: 12, padding: '6px 10px', borderRadius: 5, background: 'rgba(224,0,85,0.08)', border: '1px solid rgba(224,0,85,0.25)', color: 'var(--status-red, #e05)' };
 const issueWarn = { fontSize: 12, padding: '6px 10px', borderRadius: 5, background: 'rgba(220,150,0,0.08)', border: '1px solid rgba(220,150,0,0.3)', color: 'var(--status-amber, #b80)' };
 const stepChip = (active, done) => ({

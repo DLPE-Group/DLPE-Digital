@@ -63,6 +63,148 @@ describe('provisionTenant', () => {
     await prisma.tenant.delete({ where: { id: tid } });
   });
 
+  it('prefixed mode namespaces seed cross-references (companyId FK)', async () => {
+    const { provisionTenant } = await import('../../server/src/domain/provisioning/provisionTenant.ts');
+    const { SharedDbTarget } = await import('../../server/src/domain/provisioning/target.ts');
+
+    // A spec whose seed entity references an org node by its spec-local id.
+    // In prefixed mode the org node becomes `${slug}-cmp-acme`, so the entity's
+    // companyId must be namespaced to match — else it FK-violates / dangles.
+    const SEED_SPEC = {
+      ...SMALL_SPEC,
+      seed: {
+        entities: [
+          { id: 'deal-1', companyId: 'cmp-acme', track: 'SALES', type: 'contract',
+            customer: 'Seed Customer', value: 1000, stageId: 'lead', stageName: 'Lead',
+            owner: 'Acme Admin', status: 'normal', sub: '', cta: 'Qualify', sources: [] },
+        ],
+      },
+    };
+
+    const res = await provisionTenant({
+      blueprint: { spec: SEED_SPEC }, inputs: { customerName: 'SeedCo' },
+      target: new SharedDbTarget(), idempotencyKey: 'test-seed-pfx-1',
+      prismaClient: prisma,
+    });
+    const tid = res.tenantId;
+    expect(tid).toBeTruthy();
+
+    // The created entity's companyId must point at the namespaced org node id.
+    const ent = await prisma.entity.findFirst({ where: { tenantId: tid } });
+    expect(ent).not.toBeNull();
+    expect(ent.companyId).toBe(`${res.slug}-cmp-acme`);
+    // And that org node must exist (proves the FK resolves).
+    const node = await prisma.orgNode.findUnique({ where: { id: `${res.slug}-cmp-acme` } });
+    expect(node).not.toBeNull();
+
+    // cleanup
+    await prisma.subscription.deleteMany({ where: { tenantId: tid } });
+    await prisma.entity.deleteMany({ where: { tenantId: tid } });
+    await prisma.user.deleteMany({ where: { tenantId: tid } });
+    await prisma.stageDef.deleteMany({ where: { tenantId: tid } });
+    await prisma.stageConfig.deleteMany({ where: { tenantId: tid } });
+    await prisma.entityType.deleteMany({ where: { tenantId: tid } });
+    await prisma.trackDef.deleteMany({ where: { tenantId: tid } });
+    await prisma.role.deleteMany({ where: { tenantId: tid } });
+    await prisma.orgNode.deleteMany({ where: { tenantId: tid } });
+    await prisma.provisioningRun.deleteMany({ where: { tenantId: tid } });
+    await prisma.tenant.delete({ where: { id: tid } });
+  });
+
+  it('dlpe-sample blueprint provisions a populated tenant in prefixed mode (no FK errors)', async () => {
+    const { provisionTenant } = await import('../../server/src/domain/provisioning/provisionTenant.ts');
+    const { SharedDbTarget } = await import('../../server/src/domain/provisioning/target.ts');
+    const { sampleBlueprint } = await import('../../server/src/domain/provisioning/templates.ts');
+
+    const res = await provisionTenant({
+      blueprint: { spec: sampleBlueprint.spec },
+      inputs: { slug: 'sample-co', customerName: 'Sample Co', region: 'eu' },
+      target: new SharedDbTarget(),
+      idempotencyKey: 'test-sample-pfx-1',
+      prismaClient: prisma,
+    });
+    const tid = res.tenantId;
+    expect(tid).toBeTruthy();
+
+    // Populated: pipeline cards + reference vehicles, fleet operators, integrations, audit.
+    expect(await prisma.entity.count({ where: { tenantId: tid } })).toBeGreaterThan(0);
+    expect(await prisma.fleetOperator.count({ where: { tenantId: tid } })).toBeGreaterThan(0);
+    expect(await prisma.integration.count({ where: { tenantId: tid } })).toBeGreaterThan(0);
+    // Every entity.companyId (when set) must resolve to a namespaced OrgNode in this tenant.
+    const ents = await prisma.entity.findMany({ where: { tenantId: tid, companyId: { not: null } }, select: { companyId: true } });
+    for (const e of ents) {
+      const node = await prisma.orgNode.findUnique({ where: { id: e.companyId } });
+      expect(node?.tenantId).toBe(tid);
+    }
+    // No staff users (sample omits them) — only the admin.
+    expect(await prisma.user.count({ where: { tenantId: tid } })).toBe(1);
+
+    // cleanup — FK-ordered
+    await prisma.subscription.deleteMany({ where: { tenantId: tid } });
+    await prisma.auditCascade.deleteMany({ where: { tenantId: tid } });
+    await prisma.auditEntry.deleteMany({ where: { tenantId: tid } });
+    await prisma.timelineEvent.deleteMany({ where: { tenantId: tid } });
+    await prisma.vehicleTimeline.deleteMany({ where: { tenantId: tid } });
+    await prisma.invoice.deleteMany({ where: { tenantId: tid } });
+    await prisma.fleetOperator.deleteMany({ where: { tenantId: tid } });
+    await prisma.integration.deleteMany({ where: { tenantId: tid } });
+    await prisma.rbacVersion.deleteMany({ where: { tenantId: tid } });
+    await prisma.entity.deleteMany({ where: { tenantId: tid } });
+    await prisma.userScope.deleteMany({ where: { tenantId: tid } });
+    await prisma.user.deleteMany({ where: { tenantId: tid } });
+    await prisma.fieldDef.deleteMany({ where: { tenantId: tid } });
+    await prisma.entityType.deleteMany({ where: { tenantId: tid } });
+    await prisma.stageDef.deleteMany({ where: { tenantId: tid } });
+    await prisma.stageConfig.deleteMany({ where: { tenantId: tid } });
+    await prisma.trackDef.deleteMany({ where: { tenantId: tid } });
+    await prisma.fieldRule.deleteMany({ where: { tenantId: tid } });
+    await prisma.crossTrigger.deleteMany({ where: { tenantId: tid } });
+    await prisma.role.deleteMany({ where: { tenantId: tid } });
+    await prisma.orgNode.deleteMany({ where: { tenantId: tid } });
+    await prisma.provisioningRun.deleteMany({ where: { tenantId: tid } });
+    await prisma.tenant.delete({ where: { id: tid } });
+  });
+
+  it('adminOverride.password makes the admin active and login-verifiable', async () => {
+    const argon2 = (await import('argon2')).default;
+    const { provisionTenant } = await import('../../server/src/domain/provisioning/provisionTenant.ts');
+    const { SharedDbTarget } = await import('../../server/src/domain/provisioning/target.ts');
+
+    // A spec whose admin has NO password (like the clean starter/sample templates):
+    // without an override the admin would be 'invited'. The override must flip it active.
+    const NOPW_SPEC = {
+      ...SMALL_SPEC,
+      adminUser: { idPrefix: 'u-admin', name: 'Account Admin', email: 'admin@change-me.example', roleId: 'group-admin', scopeType: 'group' },
+    };
+
+    const res = await provisionTenant({
+      blueprint: { spec: NOPW_SPEC }, inputs: { customerName: 'PwCo' },
+      target: new SharedDbTarget(), idempotencyKey: 'test-adminpw-1',
+      adminOverride: { email: 'boss@pwco.test', password: 'Sup3rSecret!' },
+      prismaClient: prisma,
+    });
+    const tid = res.tenantId;
+
+    const admin = await prisma.user.findFirst({ where: { tenantId: tid, email: 'boss@pwco.test' } });
+    expect(admin).not.toBeNull();
+    expect(admin.status).toBe('active');
+    expect(await argon2.verify(admin.passwordHash, 'Sup3rSecret!')).toBe(true);
+    // The login link is a /login (not /invite) URL when a password is set.
+    expect(res.adminLoginOrInviteLink).toContain('/login');
+
+    // cleanup
+    await prisma.subscription.deleteMany({ where: { tenantId: tid } });
+    await prisma.user.deleteMany({ where: { tenantId: tid } });
+    await prisma.stageDef.deleteMany({ where: { tenantId: tid } });
+    await prisma.stageConfig.deleteMany({ where: { tenantId: tid } });
+    await prisma.entityType.deleteMany({ where: { tenantId: tid } });
+    await prisma.trackDef.deleteMany({ where: { tenantId: tid } });
+    await prisma.role.deleteMany({ where: { tenantId: tid } });
+    await prisma.orgNode.deleteMany({ where: { tenantId: tid } });
+    await prisma.provisioningRun.deleteMany({ where: { tenantId: tid } });
+    await prisma.tenant.delete({ where: { id: tid } });
+  });
+
   it('rejects inputs that miss a required field', async () => {
     const { provisionTenant } = await import('../../server/src/domain/provisioning/provisionTenant.ts');
     const { SharedDbTarget } = await import('../../server/src/domain/provisioning/target.ts');

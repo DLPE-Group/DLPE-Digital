@@ -336,11 +336,13 @@ export const Track = ({ trackId, title, accent, items, stages, owner,
             <Icon name="plus" size={11} strokeWidth={2} /> New item
           </button>
         )}
-        <span className="headDiv" />
-        <div className="trackOwner">
-          <Avatar name={owner} size="sm" muted />
-          <span>{owner}</span>
-        </div>
+        {owner && <>
+          <span className="headDiv" />
+          <div className="trackOwner">
+            <Avatar name={owner} size="sm" muted />
+            <span>{owner}</span>
+          </div>
+        </>}
       </div>
 
       {isOpen ? (

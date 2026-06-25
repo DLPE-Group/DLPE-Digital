@@ -56,9 +56,10 @@ services:
         scope: RUN_TIME
         value: ""
 
-# POST_DEPLOY job: apply migrations (idempotent) + create the first platform admin.
-# Runs after each deploy; bootstrap-admin is idempotent and never resets an existing
-# admin's password, so re-runs are safe.
+# POST_DEPLOY job: apply migrations (idempotent) + create the first platform admin +
+# ensure the blueprint catalogue (starter/sample/demo templates) exists.
+# Runs after each deploy; every step is idempotent (upserts, never resets an existing
+# admin's password), so re-runs are safe.
 jobs:
   - name: bootstrap-admin
     kind: POST_DEPLOY
@@ -69,7 +70,7 @@ jobs:
     dockerfile_path: Dockerfile
     source_dir: /
     instance_size_slug: apps-s-1vcpu-1gb
-    run_command: npx prisma migrate deploy && npm run bootstrap:admin
+    run_command: npx prisma migrate deploy && npm run bootstrap:admin && npm run bootstrap:blueprints
     envs:
       - key: NODE_ENV
         value: production

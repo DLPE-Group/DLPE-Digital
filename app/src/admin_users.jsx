@@ -1,6 +1,6 @@
 import React from 'react';
 import { Icon } from './icons.jsx';
-import { GROUP_TREE, ROLES, FIELD_RULES, DATA_TYPES, ADMIN_USERS, SCOPE_TYPE_LABEL, DEFAULT_RULE } from './admin_data.js';
+import { ROLES, FIELD_RULES, DATA_TYPES, SCOPE_TYPE_LABEL, DEFAULT_RULE } from './admin_data.js';
 import { api } from './api/client.js';
 
 /* ============================================================
@@ -11,11 +11,16 @@ import { api } from './api/client.js';
 const statusPillClass = { active: 'ok', invited: 'warn', disabled: 'late' };
 const statusLabel = { active: 'Active', invited: 'Invited', disabled: 'Disabled' };
 
-export const UserDetail = ({ user, onBack, onPreviewAs }) => {
+export const UserDetail = ({ user, onBack, onPreviewAs, roles, scopeTargets }) => {
   const [secondary, setSecondary] = React.useState(user.secondary);
   const [adding, setAdding] = React.useState(false);
   const [summary] = React.useState(user.summary);
   const [status, setStatus] = React.useState(user.status);
+  // Real tenant roles + scope places for the secondary-scope adder (no demo).
+  const roleList = roles && roles.length ? roles : ROLES;
+  const scopeChoices = (scopeTargets?.company && scopeTargets.company.length)
+    ? scopeTargets.company
+    : (scopeTargets?.country || []);
 
   const toggleStatus = async () => {
     const next = status === 'disabled' ? 'active' : 'disabled';
@@ -40,17 +45,19 @@ export const UserDetail = ({ user, onBack, onPreviewAs }) => {
     return () => { cancelled = true; };
   }, [user.id]);
 
-  const addScope = async (scope, role) => {
-    const roleId = (ROLES.find((r) => r.name === role) || {}).id || null;
+  // roleId comes straight from the real-roles dropdown; resolve its label for display.
+  const addScope = async (scopeLabel, roleId) => {
+    const roleLabel = (roleList.find((r) => r.id === roleId) || {}).name || roleId;
     let created;
     try {
       created = await api.post(`/admin/users/${user.id}/scopes`,
-        { scopeType: 'company', scopeLabel: scope, roleLabel: role, roleId });
+        { scopeType: 'company', scopeLabel, roleLabel, roleId });
     } catch (e) {
-      console.error('Failed to add scope', e);
-      created = { id: 'tmp-' + Date.now() };
+      // Surface the failure instead of faking success with a temp row.
+      window.alert(e?.message || 'Failed to add scope');
+      return;
     }
-    setSecondary((s) => [...s, { id: created.id, scope, role }]);
+    setSecondary((s) => [...s, { id: created.id, scope: scopeLabel, role: roleLabel }]);
     setAdding(false);
   };
 
@@ -131,13 +138,14 @@ export const UserDetail = ({ user, onBack, onPreviewAs }) => {
           ))}
           {adding && (
             <div className="addScopeRow">
-              <select className="textInput" id="newScopeSel" defaultValue="Belgium">
-                <option>Belgium</option><option>Netherlands</option><option>Germany</option><option>Luxembourg</option><option>Amsterdam Branch</option>
+              <select className="textInput" id="newScopeSel" defaultValue={scopeChoices[0] || ''}>
+                {scopeChoices.length === 0 && <option value="">No companies in scope</option>}
+                {scopeChoices.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
-              <select className="textInput" id="newRoleSel" defaultValue="Sales manager — read only">
-                <option>Sales manager — read only</option><option>Sales rep</option><option>Ops coordinator</option><option>Finance manager</option>
+              <select className="textInput" id="newRoleSel" defaultValue={(roleList[0] || {}).id || ''}>
+                {roleList.map(r => <option key={r.id} value={r.id}>{r.name}{r.system ? '' : ' (custom)'}</option>)}
               </select>
-              <button className="cta" onClick={() => addScope(document.getElementById('newScopeSel').value, document.getElementById('newRoleSel').value)}>Add</button>
+              <button className="cta" disabled={!scopeChoices.length} onClick={() => addScope(document.getElementById('newScopeSel').value, document.getElementById('newRoleSel').value)}>Add</button>
               <button className="cta ghost" onClick={() => setAdding(false)}>Cancel</button>
             </div>
           )}
@@ -169,23 +177,34 @@ export const UserDetail = ({ user, onBack, onPreviewAs }) => {
   );
 };
 
-/* ---- scope targets, walked from the group tree ---- */
-const ALL_COMPANIES = [];
-const ALL_COUNTRIES = [];
-(function walk(n) {
-  if (n.kind === 'company') ALL_COMPANIES.push(n.name);
-  if (n.kind === 'country') ALL_COUNTRIES.push(n.name);
-  (n.children || []).forEach(walk);
-})(GROUP_TREE);
-
-const SCOPE_TARGETS = {
-  group: ['Entire group'],
-  region: ['Benelux'],
-  country: ALL_COUNTRIES,
-  multi_company: ALL_COMPANIES,   // pick 2+
-  company: ALL_COMPANIES,
+// Generic (non-demo) scope targets used until the real org structure loads, and
+// as the fallback if it can't be fetched — never the demo Benelux/Rotterdam set.
+const GENERIC_SCOPE_TARGETS = {
+  group: ['Entire group'], region: [], country: [], multi_company: [], company: [],
   self: ['Own / assigned records only'],
 };
+
+// Flatten the tenant's real org tree into scope-target option lists by node kind.
+function buildScopeTargets(root) {
+  const companies = [], countries = [], regions = [];
+  const walk = (n) => {
+    if (!n) return;
+    const k = String(n.kind || '').toLowerCase();
+    if (k === 'company') companies.push(n.name);
+    else if (k === 'country') countries.push(n.name);
+    else if (k === 'region') regions.push(n.name);
+    (n.children || []).forEach(walk);
+  };
+  walk(root);
+  return {
+    group: ['Entire group'],
+    region: regions,
+    country: countries,
+    multi_company: companies,
+    company: companies,
+    self: ['Own / assigned records only'],
+  };
+}
 
 /* Derive a live effective-permissions summary from the chosen role + scope.
    Pulls field restrictions straight out of the RBAC rule set so the invite
@@ -251,22 +270,26 @@ function adaptUser(u) {
   };
 }
 
-const ScopeEditor = ({ scopeType, setScopeType, target, setTarget, roleId, setRoleId, compact }) => {
-  const targets = SCOPE_TARGETS[scopeType] || [];
+const ScopeEditor = ({ scopeType, setScopeType, target, setTarget, roleId, setRoleId, compact, roles, scopeTargets }) => {
+  const ST = scopeTargets || GENERIC_SCOPE_TARGETS;
+  const targets = ST[scopeType] || [];
   const multi = scopeType === 'multi_company';
+  // Use the tenant's real roles when available; fall back to demo ROLES only if
+  // the API list hasn't loaded (keeps the literal-id demo tenant working too).
+  const roleList = roles && roles.length ? roles : ROLES;
   return (
     <div className="scopeEditor">
       <div className="seGrid">
         <label className="seField">
           <span className="fl">Scope level</span>
-          <select className="textInput" value={scopeType} onChange={e => { setScopeType(e.target.value); setTarget(SCOPE_TARGETS[e.target.value][0] ? (e.target.value === 'multi_company' ? [] : SCOPE_TARGETS[e.target.value][0]) : ''); }}>
+          <select className="textInput" value={scopeType} onChange={e => { const v = e.target.value; setScopeType(v); setTarget(v === 'multi_company' ? [] : ((ST[v] || [])[0] || '')); }}>
             {Object.keys(SCOPE_TYPE_LABEL).map(k => <option key={k} value={k}>{SCOPE_TYPE_LABEL[k]}</option>)}
           </select>
         </label>
         <label className="seField">
           <span className="fl">Role</span>
           <select className="textInput" value={roleId} onChange={e => setRoleId(e.target.value)}>
-            {ROLES.map(r => <option key={r.id} value={r.id}>{r.name}{r.system ? '' : ' (custom)'}</option>)}
+            {roleList.map(r => <option key={r.id} value={r.id}>{r.name}{r.system ? '' : ' (custom)'}</option>)}
           </select>
         </label>
       </div>
@@ -299,25 +322,36 @@ const ScopeEditor = ({ scopeType, setScopeType, target, setTarget, roleId, setRo
   );
 };
 
-export const CreateUserPanel = ({ onClose, onCreate }) => {
+export const CreateUserPanel = ({ onClose, onCreate, roles, scopeTargets }) => {
+  const ST = scopeTargets || GENERIC_SCOPE_TARGETS;
   const genPw = () => {
     const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ', b = 'abcdefghijkmnpqrstuvwxyz', d = '23456789';
     const pick = s => s[Math.floor(Math.random() * s.length)];
     return pick(a) + pick(b) + pick(b) + pick(b) + pick(b) + '-' + pick(d) + pick(d) + pick(d) + pick(d);
   };
+  // Tenant's real roles when available; fall back to demo ROLES until they load.
+  const roleList = roles && roles.length ? roles : ROLES;
+  // Prefer a non-admin role as the default (a sales-rep-like role if present),
+  // else the first real role — never a hardcoded id that may not exist in-tenant.
+  const defaultRoleId = (roleList.find(r => /sales-rep$/.test(r.id)) || roleList[0] || {}).id || '';
   const [name, setName] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [method, setMethod] = React.useState('password');
   const [pw, setPw] = React.useState(genPw);
   const [scopeType, setScopeType] = React.useState('company');
-  const [target, setTarget] = React.useState(SCOPE_TARGETS.company[0]);
-  const [roleId, setRoleId] = React.useState('sales-rep');
+  const [target, setTarget] = React.useState((ST.company || [])[0] || '');
+  const [roleId, setRoleId] = React.useState(defaultRoleId);
   const [secondary, setSecondary] = React.useState([]);
   const [addingSec, setAddingSec] = React.useState(false);
 
+  // Once roles load (or change), keep the selection valid.
+  React.useEffect(() => {
+    if (!roleList.some(r => r.id === roleId)) setRoleId(defaultRoleId);
+  }, [roleList, roleId, defaultRoleId]);
+
   const scopeLabel = Array.isArray(target) ? (target.length ? target.join(' + ') : '—') : target;
   const summary = deriveSummary(roleId, scopeLabel);
-  const role = ROLES.find(r => r.id === roleId);
+  const role = roleList.find(r => r.id === roleId);
   const credsOk = method === 'email' || pw.trim().length >= 6;
   const valid = name.trim() && /.+@.+\..+/.test(email) && credsOk && (Array.isArray(target) ? target.length >= 2 : !!target);
 
@@ -327,7 +361,7 @@ export const CreateUserPanel = ({ onClose, onCreate }) => {
     const initials = name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0]).join('').toUpperCase();
     onCreate({
       id: 'u-' + Date.now(), name: name.trim(), email: email.trim(), initials,
-      scopeLabel, scopeType, role: role.name, roleId,
+      scopeLabel, scopeType, role: role?.name ?? roleId, roleId,
       password: method === 'password' ? pw.trim() : undefined,
       lastSeen: method === 'email' ? 'Never · invite sent just now' : 'Never · created just now',
       status: method === 'email' ? 'invited' : 'active',
@@ -352,7 +386,7 @@ export const CreateUserPanel = ({ onClose, onCreate }) => {
               <label className="seField"><span className="fl">Full name</span>
                 <input className="textInput" autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Marie Dubois" /></label>
               <label className="seField"><span className="fl">Work email</span>
-                <input className="textInput" value={email} onChange={e => setEmail(e.target.value)} placeholder="name@group.eu" /></label>
+                <input className="textInput" value={email} onChange={e => setEmail(e.target.value)} placeholder="name@example.com" /></label>
             </div>
           </div>
 
@@ -375,7 +409,7 @@ export const CreateUserPanel = ({ onClose, onCreate }) => {
 
           <div className="panelSection">
             <div className="psHead">Primary scope &amp; role</div>
-            <ScopeEditor scopeType={scopeType} setScopeType={setScopeType} target={target} setTarget={setTarget} roleId={roleId} setRoleId={setRoleId} />
+            <ScopeEditor scopeType={scopeType} setScopeType={setScopeType} target={target} setTarget={setTarget} roleId={roleId} setRoleId={setRoleId} roles={roles} scopeTargets={scopeTargets} />
             <div className="roleHint"><Icon name="lock" size={11} /> {role.desc}</div>
           </div>
 
@@ -395,13 +429,13 @@ export const CreateUserPanel = ({ onClose, onCreate }) => {
             ))}
             {addingSec && (
               <div className="addScopeRow">
-                <select className="textInput" id="secScope" defaultValue={ALL_COUNTRIES[1]}>
-                  {[...ALL_COUNTRIES, ...ALL_COMPANIES].map(c => <option key={c} value={c}>{c}</option>)}
+                <select className="textInput" id="secScope" defaultValue={(ST.company || [])[0] || ''}>
+                  {[...(ST.country || []), ...(ST.company || [])].map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
-                <select className="textInput" id="secRole" defaultValue="Sales manager — read only">
-                  <option>Sales manager — read only</option><option>Sales rep</option><option>Ops coordinator</option><option>Finance manager</option><option>Read-only group viewer</option>
+                <select className="textInput" id="secRole" defaultValue={(roleList[0] || {}).id || ''}>
+                  {roleList.map(r => <option key={r.id} value={r.id}>{r.name}{r.system ? '' : ' (custom)'}</option>)}
                 </select>
-                <button className="cta" onClick={() => { setSecondary(a => [...a, { scope: document.getElementById('secScope').value, role: document.getElementById('secRole').value, scopeType: 'company' }]); setAddingSec(false); }}>Add</button>
+                <button className="cta" onClick={() => { const rid = document.getElementById('secRole').value; const rl = (roleList.find(r => r.id === rid) || {}).name || rid; setSecondary(a => [...a, { scope: document.getElementById('secScope').value, role: rl, roleId: rid, scopeType: 'company' }]); setAddingSec(false); }}>Add</button>
                 <button className="cta ghost" onClick={() => setAddingSec(false)}>Cancel</button>
               </div>
             )}
@@ -435,28 +469,44 @@ export const CreateUserPanel = ({ onClose, onCreate }) => {
 };
 
 export const UsersView = ({ onPreviewAs }) => {
-  const [users, setUsers] = React.useState(ADMIN_USERS);
+  const [users, setUsers] = React.useState([]);
+  const [roles, setRoles] = React.useState([]);
+  const [scopeTargets, setScopeTargets] = React.useState(null);
   const [openUser, setOpenUser] = React.useState(null);
   const [q, setQ] = React.useState('');
   const [scopeFilter, setScopeFilter] = React.useState('all');
   const [creating, setCreating] = React.useState(false);
   const [importing, setImporting] = React.useState(false);
-  const [csvText, setCsvText] = React.useState('name,email,roleId\nJane Doe,j.doe@group.eu,sales-rep');
+  const [csvText, setCsvText] = React.useState('name,email,roleId\nJane Doe,jane@example.com,<role-id>');
   const [importMsg, setImportMsg] = React.useState(null);
   const [flashId, setFlashId] = React.useState(null);
 
   // Load users from the API (fallback to seed import on failure).
   React.useEffect(() => {
     let cancelled = false;
+    // The tenant's real users always win — even an empty list — so no demo user shows.
     api.get('/admin/users').then((rows) => {
-      if (cancelled || !Array.isArray(rows) || rows.length === 0) return;
+      if (cancelled || !Array.isArray(rows)) return;
       setUsers(rows.map(adaptUser));
-    }).catch(() => { /* keep ADMIN_USERS fallback */ });
+    }).catch(() => { /* leave empty on network error */ });
+    // Real tenant roles for the create form's role picker (namespaced per tenant,
+    // e.g. `<slug>-sales-rep`). Without this the picker offers literal demo ids
+    // that don't exist in a provisioned tenant, so the create would FK-fail.
+    api.get('/admin/roles').then((rows) => {
+      if (cancelled || !Array.isArray(rows)) return;
+      setRoles(rows.map((r) => ({ id: r.id, name: r.name, system: r.system })));
+    }).catch(() => { /* fall back to demo ROLES in the picker */ });
+    // Real org structure → scope-target options (companies/countries/regions),
+    // so the scope picker shows THIS tenant's places, not the demo's Benelux.
+    api.get('/admin/structure').then((root) => {
+      if (cancelled || !root) return;
+      setScopeTargets(buildScopeTargets(root));
+    }).catch(() => { /* fall back to generic scope targets */ });
     return () => { cancelled = true; };
   }, []);
 
   if (openUser) {
-    return <UserDetail user={openUser} onBack={() => setOpenUser(null)} onPreviewAs={onPreviewAs} />;
+    return <UserDetail user={openUser} onBack={() => setOpenUser(null)} onPreviewAs={onPreviewAs} roles={roles} scopeTargets={scopeTargets} />;
   }
 
   const handleCreate = async (u) => {
@@ -476,10 +526,11 @@ export const UsersView = ({ onPreviewAs }) => {
       setUsers(prev => [adapted, ...prev.filter(p => p.id !== adapted.id)]);
       setFlashId(adapted.id);
     } catch (e) {
+      // Surface the real failure instead of faking success with an optimistic
+      // insert — a wrong role id or hit plan limit must not look like it worked.
       console.error('Failed to create user', e);
-      // optimistic local insert so the UI still reflects the new user
-      setUsers(prev => [u, ...prev]);
-      setFlashId(u.id);
+      window.alert(e?.message || 'Could not create user.');
+      return;
     }
     setTimeout(() => setFlashId(null), 2600);
   };
@@ -561,7 +612,7 @@ export const UsersView = ({ onPreviewAs }) => {
         ))}
       </div>
 
-      {creating && <CreateUserPanel onClose={() => setCreating(false)} onCreate={handleCreate} />}
+      {creating && <CreateUserPanel onClose={() => setCreating(false)} onCreate={handleCreate} roles={roles} scopeTargets={scopeTargets} />}
 
       {importing && (
         <div className="overlay" onClick={() => setImporting(false)}>

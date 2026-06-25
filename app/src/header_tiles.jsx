@@ -35,7 +35,7 @@ export const AppHeader = ({ view, setView }) => (
       <button className="iconBtn" title="Settings">
         <Icon name="settings" size={16} />
       </button>
-      <Avatar name="Markus Weber" size="" />
+      <Avatar name="Account" size="" />
     </div>
   </header>
 );

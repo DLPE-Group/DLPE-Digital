@@ -49,8 +49,10 @@ export interface ProvisionTenantArgs {
    *   used verbatim. Admin/user ids are used verbatim.
    */
   idMode?: 'prefixed' | 'literal';
-  /** Override the blueprint's admin user name/email (per-onboarding). Field-wise merge. */
-  adminOverride?: { name?: string; email?: string };
+  /** Override the blueprint's admin user name/email/password (per-onboarding). Field-wise
+   *  merge. Supplying a password makes the admin 'active' (can log in immediately);
+   *  omitting it falls back to the spec's admin (invite flow when the spec has none). */
+  adminOverride?: { name?: string; email?: string; password?: string };
   /** Override the default subscription plan key (else spec.defaultPlanKey ?? 'starter'). */
   planKey?: string;
   /** Optional prisma client override — defaults to the owner (bypass-RLS) client.
@@ -111,6 +113,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
     ...spec.adminUser,
     ...(args.adminOverride?.name ? { name: args.adminOverride.name } : {}),
     ...(args.adminOverride?.email ? { email: args.adminOverride.email } : {}),
+    ...(args.adminOverride?.password ? { password: args.adminOverride.password } : {}),
   };
   const idMode = args.idMode ?? 'prefixed';
 
@@ -219,6 +222,12 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
       // Prefix for all spec-local IDs to avoid unique clashes across tenants.
       // In literal mode the prefix is empty so IDs are used verbatim.
       const pfx = idMode === 'literal' ? '' : `${slug}-`;
+
+      // Namespace a spec-local reference id (OrgNode/User FK targets) so seed
+      // cross-references resolve after prefixing. In literal mode pfx is '' so
+      // this is a no-op; null/empty refs pass through untouched.
+      const prefId = <T extends string | null | undefined>(id: T): T =>
+        (id ? (`${pfx}${id}` as T) : id);
 
       // 5b. Org tree (parents before children)
       const orgRows: Prisma.OrgNodeCreateManyInput[] = [];
@@ -420,6 +429,8 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
             // explicit id and the `veh-<plate>` fallback — so re-provisioning a
             // seed-bearing blueprint can't clash on the global Entity.id PK.
             if (idMode === 'prefixed') data.id = `${pfx}${data.id}`;
+            // companyId points at an OrgNode created with the same prefix — namespace it too.
+            data.companyId = prefId(data.companyId);
             await tx.entity.create({ data });
           } else {
             // Pipeline entity (CardSeed-shaped)
@@ -443,7 +454,9 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
               awaitingSign: e.awaitingSign === true,
             };
             const data = cardToEntityCreate(c, metaCtx);
-            // In literal mode, id from CardSeed is already verbatim; in prefixed it is prefixed above
+            // In literal mode, id from CardSeed is already verbatim; in prefixed it is prefixed above.
+            // companyId points at an OrgNode created with the same prefix — namespace it too.
+            data.companyId = prefId(data.companyId);
             await tx.entity.create({ data });
           }
         }
@@ -489,7 +502,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
             data: {
               name: String(pf.operator ?? ''),
               contact: typeof pf.contact === 'string' ? pf.contact : null,
-              companyId: operatorCompanyId,
+              companyId: prefId(operatorCompanyId),
               meta: { messages: 3 },
               tenantId,
             },
@@ -511,6 +524,9 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
               // Portal vehicles get a `veh-<plate>` id by default — namespace it per
               // tenant in prefixed mode to avoid clashing with another tenant's vehicles.
               if (idMode === 'prefixed') vData.id = `${pfx}${vData.id}`;
+              // vs.companyId is a raw spec ref (explicit or the raw operatorCompanyId
+              // fallback) — namespace it once here so it resolves to the prefixed OrgNode.
+              vData.companyId = prefId(vData.companyId);
               await tx.entity.create({ data: vData });
             }
           }
@@ -524,7 +540,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
                   value: typeof inv.value === 'number' ? inv.value : null,
                   due: typeof inv.due === 'string' ? inv.due : null,
                   status: typeof inv.status === 'string' ? inv.status : null,
-                  companyId: operatorCompanyId,
+                  companyId: prefId(operatorCompanyId),
                   tenantId,
                 },
               });
@@ -539,7 +555,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
               data: {
                 name: String(fo.name ?? ''),
                 contact: typeof fo.contact === 'string' ? fo.contact : null,
-                companyId: typeof fo.companyId === 'string' ? fo.companyId : null,
+                companyId: prefId(typeof fo.companyId === 'string' ? fo.companyId : null),
                 meta: (fo.meta as Prisma.InputJsonValue) ?? Prisma.JsonNull,
                 tenantId,
               },
@@ -701,7 +717,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
         // Reports (FK: createdById → User)
         if (Array.isArray(extrasForUsers.reports)) {
           for (const r of extrasForUsers.reports as Array<Record<string, unknown>>) {
-            const createdById = typeof r.createdById === 'string' ? r.createdById : null;
+            const createdById = prefId(typeof r.createdById === 'string' ? r.createdById : null);
             await tx.report.create({
               data: {
                 title: String(r.title ?? ''),
@@ -718,7 +734,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
         // Dashboard layout (FK: userId → User)
         if (extrasForUsers.dashboard) {
           const dash = extrasForUsers.dashboard as Record<string, unknown>;
-          const dashUserId = typeof dash.userId === 'string' ? dash.userId : null;
+          const dashUserId = prefId(typeof dash.userId === 'string' ? dash.userId : null);
           if (dashUserId) {
             await tx.dashboardLayout.create({
               data: {

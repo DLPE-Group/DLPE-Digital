@@ -17,7 +17,7 @@ platformRouter.post('/tenants', async (req, res) => {
     blueprintKey?: string;
     inputs?: Record<string, unknown>;
     idempotencyKey?: string;
-    admin?: { name?: string; email?: string };
+    admin?: { name?: string; email?: string; password?: string };
     planKey?: string;
   };
 
@@ -27,6 +27,12 @@ platformRouter.post('/tenants', async (req, res) => {
 
   if (admin?.email !== undefined && !z.string().email().safeParse(admin.email).success) {
     return res.status(400).json({ error: 'admin.email must be a valid email' });
+  }
+
+  // An explicit admin password makes the admin active (can log in immediately);
+  // omitting it keeps the blueprint's behaviour (invite flow for the clean templates).
+  if (admin?.password !== undefined && !z.string().min(8).safeParse(admin.password).success) {
+    return res.status(400).json({ error: 'admin.password must be at least 8 characters' });
   }
 
   const blueprint = await prisma.blueprint.findUnique({ where: { key: blueprintKey } });

@@ -62,22 +62,22 @@ export const MAPPING_PROFILES = {
 
 const TRANSFORM_EXAMPLES = {
   'CRM': ['Combine first and last name into a full name', 'Join billing street, postcode and city into one address line'],
-  'Accounting & Finance': ['Compute net amount as total ÷ (1 + VAT rate)', 'Format a label like "INV-1187 · €2,460 · due Jun 27"'],
+  'Accounting & Finance': ['Compute net amount as total ÷ (1 + VAT rate)', 'Format a label like "INV-001 · €2,460 · due in 30 days"'],
   'ERP & Supply chain': ['Concatenate PO number and line position into a unique key', 'Build a line label from quantity × material description'],
   'Productivity & Comms': ['Build a message from card title and its new status', 'Combine track and owner into a routing tag'],
 };
 
-/* Plausible sample values for the fallback / preview. */
+/* Generic placeholder sample values for the fallback / preview (no real PII). */
 const SAMPLE_VALUES = {
-  'Contact.FirstName': 'Anke', 'Contact.LastName': 'Vermeulen', 'Account.Name': 'Brussels Energy SA',
-  'Account.BillingStreet': 'Rue de la Loi 16', 'Account.BillingCity': 'Brussels', 'Account.BillingPostalCode': '1000',
-  'Account.BillingCountry': 'BE', 'Contact.Email': 'a.vermeulen@brusselsenergy.com', 'Contact.Phone': '+32 2 555 0112',
-  'Opportunity.Amount': '2460000', 'Invoice.Number': 'INV-1187', 'Invoice.TotalAmount': '2980.60',
+  'Contact.FirstName': 'Jane', 'Contact.LastName': 'Doe', 'Account.Name': 'Acme Corp',
+  'Account.BillingStreet': '1 Main Street', 'Account.BillingCity': 'Anytown', 'Account.BillingPostalCode': '00000',
+  'Account.BillingCountry': 'EU', 'Contact.Email': 'jane.doe@example.com', 'Contact.Phone': '+00 000 000 000',
+  'Opportunity.Amount': '120000', 'Invoice.Number': 'INV-001', 'Invoice.TotalAmount': '2980.60',
   'Invoice.NetAmount': '2463.31', 'Invoice.VATAmount': '517.29', 'Invoice.VATRate': '0.21', 'Currency': 'EUR',
-  'Invoice.DueDate': '2026-06-27', 'PurchaseOrder.Number': 'PO-2026-118', 'OrderLine.Position': '20',
-  'Material.Number': 'BRK-7702', 'Material.Description': 'Brake disc set', 'Quantity': '4', 'UnitPrice': '310.00',
-  'Vendor.Name': 'Bosch Mobility', 'card.title': 'Vehicle ordered', 'card.statusChange': 'In transit',
-  'card.track': 'operations', 'card.owner': 'Tom Janssens', 'user.mention': '@tom',
+  'Invoice.DueDate': '2026-06-27', 'PurchaseOrder.Number': 'PO-001', 'OrderLine.Position': '20',
+  'Material.Number': 'SKU-001', 'Material.Description': 'Sample item', 'Quantity': '4', 'UnitPrice': '310.00',
+  'Vendor.Name': 'Sample Supplier', 'card.title': 'Order created', 'card.statusChange': 'In progress',
+  'card.track': 'operations', 'card.owner': 'Jane Doe', 'user.mention': '@jane',
 };
 const sampleFor = (f) => SAMPLE_VALUES[f] || (f.split('.').pop());
 

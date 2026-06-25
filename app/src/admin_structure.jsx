@@ -1,6 +1,6 @@
 import React from 'react';
 import { Icon } from './icons.jsx';
-import { GROUP_TREE, COUNTRY_DEFAULTS, DATA_SHARING, ADMIN_USERS } from './admin_data.js';
+import { COUNTRY_DEFAULTS } from './admin_data.js';
 import { api } from './api/client.js';
 import { SimBadge } from './primitives.jsx';
 
@@ -194,42 +194,49 @@ const AddCompanyPanel = ({ country, childKind = 'company', onClose, onSave }) =>
 };
 
 export const GroupStructureView = () => {
-  const [tree, setTree] = React.useState(GROUP_TREE);
-  const [selectedId, setSelectedId] = React.useState('co-nl');
+  // Tenant's real org tree / data-sharing / user count — never the demo fixtures.
+  const [tree, setTree] = React.useState(null);
+  const [selectedId, setSelectedId] = React.useState(null);
   const [expanded, setExpanded] = React.useState({});
   const [query, setQuery] = React.useState('');
   const [addUnder, setAddUnder] = React.useState(null);
-  const [sharingRows, setSharingRows] = React.useState(DATA_SHARING);
-  const [sharing, setSharing] = React.useState(
-    Object.fromEntries(DATA_SHARING.map(d => [d.type, d.mode]))
-  );
+  const [sharingRows, setSharingRows] = React.useState([]);
+  const [sharing, setSharing] = React.useState({});
+  const [userCount, setUserCount] = React.useState(null);
   const [renaming, setRenaming] = React.useState(false);
   const [draft, setDraft] = React.useState({ name: '', overrides: {} });
   const [savingStruct, setSavingStruct] = React.useState(false);
 
-  // Load the org tree + data-sharing from the API (fallback to seed on failure).
+  // Load the org tree + data-sharing + user count from the API.
   React.useEffect(() => {
     let cancelled = false;
     api.get('/admin/structure').then((root) => {
       if (cancelled || !root) return;
-      setTree(normalizeTree(root));
-    }).catch(() => { /* keep GROUP_TREE fallback */ });
+      const t = normalizeTree(root);
+      setTree(t);
+      setSelectedId((cur) => cur || t.id);   // select the root by default
+    }).catch(() => { /* leave empty on network error */ });
     api.get('/admin/data-sharing').then((rows) => {
-      if (cancelled || !Array.isArray(rows) || rows.length === 0) return;
+      if (cancelled || !Array.isArray(rows)) return;
       setSharingRows(rows);
       setSharing(Object.fromEntries(rows.map(d => [d.type, d.mode])));
-    }).catch(() => { /* keep DATA_SHARING fallback */ });
+    }).catch(() => { /* leave empty on network error */ });
+    api.get('/admin/users').then((rows) => {
+      if (cancelled || !Array.isArray(rows)) return;
+      setUserCount(rows.length);
+    }).catch(() => { /* leave unknown on network error */ });
     return () => { cancelled = true; };
   }, []);
 
   const toggle = (id) => setExpanded(e => ({ ...e, [id]: e[id] === false ? true : false }));
-  const path = findPath(tree, selectedId) || [tree];
-  const node = path[path.length - 1];
+  // Null-safe until the tree loads (an early return below renders a loading state).
+  const path = tree ? (findPath(tree, selectedId) || [tree]) : [];
+  const node = path[path.length - 1] || { id: null, name: '', overrides: {}, children: [] };
   const parent = path.length > 1 ? path[path.length - 2] : null;
 
   const counts = React.useMemo(() => {
     let countries = 0, companies = 0, regions = 0;
-    const walk = n => { if (n.kind === 'country') countries++; if (n.kind === 'company') companies++; if (n.kind === 'region') regions++; (n.children || []).forEach(walk); };
+    const walk = n => { if (!n) return; if (n.kind === 'country') countries++; if (n.kind === 'company') companies++; if (n.kind === 'region') regions++; (n.children || []).forEach(walk); };
     walk(tree);
     return { countries, companies, regions };
   }, [tree]);
@@ -305,6 +312,11 @@ export const GroupStructureView = () => {
     draft.name !== node.name ||
     JSON.stringify(draft.overrides || {}) !== JSON.stringify(node.overrides || {});
 
+  // Until the tenant's org tree loads, show a neutral placeholder — never the demo tree.
+  if (!tree) {
+    return <div className="view"><div className="emptyHint" style={{ margin: 24 }}>Loading organisation structure…</div></div>;
+  }
+
   const patchNodeInTree = (id, patch) => {
     setTree(prev => {
       const clone = JSON.parse(JSON.stringify(prev));
@@ -359,10 +371,10 @@ export const GroupStructureView = () => {
       </div>
 
       <div className="viewStats" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
-        <div className="viewStat"><div className="l">Countries</div><div className="v">{counts.countries}</div><div className="s">NL · BE · LU · DE</div></div>
+        <div className="viewStat"><div className="l">Countries</div><div className="v">{counts.countries}</div><div className="s">in the org tree</div></div>
         <div className="viewStat"><div className="l">Companies</div><div className="v">{counts.companies}</div><div className="s">legal entities / branches</div></div>
-        <div className="viewStat"><div className="l">Regions</div><div className="v">{counts.regions}</div><div className="s">Benelux + DE direct</div></div>
-        <div className="viewStat good"><div className="l">Users</div><div className="v">{ADMIN_USERS.length}</div><div className="s">across all scopes</div></div>
+        <div className="viewStat"><div className="l">Regions</div><div className="v">{counts.regions}</div><div className="s">grouping countries</div></div>
+        <div className="viewStat good"><div className="l">Users</div><div className="v">{userCount ?? '—'}</div><div className="s">across all scopes</div></div>
       </div>
 
       <div className="structLayout">

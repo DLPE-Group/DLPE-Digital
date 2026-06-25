@@ -20,18 +20,24 @@ import { ReportsView } from './reports.jsx';
 import {
   SALES_STAGES, OPS_STAGES, WORKSHOP_STAGES, FINANCE_STAGES,
 } from './data.js';
-import { ADMIN_USERS, ROLES } from './admin_data.js';
 import { api, setPreviewAs } from './api/client.js';
 import { useAuth } from './api/auth.jsx';
 
 // Map a card to the server action that drives it — mirrors resolveFlow().
+// Keyed on generic signals (track + CTA + stage), not demo ids.
 const flowActionName = (item) => {
-  if (item.id === 's5' && item.stageId !== 'signed') return 'signContract';
-  if (item.id === 'f2') return 'sendDunning';
-  if (item.id === 'w4') return 'approvePeppol';
-  if (item.id === 'o3') return 'planWorkshopVisit';
-  if (item.id === 'o5' || item.stageId === 'pickup') return 'notifyPickup';
-  if (item.stageId === 'to_make') return 'generateInvoice';
+  const track = String(item.track || '').toLowerCase();
+  const cta = String(item.cta || '').toLowerCase();
+  const stage = String(item.stageId || '').toLowerCase();
+  const type = String(item.type || '').toUpperCase();
+  const isSales = track.includes('sale'), isFinance = track.includes('financ'),
+        isWorkshop = track.includes('workshop'), isOps = track.includes('oper');
+  if (isSales && (cta.includes('sign') || item.awaitingSign || stage === 'contract' || stage === 'signed')) return 'signContract';
+  if (isFinance && (cta.includes('dun') || cta.includes('remind') || stage === 'overdue' || item.status === 'red' || item.status === 'late')) return 'sendDunning';
+  if ((isFinance || type === 'INVOICE') && (cta.includes('invoice') || stage === 'to_make' || stage === 'to_create')) return 'generateInvoice';
+  if (isWorkshop && (cta.includes('approve') || stage.includes('approv'))) return 'approvePeppol';
+  if ((isOps || isWorkshop) && (cta.includes('pickup') || cta.includes('collect') || stage === 'pickup')) return 'notifyPickup';
+  if (isOps || isWorkshop) return 'planWorkshopVisit';
   return 'sendFollowUp';
 };
 
@@ -218,9 +224,11 @@ const App = () => {
   const { t } = useT();
   const { me, logout } = useAuth();
   // "Admin" = group-admin (single source of truth, mirrors the server's
-  // requireAdmin). Gates the admin/integrations/audit nav + views and the
-  // admin-only preview-as capability.
-  const isAdmin = me?.roleId === 'group-admin';
+  // requireAdmin/roleIdIsAdmin). Gates the admin/integrations/audit nav + views
+  // and the admin-only preview-as capability. Provisioned tenants namespace the
+  // role id as `<slug>-group-admin`, so match the suffix exactly like the server
+  // (ADMIN_ROLE_IDS.has(roleId) || roleId.endsWith('-group-admin')).
+  const isAdmin = !!me?.roleId && (me.roleId === 'group-admin' || me.roleId.endsWith('-group-admin'));
   const isPlatformAdmin = !!me?.platformAdmin;
   const ADMIN_ONLY_VIEWS = ['structure', 'users', 'roles', 'datamodel', 'integrations', 'audit'];
   const [active, setActive] = React.useState('overview');
@@ -439,9 +447,14 @@ const App = () => {
     if (active === 'users') return <UsersView onPreviewAs={isAdmin ? ((u) => setPreviewUser(u)) : null} />;
     if (active === 'roles') return rbacRole
       ? <RbacConfigurator initialRole={rbacRole} onBack={() => setRbacRole(null)}
-                          onPreviewRole={(rid) => {
-                            const u = ADMIN_USERS.find(x => x.role.toLowerCase().includes((ROLES.find(r => r.id === rid)?.name || '').toLowerCase().split(' ')[0])) || ADMIN_USERS[3];
-                            setPreviewUser(u);
+                          onPreviewRole={async (rid) => {
+                            // Preview as a REAL user holding this role in the tenant — never a demo user.
+                            try {
+                              const rows = await api.get('/admin/users');
+                              const u = Array.isArray(rows) ? rows.find(x => x.roleId === rid) : null;
+                              if (!u) { window.alert('No user holds this role yet — create one to preview as them.'); return; }
+                              setPreviewUser({ id: u.id, name: u.name, role: u.role?.name || rid });
+                            } catch { window.alert('Could not load users to preview.'); }
                           }} />
       : <RolesView onConfigure={(rid) => setRbacRole(rid)} />;
     if (active === 'reports') return <ReportsView />;
@@ -456,7 +469,7 @@ const App = () => {
       <>
         <div className="contextBar">
           <div>
-            <h1>{t('greet.morning', { name: (me?.name || 'Markus').split(' ')[0] })}</h1>
+            <h1>{t('greet.morning', { name: (me?.name || '').split(' ')[0] || 'there' })}</h1>
             <div className="pageSub">{t('greet.itemsNeed', { n: counts.urgent, items: counts.urgent === 1 ? t('track.item') : t('track.items') })}</div>
           </div>
           <div className="right">
@@ -479,7 +492,7 @@ const App = () => {
         )}
 
         {openTracks.sales && (
-          <Track trackId="sales" title={t('track.sales')} owner="Eva de Vries"
+          <Track trackId="sales" title={t('track.sales')}
                  stages={SALES_STAGES} items={sales}
                  isOpen={true} onToggle={() => toggleTrack('sales')}
                  onOpenTimeline={openTimeline}
@@ -489,7 +502,7 @@ const App = () => {
         )}
 
         {openTracks.operations && (
-          <Track trackId="operations" title={t('track.operations')} owner="Tom Janssens"
+          <Track trackId="operations" title={t('track.operations')}
                  stages={OPS_STAGES} items={ops}
                  isOpen={true} onToggle={() => toggleTrack('operations')}
                  onOpenTimeline={openTimeline}
@@ -499,7 +512,7 @@ const App = () => {
         )}
 
         {openTracks.workshop && (
-          <Track trackId="workshop" title={t('track.workshop')} owner="Lars Pieters"
+          <Track trackId="workshop" title={t('track.workshop')}
                  stages={WORKSHOP_STAGES} items={workshop}
                  isOpen={true} onToggle={() => toggleTrack('workshop')}
                  onOpenTimeline={openTimeline}
@@ -509,7 +522,7 @@ const App = () => {
         )}
 
         {openTracks.finance && (
-          <Track trackId="finance" title={t('track.finance')} owner="Ines Vandeput"
+          <Track trackId="finance" title={t('track.finance')}
                  stages={FINANCE_STAGES} items={finance}
                  isOpen={true} onToggle={() => toggleTrack('finance')}
                  onOpenTimeline={openTimeline}
@@ -549,7 +562,7 @@ const App = () => {
             <NotificationsBell />
             <button className="iconBtn" title="Help"><Icon name="document" size={16} /></button>
             <button className="iconBtn" title="Sign out" onClick={logout}><Icon name="close" size={16} /></button>
-            <Avatar name={me?.name || 'Markus Weber'} size="" />
+            <Avatar name={me?.name || 'Account'} size="" />
           </div>
         </header>
 
