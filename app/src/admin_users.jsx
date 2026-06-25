@@ -251,9 +251,12 @@ function adaptUser(u) {
   };
 }
 
-const ScopeEditor = ({ scopeType, setScopeType, target, setTarget, roleId, setRoleId, compact }) => {
+const ScopeEditor = ({ scopeType, setScopeType, target, setTarget, roleId, setRoleId, compact, roles }) => {
   const targets = SCOPE_TARGETS[scopeType] || [];
   const multi = scopeType === 'multi_company';
+  // Use the tenant's real roles when available; fall back to demo ROLES only if
+  // the API list hasn't loaded (keeps the literal-id demo tenant working too).
+  const roleList = roles && roles.length ? roles : ROLES;
   return (
     <div className="scopeEditor">
       <div className="seGrid">
@@ -266,7 +269,7 @@ const ScopeEditor = ({ scopeType, setScopeType, target, setTarget, roleId, setRo
         <label className="seField">
           <span className="fl">Role</span>
           <select className="textInput" value={roleId} onChange={e => setRoleId(e.target.value)}>
-            {ROLES.map(r => <option key={r.id} value={r.id}>{r.name}{r.system ? '' : ' (custom)'}</option>)}
+            {roleList.map(r => <option key={r.id} value={r.id}>{r.name}{r.system ? '' : ' (custom)'}</option>)}
           </select>
         </label>
       </div>
@@ -299,25 +302,35 @@ const ScopeEditor = ({ scopeType, setScopeType, target, setTarget, roleId, setRo
   );
 };
 
-export const CreateUserPanel = ({ onClose, onCreate }) => {
+export const CreateUserPanel = ({ onClose, onCreate, roles }) => {
   const genPw = () => {
     const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ', b = 'abcdefghijkmnpqrstuvwxyz', d = '23456789';
     const pick = s => s[Math.floor(Math.random() * s.length)];
     return pick(a) + pick(b) + pick(b) + pick(b) + pick(b) + '-' + pick(d) + pick(d) + pick(d) + pick(d);
   };
+  // Tenant's real roles when available; fall back to demo ROLES until they load.
+  const roleList = roles && roles.length ? roles : ROLES;
+  // Prefer a non-admin role as the default (a sales-rep-like role if present),
+  // else the first real role — never a hardcoded id that may not exist in-tenant.
+  const defaultRoleId = (roleList.find(r => /sales-rep$/.test(r.id)) || roleList[0] || {}).id || '';
   const [name, setName] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [method, setMethod] = React.useState('password');
   const [pw, setPw] = React.useState(genPw);
   const [scopeType, setScopeType] = React.useState('company');
   const [target, setTarget] = React.useState(SCOPE_TARGETS.company[0]);
-  const [roleId, setRoleId] = React.useState('sales-rep');
+  const [roleId, setRoleId] = React.useState(defaultRoleId);
   const [secondary, setSecondary] = React.useState([]);
   const [addingSec, setAddingSec] = React.useState(false);
 
+  // Once roles load (or change), keep the selection valid.
+  React.useEffect(() => {
+    if (!roleList.some(r => r.id === roleId)) setRoleId(defaultRoleId);
+  }, [roleList, roleId, defaultRoleId]);
+
   const scopeLabel = Array.isArray(target) ? (target.length ? target.join(' + ') : '—') : target;
   const summary = deriveSummary(roleId, scopeLabel);
-  const role = ROLES.find(r => r.id === roleId);
+  const role = roleList.find(r => r.id === roleId);
   const credsOk = method === 'email' || pw.trim().length >= 6;
   const valid = name.trim() && /.+@.+\..+/.test(email) && credsOk && (Array.isArray(target) ? target.length >= 2 : !!target);
 
@@ -327,7 +340,7 @@ export const CreateUserPanel = ({ onClose, onCreate }) => {
     const initials = name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0]).join('').toUpperCase();
     onCreate({
       id: 'u-' + Date.now(), name: name.trim(), email: email.trim(), initials,
-      scopeLabel, scopeType, role: role.name, roleId,
+      scopeLabel, scopeType, role: role?.name ?? roleId, roleId,
       password: method === 'password' ? pw.trim() : undefined,
       lastSeen: method === 'email' ? 'Never · invite sent just now' : 'Never · created just now',
       status: method === 'email' ? 'invited' : 'active',
@@ -375,7 +388,7 @@ export const CreateUserPanel = ({ onClose, onCreate }) => {
 
           <div className="panelSection">
             <div className="psHead">Primary scope &amp; role</div>
-            <ScopeEditor scopeType={scopeType} setScopeType={setScopeType} target={target} setTarget={setTarget} roleId={roleId} setRoleId={setRoleId} />
+            <ScopeEditor scopeType={scopeType} setScopeType={setScopeType} target={target} setTarget={setTarget} roleId={roleId} setRoleId={setRoleId} roles={roles} />
             <div className="roleHint"><Icon name="lock" size={11} /> {role.desc}</div>
           </div>
 
@@ -436,6 +449,7 @@ export const CreateUserPanel = ({ onClose, onCreate }) => {
 
 export const UsersView = ({ onPreviewAs }) => {
   const [users, setUsers] = React.useState(ADMIN_USERS);
+  const [roles, setRoles] = React.useState([]);
   const [openUser, setOpenUser] = React.useState(null);
   const [q, setQ] = React.useState('');
   const [scopeFilter, setScopeFilter] = React.useState('all');
@@ -452,6 +466,13 @@ export const UsersView = ({ onPreviewAs }) => {
       if (cancelled || !Array.isArray(rows) || rows.length === 0) return;
       setUsers(rows.map(adaptUser));
     }).catch(() => { /* keep ADMIN_USERS fallback */ });
+    // Real tenant roles for the create form's role picker (namespaced per tenant,
+    // e.g. `<slug>-sales-rep`). Without this the picker offers literal demo ids
+    // that don't exist in a provisioned tenant, so the create would FK-fail.
+    api.get('/admin/roles').then((rows) => {
+      if (cancelled || !Array.isArray(rows)) return;
+      setRoles(rows.map((r) => ({ id: r.id, name: r.name, system: r.system })));
+    }).catch(() => { /* fall back to demo ROLES in the picker */ });
     return () => { cancelled = true; };
   }, []);
 
@@ -476,10 +497,11 @@ export const UsersView = ({ onPreviewAs }) => {
       setUsers(prev => [adapted, ...prev.filter(p => p.id !== adapted.id)]);
       setFlashId(adapted.id);
     } catch (e) {
+      // Surface the real failure instead of faking success with an optimistic
+      // insert — a wrong role id or hit plan limit must not look like it worked.
       console.error('Failed to create user', e);
-      // optimistic local insert so the UI still reflects the new user
-      setUsers(prev => [u, ...prev]);
-      setFlashId(u.id);
+      window.alert(e?.message || 'Could not create user.');
+      return;
     }
     setTimeout(() => setFlashId(null), 2600);
   };
@@ -561,7 +583,7 @@ export const UsersView = ({ onPreviewAs }) => {
         ))}
       </div>
 
-      {creating && <CreateUserPanel onClose={() => setCreating(false)} onCreate={handleCreate} />}
+      {creating && <CreateUserPanel onClose={() => setCreating(false)} onCreate={handleCreate} roles={roles} />}
 
       {importing && (
         <div className="overlay" onClick={() => setImporting(false)}>

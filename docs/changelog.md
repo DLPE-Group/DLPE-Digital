@@ -5,6 +5,7 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 
 ## 2026-06-25
 
+- `13f67a3` feat(provisioning): optional admin password in the wizard (first-admin login)
 - `79cdd45` feat(provisioning): bootstrap the Plan catalogue too (wizard plan dropdown)
 - `78f5122` feat(provisioning): blueprint catalogue bootstrap + seed cross-ref namespacing
 
@@ -185,5 +186,5 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 - `a8c1e03` Implement Intelligence Layer as Vite + React app
 - `6fede3e` Claude Design handoff: Dlpe Digital
 
-<small>155 commits.</small>
+<small>156 commits.</small>
 

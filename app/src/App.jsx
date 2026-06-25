@@ -218,9 +218,11 @@ const App = () => {
   const { t } = useT();
   const { me, logout } = useAuth();
   // "Admin" = group-admin (single source of truth, mirrors the server's
-  // requireAdmin). Gates the admin/integrations/audit nav + views and the
-  // admin-only preview-as capability.
-  const isAdmin = me?.roleId === 'group-admin';
+  // requireAdmin/roleIdIsAdmin). Gates the admin/integrations/audit nav + views
+  // and the admin-only preview-as capability. Provisioned tenants namespace the
+  // role id as `<slug>-group-admin`, so match the suffix exactly like the server
+  // (ADMIN_ROLE_IDS.has(roleId) || roleId.endsWith('-group-admin')).
+  const isAdmin = !!me?.roleId && (me.roleId === 'group-admin' || me.roleId.endsWith('-group-admin'));
   const isPlatformAdmin = !!me?.platformAdmin;
   const ADMIN_ONLY_VIEWS = ['structure', 'users', 'roles', 'datamodel', 'integrations', 'audit'];
   const [active, setActive] = React.useState('overview');
