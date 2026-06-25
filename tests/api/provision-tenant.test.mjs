@@ -165,6 +165,46 @@ describe('provisionTenant', () => {
     await prisma.tenant.delete({ where: { id: tid } });
   });
 
+  it('adminOverride.password makes the admin active and login-verifiable', async () => {
+    const argon2 = (await import('argon2')).default;
+    const { provisionTenant } = await import('../../server/src/domain/provisioning/provisionTenant.ts');
+    const { SharedDbTarget } = await import('../../server/src/domain/provisioning/target.ts');
+
+    // A spec whose admin has NO password (like the clean starter/sample templates):
+    // without an override the admin would be 'invited'. The override must flip it active.
+    const NOPW_SPEC = {
+      ...SMALL_SPEC,
+      adminUser: { idPrefix: 'u-admin', name: 'Account Admin', email: 'admin@change-me.example', roleId: 'group-admin', scopeType: 'group' },
+    };
+
+    const res = await provisionTenant({
+      blueprint: { spec: NOPW_SPEC }, inputs: { customerName: 'PwCo' },
+      target: new SharedDbTarget(), idempotencyKey: 'test-adminpw-1',
+      adminOverride: { email: 'boss@pwco.test', password: 'Sup3rSecret!' },
+      prismaClient: prisma,
+    });
+    const tid = res.tenantId;
+
+    const admin = await prisma.user.findFirst({ where: { tenantId: tid, email: 'boss@pwco.test' } });
+    expect(admin).not.toBeNull();
+    expect(admin.status).toBe('active');
+    expect(await argon2.verify(admin.passwordHash, 'Sup3rSecret!')).toBe(true);
+    // The login link is a /login (not /invite) URL when a password is set.
+    expect(res.adminLoginOrInviteLink).toContain('/login');
+
+    // cleanup
+    await prisma.subscription.deleteMany({ where: { tenantId: tid } });
+    await prisma.user.deleteMany({ where: { tenantId: tid } });
+    await prisma.stageDef.deleteMany({ where: { tenantId: tid } });
+    await prisma.stageConfig.deleteMany({ where: { tenantId: tid } });
+    await prisma.entityType.deleteMany({ where: { tenantId: tid } });
+    await prisma.trackDef.deleteMany({ where: { tenantId: tid } });
+    await prisma.role.deleteMany({ where: { tenantId: tid } });
+    await prisma.orgNode.deleteMany({ where: { tenantId: tid } });
+    await prisma.provisioningRun.deleteMany({ where: { tenantId: tid } });
+    await prisma.tenant.delete({ where: { id: tid } });
+  });
+
   it('rejects inputs that miss a required field', async () => {
     const { provisionTenant } = await import('../../server/src/domain/provisioning/provisionTenant.ts');
     const { SharedDbTarget } = await import('../../server/src/domain/provisioning/target.ts');

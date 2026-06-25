@@ -49,8 +49,10 @@ export interface ProvisionTenantArgs {
    *   used verbatim. Admin/user ids are used verbatim.
    */
   idMode?: 'prefixed' | 'literal';
-  /** Override the blueprint's admin user name/email (per-onboarding). Field-wise merge. */
-  adminOverride?: { name?: string; email?: string };
+  /** Override the blueprint's admin user name/email/password (per-onboarding). Field-wise
+   *  merge. Supplying a password makes the admin 'active' (can log in immediately);
+   *  omitting it falls back to the spec's admin (invite flow when the spec has none). */
+  adminOverride?: { name?: string; email?: string; password?: string };
   /** Override the default subscription plan key (else spec.defaultPlanKey ?? 'starter'). */
   planKey?: string;
   /** Optional prisma client override — defaults to the owner (bypass-RLS) client.
@@ -111,6 +113,7 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
     ...spec.adminUser,
     ...(args.adminOverride?.name ? { name: args.adminOverride.name } : {}),
     ...(args.adminOverride?.email ? { email: args.adminOverride.email } : {}),
+    ...(args.adminOverride?.password ? { password: args.adminOverride.password } : {}),
   };
   const idMode = args.idMode ?? 'prefixed';
 
