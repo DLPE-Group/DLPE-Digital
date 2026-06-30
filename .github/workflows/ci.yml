@@ -31,6 +31,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Generate Prisma client
+        run: npm --workspace server exec prisma generate   # required before build/seed/tests
       - name: Build (server + frontend)
         run: npm run build
       - name: API test suite (incl. tenant-isolation)

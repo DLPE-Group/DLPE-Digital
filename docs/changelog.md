@@ -5,6 +5,7 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 
 ## 2026-06-30
 
+- `a144367` fix(stage-config): reveal the stage delete button (CSS class mismatch)
 - `a70ab4b` fix(stage-config): per-tenant stages, no crash on save, block deleting in-use stages
 
 ## 2026-06-25
@@ -194,5 +195,5 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 - `a8c1e03` Implement Intelligence Layer as Vite + React app
 - `6fede3e` Claude Design handoff: Dlpe Digital
 
-<small>161 commits.</small>
+<small>162 commits.</small>
 
