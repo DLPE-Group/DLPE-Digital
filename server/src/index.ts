@@ -24,6 +24,7 @@ import { rolesRouter } from './routes/roles.js';
 import { usersRouter } from './routes/users.js';
 import { fieldRulesRouter } from './routes/fieldRules.js';
 import { stageConfigRouter } from './routes/stageConfig.js';
+import { stagesRouter } from './routes/stages.js';
 import { triggersRouter } from './routes/triggers.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { permissionsRouter } from './routes/permissions.js';
@@ -104,6 +105,7 @@ app.use('/api/platform', requirePlatformAdmin, platformRouter);
 app.use('/api/cards', cardsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/aggregations', aggregationsRouter);
+app.use('/api', stagesRouter);   // GET /api/stages — tenant stage config for the board (non-admin)
 
 // Admin-only areas (group-admin): the full audit trail, integration config,
 // and every /api/admin/* surface. Enforced server-side in addition to the
