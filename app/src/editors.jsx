@@ -263,17 +263,25 @@ export const CrossTrackTriggerEditor = () => {
   const [thenTrack, setThenTrack] = React.useState('operations');
   const [thenStage, setThenStage] = React.useState('');
 
-  // Load persisted triggers from the API (fallback to seed on failure).
+  // The trigger builder's stage dropdowns must offer the tenant's SAVED stages
+  // (from /stages), not the hardcoded defaults — otherwise you can build a trigger
+  // referencing a stage that no longer exists, or miss a custom one.
+  const [stagesByTrack, setStagesByTrack] = React.useState(null);
+
+  // Load persisted triggers + the tenant's saved stage config from the API.
   React.useEffect(() => {
     let cancelled = false;
     api.get('/admin/triggers').then((rows) => {
       if (cancelled || !Array.isArray(rows)) return;
       setTriggers(rows.map((r) => ({ ...r, uid: r.id })));
     }).catch(() => { /* keep seed fallback */ });
+    api.get('/stages')
+      .then((m) => { if (!cancelled) setStagesByTrack(m && typeof m === 'object' ? m : {}); })
+      .catch(() => { if (!cancelled) setStagesByTrack(STAGE_CONFIG); });
     return () => { cancelled = true; };
   }, []);
 
-  const stagesOf = (k) => STAGE_CONFIG[k] || [];
+  const stagesOf = (k) => (stagesByTrack && stagesByTrack[k]) || [];
 
   const canAdd = whenStage && thenStage && whenTrack !== thenTrack;
 

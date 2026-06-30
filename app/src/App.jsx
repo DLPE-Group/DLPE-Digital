@@ -270,6 +270,19 @@ const App = () => {
 
   const trackSetters = { sales: setSales, operations: setOps, workshop: setWorkshop, finance: setFinance };
 
+  // Stage columns come from the tenant's SAVED config (GET /stages) so edits in
+  // Settings → Stage configuration actually appear on the board. The built-in
+  // arrays are only a last-resort fallback if the request itself fails (network).
+  const FALLBACK_STAGES = { sales: SALES_STAGES, operations: OPS_STAGES, workshop: WORKSHOP_STAGES, finance: FINANCE_STAGES };
+  const [stagesByTrack, setStagesByTrack] = React.useState(null);
+  React.useEffect(() => {
+    api.get('/stages')
+      .then((m) => setStagesByTrack(m && typeof m === 'object' ? m : {}))
+      .catch(() => setStagesByTrack(FALLBACK_STAGES));
+  }, []);
+  // Saved stages for a track (empty until loaded / if the tenant has none).
+  const stagesFor = (k) => (stagesByTrack && stagesByTrack[k]) || [];
+
   // Load all four pipelines from the API on mount, and whenever the previewed
   // user changes (so the live data reflects exactly what that user would see).
   React.useEffect(() => {
@@ -493,40 +506,40 @@ const App = () => {
 
         {openTracks.sales && (
           <Track trackId="sales" title={t('track.sales')}
-                 stages={SALES_STAGES} items={sales}
+                 stages={stagesFor('sales')} items={sales}
                  isOpen={true} onToggle={() => toggleTrack('sales')}
                  onOpenTimeline={openTimeline}
-                 onAct={openFlow} onMoveStage={moveStage('sales', SALES_STAGES, setSales)}
+                 onAct={openFlow} onMoveStage={moveStage('sales', stagesFor('sales'), setSales)}
                  onCreate={createItem} onDelete={deleteItem}
                  flashIds={flashIds} />
         )}
 
         {openTracks.operations && (
           <Track trackId="operations" title={t('track.operations')}
-                 stages={OPS_STAGES} items={ops}
+                 stages={stagesFor('operations')} items={ops}
                  isOpen={true} onToggle={() => toggleTrack('operations')}
                  onOpenTimeline={openTimeline}
-                 onAct={openFlow} onMoveStage={moveStage('operations', OPS_STAGES, setOps)}
+                 onAct={openFlow} onMoveStage={moveStage('operations', stagesFor('operations'), setOps)}
                  onCreate={createItem} onDelete={deleteItem}
                  flashIds={flashIds} />
         )}
 
         {openTracks.workshop && (
           <Track trackId="workshop" title={t('track.workshop')}
-                 stages={WORKSHOP_STAGES} items={workshop}
+                 stages={stagesFor('workshop')} items={workshop}
                  isOpen={true} onToggle={() => toggleTrack('workshop')}
                  onOpenTimeline={openTimeline}
-                 onAct={openFlow} onMoveStage={moveStage('workshop', WORKSHOP_STAGES, setWorkshop)}
+                 onAct={openFlow} onMoveStage={moveStage('workshop', stagesFor('workshop'), setWorkshop)}
                  onCreate={createItem} onDelete={deleteItem}
                  flashIds={flashIds} />
         )}
 
         {openTracks.finance && (
           <Track trackId="finance" title={t('track.finance')}
-                 stages={FINANCE_STAGES} items={finance}
+                 stages={stagesFor('finance')} items={finance}
                  isOpen={true} onToggle={() => toggleTrack('finance')}
                  onOpenTimeline={openTimeline}
-                 onAct={openFlow} onMoveStage={moveStage('finance', FINANCE_STAGES, setFinance)}
+                 onAct={openFlow} onMoveStage={moveStage('finance', stagesFor('finance'), setFinance)}
                  onCreate={createItem} onDelete={deleteItem}
                  flashIds={flashIds} />
         )}
