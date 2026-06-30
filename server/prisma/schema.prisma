@@ -285,7 +285,10 @@ model StageConfig {
   tenantId String
   tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
-  @@unique([track, stageId])
+  // Per-tenant: each tenant has its own stage set for a track. (Was a global
+  // [track, stageId] unique — a single-tenant relic that made cross-tenant
+  // saves collide and crash the stage-config PUT.)
+  @@unique([tenantId, track, stageId])
   @@index([track, order])
   @@index([tenantId])
 }

@@ -93,6 +93,7 @@ export const StageConfigEditor = () => {
   const [dirty, setDirty] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
+  const [saveErr, setSaveErr] = React.useState(null);
   const [dragIdx, setDragIdx] = React.useState(null);
   const [overIdx, setOverIdx] = React.useState(null);
 
@@ -131,6 +132,7 @@ export const StageConfigEditor = () => {
 
   const saveConfig = async () => {
     setSaving(true);
+    setSaveErr(null);
     try {
       const payload = {
         stages: config[trackTab].map((s) => ({
@@ -142,8 +144,9 @@ export const StageConfigEditor = () => {
       setSaved(true);
       setTimeout(() => setSaved(false), 1800);
     } catch (e) {
-      // leave dirty so the user can retry
-      console.error('Failed to save stage config', e);
+      // Surface the failure (e.g. "can't remove a stage that still has records")
+      // instead of silently leaving the change unsaved.
+      setSaveErr(e?.message || 'Could not save stage configuration.');
     } finally {
       setSaving(false);
     }
@@ -184,7 +187,8 @@ export const StageConfigEditor = () => {
             ))}
           </div>
           <div className="editorSaveBar">
-            {dirty && <><span className="dirtyDot" /> Unsaved changes</>}
+            {saveErr && <span style={{ color: 'var(--status-red, #e05)', maxWidth: 460 }}>{saveErr}</span>}
+            {dirty && !saveErr && <><span className="dirtyDot" /> Unsaved changes</>}
             {saved && !dirty && <span style={{ color: 'var(--ok, #2e7d32)' }}>Saved</span>}
             <button className="cta ghost" disabled={!dirty || saving}
                     onClick={() => loadConfig()}>Discard</button>
