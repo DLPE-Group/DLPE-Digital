@@ -3,8 +3,13 @@
 Auto-generated from git history (newest first). Refreshed on every commit by the `.githooks/pre-commit` hook; merge commits are omitted.
 
 
+## 2026-06-30
+
+- `a70ab4b` fix(stage-config): per-tenant stages, no crash on save, block deleting in-use stages
+
 ## 2026-06-25
 
+- `7e52df8` fix(ui): neutralize the scripted demo storyline (action flows, audit, AI mapping)
 - `5cb0841` fix(admin): purge remaining demo place/role/name fixtures from admin UI
 - `3f028be` fix(admin): stop demo fixtures leaking into RBAC / Structure / Users screens
 - `c7e999a` fix(admin): tenant admins can actually add users (nav gate + real roles)
@@ -189,5 +194,5 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 - `a8c1e03` Implement Intelligence Layer as Vite + React app
 - `6fede3e` Claude Design handoff: Dlpe Digital
 
-<small>159 commits.</small>
+<small>161 commits.</small>
 

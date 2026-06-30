@@ -304,8 +304,8 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
           });
         }
 
-        // StageConfig.@@unique is global (no tenantId) — skip duplicates rather than overwrite;
-        // per-tenant stage config is a multi-tenant follow-up (S0 read-scoping residual).
+        // StageConfig is now per-tenant (@@unique[tenantId, track, stageId]), so each
+        // tenant gets its own full stage set — no cross-tenant skipping.
         const trackEnum = TRACK_ENUM[track.key];
         if (trackEnum) {
           await tx.stageConfig.createMany({
@@ -319,7 +319,6 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
               cta: s.cta,
               tenantId,
             })),
-            skipDuplicates: true,
           });
         }
         // If no TRACK_ENUM mapping (custom track), we skip StageConfig — only builtin

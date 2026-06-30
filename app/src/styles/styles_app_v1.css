@@ -1431,11 +1431,13 @@
   color: var(--text-quiet);
   cursor: pointer;
   display: grid; place-items: center;
-  opacity: 0;
+  opacity: .55;                /* always visible (faded); full on row hover */
   transition: opacity .12s, color .12s, background .12s;
 }
-.stageRow:hover .delBtn { opacity: 1; }
-.delBtn:hover { background: var(--status-red-bg); color: var(--status-red); }
+/* Row class is .stageEditRow (was mis-targeted as .stageRow, which left the
+   delete button permanently invisible). */
+.stageEditRow:hover .delBtn { opacity: 1; }
+.delBtn:hover { background: var(--status-red-bg); color: var(--status-red); opacity: 1; }
 
 .editorFoot {
   display: flex;
