@@ -12,6 +12,17 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # env.ts validates these at import (and process.exit(1)s if missing). Locally
+    # they come from the repo-root .env; CI has none, so set them here. Match the
+    # test DB URL the harness uses (tests/helpers.mjs) + the il_app role created by
+    # the app_role migration. NODE_ENV stays unset (development) so the production
+    # RLS boot-guard does not fire; SERVE_STATIC lets the UI-test server serve app/dist.
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/intelligence_test
+      APP_DATABASE_URL: postgresql://il_app:il_app_pw@localhost:5432/intelligence_test
+      JWT_SECRET: ci-test-secret-not-for-production
+      JWT_REFRESH_SECRET: ci-test-refresh-secret-not-for-production
+      SERVE_STATIC: "1"
     services:
       postgres:
         image: postgres:16
