@@ -5,6 +5,7 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 
 ## 2026-06-30
 
+- `97774d2` fix(board): render stages from saved config, not hardcoded arrays
 - `1294b49` ci: provide required env (DATABASE_URL/JWT/APP_DATABASE_URL/SERVE_STATIC) to test job
 - `1fd7852` ci: generate the Prisma client before build/seed/tests
 - `a144367` fix(stage-config): reveal the stage delete button (CSS class mismatch)
@@ -197,5 +198,5 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 - `a8c1e03` Implement Intelligence Layer as Vite + React app
 - `6fede3e` Claude Design handoff: Dlpe Digital
 
-<small>164 commits.</small>
+<small>165 commits.</small>
 

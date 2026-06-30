@@ -46,6 +46,8 @@ const T = {
 
     'sc.salesPipeline': 'Sales pipeline',
     'sc.pipelineValue': 'pipeline value',
+    'sc.totalValue': 'total value',
+    'sc.openItems': 'open items',
     'sc.serviceDue90d': 'service due in 90 days',
     'sc.openWorkOrders': 'open work orders',
     'sc.overdue': 'overdue · longest 31 d',
@@ -125,6 +127,8 @@ const T = {
 
     'sc.salesPipeline': 'Verkooppijplijn',
     'sc.pipelineValue': 'pijplijnwaarde',
+    'sc.totalValue': 'totale waarde',
+    'sc.openItems': 'open items',
     'sc.serviceDue90d': 'onderhoud binnen 90 dagen',
     'sc.openWorkOrders': 'openstaande werkbonnen',
     'sc.overdue': 'achterstallig · langste 31 d',
@@ -200,6 +204,8 @@ const T = {
 
     'sc.salesPipeline': 'Pipeline commercial',
     'sc.pipelineValue': 'valeur du pipeline',
+    'sc.totalValue': 'valeur totale',
+    'sc.openItems': 'éléments ouverts',
     'sc.serviceDue90d': 'entretien dans 90 jours',
     'sc.openWorkOrders': 'ordres de travail ouverts',
     'sc.overdue': 'en retard · plus long 31 j',
@@ -275,6 +281,8 @@ const T = {
 
     'sc.salesPipeline': 'Vertriebs-Pipeline',
     'sc.pipelineValue': 'Pipeline-Wert',
+    'sc.totalValue': 'Gesamtwert',
+    'sc.openItems': 'offene Posten',
     'sc.serviceDue90d': 'Service in 90 Tagen fällig',
     'sc.openWorkOrders': 'offene Werkstattaufträge',
     'sc.overdue': 'überfällig · längste 31 T',

@@ -4,14 +4,8 @@ import { useT } from './i18n.jsx';
 
 /* Side menu — primary navigation for the dashboard */
 
-export const SideMenu = ({ active, setActive, counts, onTrackSelect, allowedTracks, isAdmin, isPlatformAdmin }) => {
+export const SideMenu = ({ active, setActive, counts = {}, onTrackSelect, tracks = [], isAdmin, isPlatformAdmin }) => {
   const { t } = useT();
-  const tracks = [
-    { id: 'sales',      label: t('track.sales'),      color: 'var(--track-sales)',    count: counts.sales },
-    { id: 'operations', label: t('track.operations'), color: 'var(--track-ops)',      count: counts.operations },
-    { id: 'workshop',   label: t('track.workshop'),   color: 'var(--track-workshop)', count: counts.workshop },
-    { id: 'finance',    label: t('track.finance'),    color: 'var(--track-finance)',  count: counts.finance },
-  ].filter((tr) => !allowedTracks || allowedTracks.includes(tr.id));
 
   const item = (id, icon, label, badge, badgeKind) => (
     <button key={id}
@@ -41,22 +35,27 @@ export const SideMenu = ({ active, setActive, counts, onTrackSelect, allowedTrac
           {item('timeline', 'timeline', t('nav.timelines'))}
         </div>
 
-        <div className="navSection">
-          <div className="navHead">
-            <span>{t('nav.tracks')}</span>
+        {tracks.length > 0 && (
+          <div className="navSection">
+            <div className="navHead">
+              <span>{t('nav.tracks')}</span>
+            </div>
+            {tracks.map(tr => {
+              const count = counts[tr.key];
+              return (
+                <button key={tr.key}
+                        className={`navItem ${active === tr.key ? 'active' : ''}`}
+                        onClick={() => { onTrackSelect && onTrackSelect(tr.key); setActive(tr.key); }}>
+                  <span className="navIco"><span className="navSwatch" style={{ background: tr.color || 'var(--brand)' }} /></span>
+                  <span className="navLabel">{tr.label}</span>
+                  {count != null && (
+                    <span className={`navBadge ${count.kind || ''}`}>{count.value}</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
-          {tracks.map(tr => (
-            <button key={tr.id}
-                    className={`navItem ${active === tr.id ? 'active' : ''}`}
-                    onClick={() => { onTrackSelect && onTrackSelect(tr.id); setActive(tr.id); }}>
-              <span className="navIco"><span className="navSwatch" style={{ background: tr.color }} /></span>
-              <span className="navLabel">{tr.label}</span>
-              {tr.count != null && (
-                <span className={`navBadge ${tr.count.kind || ''}`}>{tr.count.value}</span>
-              )}
-            </button>
-          ))}
-        </div>
+        )}
 
         <div className="navSection">
           <div className="navHead">{t('nav.customerFacing')}</div>

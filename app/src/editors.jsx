@@ -80,7 +80,7 @@ const uid = () => 'st' + (++_uid);
 const seedConfig = () => {
   const c = {};
   TRACK_KEYS.forEach(k => {
-    c[k] = STAGE_CONFIG[k].map(s => ({ ...s, uid: uid() }));
+    c[k] = (STAGE_CONFIG[k] || []).map(s => ({ ...s, uid: uid() }));
   });
   return c;
 };
@@ -88,6 +88,14 @@ const seedConfig = () => {
 export const StageConfigEditor = () => {
   const { t } = useT();
   const [trackTab, setTrackTab] = React.useState('sales');
+  // The tenant's track set (data-model driven) — drives the track tabs so the
+  // editor shows exactly the tracks that exist, not a hardcoded four.
+  const [tracks, setTracks] = React.useState([]);
+  React.useEffect(() => {
+    api.get('/tracks').then((rows) => { if (Array.isArray(rows)) setTracks(rows); }).catch(() => {});
+  }, []);
+  const titleOf = (k) => (tracks.find(tr => tr.key === k)?.label) || TRACK_TITLE[k] || k;
+  const colorOf = (k) => (tracks.find(tr => tr.key === k)?.color) || trackVar(k);
   // deep clone seed config into editable state, give every stage a stable uid
   const [config, setConfig] = React.useState(seedConfig);
   const [dirty, setDirty] = React.useState(false);
@@ -106,16 +114,12 @@ export const StageConfigEditor = () => {
       const byTrack = {};
       rows.forEach((r) => {
         const k = String(r.track || '').toLowerCase();
-        if (!TRACK_KEYS.includes(k)) return;
+        if (!k) return;
         (byTrack[k] = byTrack[k] || []).push({
           uid: uid(), id: r.stageId, label: r.label, sla: r.sla, lock: r.lock ?? null, cta: r.cta ?? '',
         });
       });
-      setConfig((prev) => {
-        const next = { ...prev };
-        TRACK_KEYS.forEach((k) => { if (byTrack[k]) next[k] = byTrack[k]; });
-        return next;
-      });
+      setConfig((prev) => ({ ...prev, ...byTrack }));
       setDirty(false);
       setSaved(false);
     }).catch(() => { /* keep current/seed state */ });
@@ -123,7 +127,19 @@ export const StageConfigEditor = () => {
 
   React.useEffect(() => { loadConfig(); }, [loadConfig]);
 
-  const stages = config[trackTab];
+  // When the tenant's tracks load, make sure every track has a config bucket and
+  // the active tab points at a track that actually exists.
+  React.useEffect(() => {
+    if (!tracks.length) return;
+    setConfig((prev) => {
+      const next = { ...prev };
+      tracks.forEach((tr) => { if (!next[tr.key]) next[tr.key] = []; });
+      return next;
+    });
+    if (!tracks.some((tr) => tr.key === trackTab)) setTrackTab(tracks[0].key);
+  }, [tracks]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const stages = config[trackTab] || [];
   const setStages = (next) => {
     setConfig(c => ({ ...c, [trackTab]: typeof next === 'function' ? next(c[trackTab]) : next }));
     setDirty(true);
@@ -177,12 +193,12 @@ export const StageConfigEditor = () => {
       <div className="settingsBody">
         <div className="editorToolbar">
           <div className="editorTrackTabs">
-            {TRACK_KEYS.map(k => (
-              <button key={k} className={`filterChip ${trackTab === k ? 'active' : ''}`}
-                      onClick={() => setTrackTab(k)}>
-                <span className="swatch" style={{ background: trackVar(k) }} />
-                {TRACK_TITLE[k]}
-                <span style={{ marginLeft: 4, opacity: 0.7 }}>{config[k].length}</span>
+            {tracks.map(tr => (
+              <button key={tr.key} className={`filterChip ${trackTab === tr.key ? 'active' : ''}`}
+                      onClick={() => setTrackTab(tr.key)}>
+                <span className="swatch" style={{ background: colorOf(tr.key) }} />
+                {titleOf(tr.key)}
+                <span style={{ marginLeft: 4, opacity: 0.7 }}>{(config[tr.key] || []).length}</span>
               </button>
             ))}
           </div>
@@ -267,8 +283,11 @@ export const CrossTrackTriggerEditor = () => {
   // (from /stages), not the hardcoded defaults — otherwise you can build a trigger
   // referencing a stage that no longer exists, or miss a custom one.
   const [stagesByTrack, setStagesByTrack] = React.useState(null);
+  // The tenant's track set drives both track dropdowns (data-model driven).
+  const [tracks, setTracks] = React.useState([]);
+  const titleOf = (k) => (tracks.find(tr => tr.key === k)?.label) || TRACK_TITLE[k] || k;
 
-  // Load persisted triggers + the tenant's saved stage config from the API.
+  // Load persisted triggers + the tenant's saved stage config + tracks from the API.
   React.useEffect(() => {
     let cancelled = false;
     api.get('/admin/triggers').then((rows) => {
@@ -278,8 +297,20 @@ export const CrossTrackTriggerEditor = () => {
     api.get('/stages')
       .then((m) => { if (!cancelled) setStagesByTrack(m && typeof m === 'object' ? m : {}); })
       .catch(() => { if (!cancelled) setStagesByTrack(STAGE_CONFIG); });
+    api.get('/tracks').then((rows) => {
+      if (cancelled || !Array.isArray(rows)) return;
+      setTracks(rows);
+    }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
+
+  // Default the builder's two track pickers to real tracks once they load.
+  React.useEffect(() => {
+    const keys = tracks.map(tr => tr.key);
+    if (!keys.length) return;
+    if (!keys.includes(whenTrack)) setWhenTrack(keys[0]);
+    setThenTrack((cur) => (keys.includes(cur) && cur !== keys[0]) ? cur : (keys.find(k => k !== keys[0]) || keys[0]));
+  }, [tracks]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stagesOf = (k) => (stagesByTrack && stagesByTrack[k]) || [];
 
@@ -338,7 +369,7 @@ export const CrossTrackTriggerEditor = () => {
             <div className="tbNode">
               <div className="lbl">When this completes</div>
               <select value={whenTrack} onChange={e => { setWhenTrack(e.target.value); setWhenStage(''); }}>
-                {TRACK_KEYS.map(k => <option key={k} value={k}>{TRACK_TITLE[k]}</option>)}
+                {tracks.map(tr => <option key={tr.key} value={tr.key}>{titleOf(tr.key)}</option>)}
               </select>
               <select value={whenStage} onChange={e => setWhenStage(e.target.value)}>
                 <option value="">Select a stage…</option>
@@ -353,7 +384,7 @@ export const CrossTrackTriggerEditor = () => {
             <div className="tbNode">
               <div className="lbl">Then create a card in</div>
               <select value={thenTrack} onChange={e => { setThenTrack(e.target.value); setThenStage(''); }}>
-                {TRACK_KEYS.filter(k => k !== whenTrack).map(k => <option key={k} value={k}>{TRACK_TITLE[k]}</option>)}
+                {tracks.filter(tr => tr.key !== whenTrack).map(tr => <option key={tr.key} value={tr.key}>{titleOf(tr.key)}</option>)}
               </select>
               <select value={thenStage} onChange={e => setThenStage(e.target.value)}>
                 <option value="">Select a stage…</option>

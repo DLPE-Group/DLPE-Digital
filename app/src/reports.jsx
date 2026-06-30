@@ -13,13 +13,17 @@ const repMoney = (n) =>
   : n >= 1e3 ? '€' + Math.round(n / 1e3) + 'k'
   : '€' + n;
 
-const TRACK_META = {
+// Fallback labels/colors for the builtin tracks — used only until the tenant's
+// real track set loads from /tracks (or for a track with no color set).
+const TRACK_META_FALLBACK = {
   sales:      { label: 'Sales',      color: 'var(--track-sales)' },
   operations: { label: 'Operations', color: 'var(--track-ops)' },
   workshop:   { label: 'Workshop',   color: 'var(--track-workshop)' },
   finance:    { label: 'Finance',    color: 'var(--track-finance)' },
 };
-const ALL_TRACKS = ['sales', 'operations', 'workshop', 'finance'];
+// Resolve a track key to its display meta, preferring the tenant's live data.
+const metaFor = (track, trackMeta) =>
+  (trackMeta && trackMeta[track]) || TRACK_META_FALLBACK[track] || { label: track, color: 'var(--brand)' };
 
 /* ---- Zero/empty fallback aggregate (for loading / empty tenant) ---- */
 const EMPTY_AGG = {
@@ -176,7 +180,7 @@ const SourceChips = ({ sources }) => (
 );
 
 /* ---- Report document (the view) ---- */
-const ReportDoc = ({ report, onBack }) => {
+const ReportDoc = ({ report, onBack, trackMeta }) => {
   const scope = report.spec.scope;
   const { get, loading } = useTrackAggregates(scope);
 
@@ -218,7 +222,7 @@ const ReportDoc = ({ report, onBack }) => {
 
         {scope.map(track => {
           const data = get(track);
-          const meta = TRACK_META[track];
+          const meta = metaFor(track, trackMeta);
           if (!data) return null;
           return (
             <section className="repTrack" key={track}>
@@ -253,7 +257,7 @@ const ReportDoc = ({ report, onBack }) => {
 };
 
 /* ---- Guided builder (the creation flow) ---- */
-const ReportBuilder = ({ draft, setDraft, onGenerate, busy }) => {
+const ReportBuilder = ({ draft, setDraft, onGenerate, busy, allTracks = [], trackMeta }) => {
   const Seg = ({ options, value, onChange }) => (
     <div className="repSeg">
       {options.map(o => (
@@ -279,12 +283,13 @@ const ReportBuilder = ({ draft, setDraft, onGenerate, busy }) => {
       <div className="repField">
         <label>Scope · tracks to include</label>
         <div className="repChipPick">
-          {ALL_TRACKS.map(t => {
+          {allTracks.map(t => {
             const on = draft.scope.includes(t);
+            const meta = metaFor(t, trackMeta);
             return (
               <button key={t} className={`repTrackChip ${on ? 'on' : ''}`}
                 onClick={() => setDraft(d => ({ ...d, scope: on ? d.scope.filter(x => x !== t) : [...d.scope, t] }))}>
-                <span className="sw" style={{ background: TRACK_META[t].color }} />{TRACK_META[t].label}
+                <span className="sw" style={{ background: meta.color }} />{meta.label}
               </button>
             );
           })}
@@ -302,7 +307,7 @@ const ReportBuilder = ({ draft, setDraft, onGenerate, busy }) => {
 };
 
 /* ---- Library card: sources shown from report spec scope count ---- */
-const LibraryCard = ({ r, onOpen, onDelete }) => {
+const LibraryCard = ({ r, onOpen, onDelete, trackMeta }) => {
   return (
     <button className="repCard" onClick={() => onOpen(r)}>
       <div className="repCardTop">
@@ -317,9 +322,12 @@ const LibraryCard = ({ r, onOpen, onDelete }) => {
       <div className="repCardTitle">{r.spec.title}</div>
       <div className="repCardMeta">{r.spec.period} · {r.spec.format}</div>
       <div className="repCardScope">
-        {r.spec.scope.map(s => (
-          <span className="repTrackChip mini" key={s}><span className="sw" style={{ background: TRACK_META[s].color }} />{TRACK_META[s].label}</span>
-        ))}
+        {r.spec.scope.map(s => {
+          const meta = metaFor(s, trackMeta);
+          return (
+            <span className="repTrackChip mini" key={s}><span className="sw" style={{ background: meta.color }} />{meta.label}</span>
+          );
+        })}
       </div>
       <div className="repCardSources">{r.spec.scope.length} track{r.spec.scope.length === 1 ? '' : 's'}</div>
     </button>
@@ -336,6 +344,19 @@ export const ReportsView = () => {
   const [draft, setDraft] = React.useState(null);
   const [reportsLoading, setReportsLoading] = React.useState(true);
 
+  // The tenant's track set drives the scope picker, doc sections, and chips.
+  const [tracksList, setTracksList] = React.useState([]);
+  React.useEffect(() => {
+    api.get('/tracks').then((rows) => {
+      if (Array.isArray(rows)) setTracksList(rows);
+    }).catch(() => { /* keep empty */ });
+  }, []);
+  const trackMeta = React.useMemo(
+    () => Object.fromEntries(tracksList.map(tr => [tr.key, { label: tr.label, color: tr.color || 'var(--brand)' }])),
+    [tracksList],
+  );
+  const allTracks = tracksList.map(tr => tr.key);
+
   // Load the report library from the API.
   React.useEffect(() => {
     let cancelled = false;
@@ -349,10 +370,12 @@ export const ReportsView = () => {
   }, []);
 
   const startFromPrompt = (prompt) => {
-    setDraft({ prompt, title: prompt, period: 'This week', format: 'Executive brief', scope: [...ALL_TRACKS] });
+    setDraft({ prompt, title: prompt, period: 'This week', format: 'Executive brief', scope: [...allTracks] });
   };
   const startFromTemplate = (tpl) => {
-    const spec = { title: tpl.title, prompt: tpl.desc, period: tpl.period, format: tpl.format, scope: [...tpl.scope] };
+    // Only include tracks that actually exist for this tenant.
+    const scope = tpl.scope.filter(k => allTracks.includes(k));
+    const spec = { title: tpl.title, prompt: tpl.desc, period: tpl.period, format: tpl.format, scope };
     runGenerate(spec);
   };
 
@@ -378,7 +401,7 @@ export const ReportsView = () => {
     catch (err) { console.error('Failed to delete report', err); }
   };
 
-  if (open) return <ReportDoc report={open} onBack={() => { setOpen(null); setTab('library'); }} />;
+  if (open) return <ReportDoc report={open} onBack={() => { setOpen(null); setTab('library'); }} trackMeta={trackMeta} />;
 
   return (
     <div className="viewWrap">
@@ -409,6 +432,7 @@ export const ReportsView = () => {
 
           {draft ? (
             <ReportBuilder draft={draft} setDraft={setDraft} busy={busy}
+              allTracks={allTracks} trackMeta={trackMeta}
               onGenerate={() => runGenerate(draft)} />
           ) : (
             <>
@@ -421,7 +445,7 @@ export const ReportsView = () => {
                       <div className="nm">{tpl.title}</div>
                       <div className="ds">{tpl.desc}</div>
                       <div className="repTemplateMeta">
-                        {tpl.scope.map(s => <span className="sw" key={s} style={{ background: TRACK_META[s].color }} />)}
+                        {tpl.scope.map(s => <span className="sw" key={s} style={{ background: metaFor(s, trackMeta).color }} />)}
                         <span>{tpl.period}</span>
                       </div>
                     </div>
@@ -437,7 +461,7 @@ export const ReportsView = () => {
           {reportsLoading && <div className="repLoading">Loading library…</div>}
           {!reportsLoading && reports.length === 0 && <div className="repEmpty">No reports yet — create one from the Create tab.</div>}
           {reports.map(r => (
-            <LibraryCard key={r.id} r={r} onOpen={setOpen} onDelete={deleteReport} />
+            <LibraryCard key={r.id} r={r} onOpen={setOpen} onDelete={deleteReport} trackMeta={trackMeta} />
           ))}
         </div>
       )}

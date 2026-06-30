@@ -102,14 +102,10 @@ export const StatRow = ({ active, setActive }) => (
    ScorecardRow
    ============================================================ */
 
-const TRACK_COLOR = {
-  sales: 'var(--track-sales)',
-  operations: 'var(--track-ops)',
-  workshop: 'var(--track-workshop)',
-  finance: 'var(--track-finance)',
-};
+// Fallback color when a track has no color in the data model.
+const DEFAULT_TRACK_COLOR = 'var(--brand)';
 
-export const TrackScorecard = ({ trackId, label, items, hero, isOpen, focused, onToggle, onAct }) => {
+export const TrackScorecard = ({ trackId, color, label, items, hero, isOpen, focused, onToggle, onAct }) => {
   const { t } = useT();
   const reds   = items.filter(i => i.status === 'red');
   const ambers = items.filter(i => i.status === 'amber');
@@ -123,7 +119,7 @@ export const TrackScorecard = ({ trackId, label, items, hero, isOpen, focused, o
   return (
     <div id={`scorecard-${trackId}`} className={`scorecard ${isOpen ? 'open' : ''} ${focused ? 'focused' : ''}`}>
       <div className="scHead" onClick={() => onToggle(trackId)}>
-        <span className="swatch" style={{ background: TRACK_COLOR[trackId] }} />
+        <span className="swatch" style={{ background: color || DEFAULT_TRACK_COLOR }} />
         <span className="scName">{label}</span>
         <span className="scMeta">{items.length} {items.length === 1 ? t('track.item') : t('track.items')}</span>
       </div>
@@ -183,51 +179,42 @@ export const TrackScorecard = ({ trackId, label, items, hero, isOpen, focused, o
   );
 };
 
-export const ScorecardRow = ({ sales, ops, workshop, finance, openTracks, focused, only, onClearFilter, onToggle, onAct, allowedTracks }) => {
+// Generic hero metric for a track: if any item carries a numeric value, show
+// the summed value; otherwise show the item count. KPI configuration per track
+// (e.g. "service due", "overdue") is a later, config-driven phase — this keeps
+// the scorecard meaningful for ANY track without baking in domain assumptions.
+const heroFor = (items, t) => {
+  const valued = items.filter(i => typeof i.value === 'number' && i.value);
+  if (valued.length) {
+    return { value: fmtMoney(valued.reduce((s, i) => s + (i.value || 0), 0)), label: t('sc.totalValue') };
+  }
+  return { value: items.length, label: t('sc.openItems') };
+};
+
+// `tracks` is the tenant's ordered, already access-filtered track set
+// ([{ key, label, color }]); `cardsByTrack` maps each track key to its cards.
+export const ScorecardRow = ({ tracks = [], cardsByTrack = {}, openTracks = {}, focused, only, onClearFilter, onToggle, onAct }) => {
   const { t } = useT();
-  const salesPipeline = sales.reduce((s, i) => s + (i.value || 0), 0);
-  const opsServiceDue = ops.filter(i => i.type === 'SERVICE').length;
-  const wsOpen = workshop.filter(i => i.stageId !== 'invoiced').length;
-  const finOverdue = finance.filter(i => i.stageId === 'overdue').reduce((s, i) => s + (i.value || 0), 0);
+  const cardsFor = (k) => cardsByTrack[k] || [];
 
-  const cards = [
-    { id: 'sales', el: (
-      <TrackScorecard key="sales" trackId="sales" label={t('sc.salesPipeline')}
-        items={sales}
-        hero={{ value: fmtMoney(salesPipeline), label: t('sc.pipelineValue') }}
-        isOpen={openTracks.sales} focused={focused === 'sales'} onToggle={onToggle} onAct={onAct} />) },
-    { id: 'operations', el: (
-      <TrackScorecard key="operations" trackId="operations" label={t('track.operations')}
-        items={ops}
-        hero={{ value: opsServiceDue, label: t('sc.serviceDue90d') }}
-        isOpen={openTracks.operations} focused={focused === 'operations'} onToggle={onToggle} onAct={onAct} />) },
-    { id: 'workshop', el: (
-      <TrackScorecard key="workshop" trackId="workshop" label={t('track.workshop')}
-        items={workshop}
-        hero={{ value: wsOpen, label: t('sc.openWorkOrders') }}
-        isOpen={openTracks.workshop} focused={focused === 'workshop'} onToggle={onToggle} onAct={onAct} />) },
-    { id: 'finance', el: (
-      <TrackScorecard key="finance" trackId="finance" label={t('track.finance')}
-        items={finance}
-        hero={{ value: fmtMoney(finOverdue), label: t('sc.overdue') }}
-        isOpen={openTracks.finance} focused={focused === 'finance'} onToggle={onToggle} onAct={onAct} />) },
-  ];
+  const cards = tracks.map(tr => ({
+    id: tr.key,
+    el: (
+      <TrackScorecard key={tr.key} trackId={tr.key} color={tr.color} label={tr.label}
+        items={cardsFor(tr.key)} hero={heroFor(cardsFor(tr.key), t)}
+        isOpen={!!openTracks[tr.key]} focused={focused === tr.key} onToggle={onToggle} onAct={onAct} />
+    ),
+  }));
 
-  const deptLabel = { sales: t('track.sales'), operations: t('track.operations'), workshop: t('track.workshop'), finance: t('track.finance') };
-  // Track-access (H3): only render scorecards for tracks the user may view.
-  // allowedTracks null/undefined = no restriction (admin / still loading).
-  const visible = allowedTracks && allowedTracks.length
-    ? cards.filter(c => allowedTracks.includes(c.id))
-    : cards;
-  const shown = only ? visible.filter(c => c.id === only) : visible;
+  const onlyTrack = only ? tracks.find(tr => tr.key === only) : null;
+  const shown = only ? cards.filter(c => c.id === only) : cards;
 
   return (
     <>
-      {only && (
+      {only && onlyTrack && (
         <div className="deptFilterBar">
-          <span className="dfbSwatch" style={{ background: TRACK_COLOR[only] }} />
-          <span className="dfbLabel">{t('dept.viewing')} <b>{deptLabel[only]}</b></span>
-          <span className="dfbCount">{shown[0] ? '' : ''}</span>
+          <span className="dfbSwatch" style={{ background: onlyTrack.color || DEFAULT_TRACK_COLOR }} />
+          <span className="dfbLabel">{t('dept.viewing')} <b>{onlyTrack.label}</b></span>
           <button className="dfbClear" onClick={onClearFilter}>
             <Icon name="eye" size={12} strokeWidth={2} /> {t('dept.showAll')}
           </button>

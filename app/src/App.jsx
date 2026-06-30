@@ -257,18 +257,30 @@ const App = () => {
   const [flashIds, setFlashIds] = React.useState([]);
   const [activeFlow, setActiveFlow] = React.useState(null);
 
-  // Accordion state — all tracks closed by default. Each scorecard
-  // has a "View" button that opens its track section below.
-  const [openTracks, setOpenTracks] = React.useState({
-    sales: false, operations: false, workshop: false, finance: false,
-  });
+  // The tenant's track set — data-model driven (GET /tracks). null = loading,
+  // [] = the tenant has no tracks. This is the single source of truth for the
+  // dashboard, side-menu nav, and accordion sections; nothing is hardcoded.
+  const [tracks, setTracks] = React.useState(null);
+  React.useEffect(() => {
+    api.get('/tracks')
+      .then((rows) => setTracks(Array.isArray(rows) ? rows : []))
+      .catch(() => setTracks([]));
+  }, []);
 
-  const [sales, setSales] = React.useState([]);
-  const [ops, setOps] = React.useState([]);
-  const [workshop, setWorkshop] = React.useState([]);
-  const [finance, setFinance] = React.useState([]);
+  // Tracks the *acting* user may both access (role → track) AND that exist in
+  // the data model. allowedTracks null/empty = no restriction (admin/loading).
+  const visibleTracks = (tracks || []).filter(
+    (tr) => !allowedTracks || !allowedTracks.length || allowedTracks.includes(tr.key),
+  );
 
-  const trackSetters = { sales: setSales, operations: setOps, workshop: setWorkshop, finance: setFinance };
+  // Accordion state — keyed by track key, all closed by default.
+  const [openTracks, setOpenTracks] = React.useState({});
+
+  // Cards per track, keyed by track key. Replaces the four fixed pipelines.
+  const [cardsByTrack, setCardsByTrack] = React.useState({});
+  const cardsFor = (k) => cardsByTrack[k] || [];
+  const setCardsForTrack = (k, updater) =>
+    setCardsByTrack((prev) => ({ ...prev, [k]: updater(prev[k] || []) }));
 
   // Stage columns come from the tenant's SAVED config (GET /stages) so edits in
   // Settings → Stage configuration actually appear on the board. The built-in
@@ -283,34 +295,34 @@ const App = () => {
   // Saved stages for a track (empty until loaded / if the tenant has none).
   const stagesFor = (k) => (stagesByTrack && stagesByTrack[k]) || [];
 
-  // Load all four pipelines from the API on mount, and whenever the previewed
-  // user changes (so the live data reflects exactly what that user would see).
+  // Load each track's pipeline from the API once tracks are known, and whenever
+  // the previewed user changes (so live data reflects what that user would see).
   React.useEffect(() => {
+    if (!tracks) return;
     let alive = true;
     setPreviewAs(previewUser?.id || null);
-    Promise.all([
-      api.get('/cards?track=sales'),
-      api.get('/cards?track=operations'),
-      api.get('/cards?track=workshop'),
-      api.get('/cards?track=finance'),
-    ]).then(([s, o, w, f]) => {
+    Promise.all(
+      tracks.map((tr) =>
+        api.get('/cards?track=' + encodeURIComponent(tr.key))
+          .then((c) => [tr.key, Array.isArray(c) ? c : []])
+          .catch(() => [tr.key, []]),
+      ),
+    ).then((pairs) => {
       if (!alive) return;
-      setSales(s); setOps(o); setWorkshop(w); setFinance(f);
-    }).catch(() => {});
+      const map = {};
+      pairs.forEach(([k, c]) => { map[k] = c; });
+      setCardsByTrack(map);
+    });
     return () => { alive = false; };
-  }, [previewUser]);
+  }, [tracks, previewUser]);
 
   // Apply / insert a card returned by the server into the right track.
-  const applyCard = (card) => {
-    const setter = trackSetters[trackKey(card.track)];
-    if (setter) setter(prev => prev.map(x => x.id === card.id ? { ...x, ...card } : x));
-  };
-  const addCard = (card) => {
-    const setter = trackSetters[trackKey(card.track)];
-    if (setter) setter(prev => prev.find(x => x.id === card.id)
+  const applyCard = (card) =>
+    setCardsForTrack(trackKey(card.track), (prev) => prev.map(x => x.id === card.id ? { ...x, ...card } : x));
+  const addCard = (card) =>
+    setCardsForTrack(trackKey(card.track), (prev) => prev.find(x => x.id === card.id)
       ? prev.map(x => x.id === card.id ? { ...x, ...card } : x)
       : [card, ...prev]);
-  };
 
   // Create a new pipeline item in a track (quick capture: title + optional value).
   const createItem = async (track) => {
@@ -330,8 +342,7 @@ const App = () => {
     if (!window.confirm(`Delete "${item.customer}"? This cannot be undone.`)) return;
     try {
       await api.del(`/cards/${item.id}`);
-      const setter = trackSetters[trackKey(item.track)];
-      if (setter) setter(prev => prev.filter(x => x.id !== item.id));
+      setCardsForTrack(trackKey(item.track), prev => prev.filter(x => x.id !== item.id));
     } catch (e) { window.alert(e.message || 'Could not delete item'); }
   };
 
@@ -383,11 +394,11 @@ const App = () => {
   });
 
   // Move an item to a new stage (board drag-drop). Optimistic, then persisted.
-  const moveStage = (trackId, stages, setter) => (itemId, newStageId) => {
+  const moveStage = (tKey, stages) => (itemId, newStageId) => {
     const stage = stages.find(s => s.id === newStageId);
     if (!stage) return;
     let snapshot = null;
-    setter(prev => {
+    setCardsForTrack(tKey, prev => {
       snapshot = prev; // capture for revert if the server rejects the move
       return prev.map(it =>
         it.id === itemId
@@ -397,24 +408,26 @@ const App = () => {
     setFlashIds([itemId]);
     setTimeout(() => setFlashIds([]), 1500);
     api.put(`/cards/${itemId}/stage`, { stageId: newStageId })
-      .then(card => setter(prev => prev.map(it => it.id === itemId ? { ...it, ...card } : it)))
+      .then(card => setCardsForTrack(tKey, prev => prev.map(it => it.id === itemId ? { ...it, ...card } : it)))
       .catch(err => {
-        if (snapshot) setter(snapshot); // revert optimistic move
+        if (snapshot) setCardsForTrack(tKey, () => snapshot); // revert optimistic move
         setToast({ title: 'Move blocked', lines: [err?.message || 'Could not move this card'] });
         setTimeout(() => setToast(null), 4500);
       });
   };
 
-  // counts for side menu
-  const counts = {
-    sales:      { value: sales.length,    kind: sales.some(s => s.status === 'red') ? 'red' : sales.some(s => s.status === 'amber') ? 'amber' : '' },
-    operations: { value: ops.length,      kind: ops.some(s => s.status === 'red') ? 'red' : ops.some(s => s.status === 'amber') ? 'amber' : '' },
-    workshop:   { value: workshop.length, kind: '' },
-    finance:    { value: finance.length,  kind: finance.some(s => s.status === 'red') ? 'red' : finance.some(s => s.status === 'amber') ? 'amber' : '' },
-    urgent: [...sales, ...ops, ...workshop, ...finance].filter(i => i.status === 'red').length,
-  };
+  // Per-track counts for the side menu, keyed by track key.
+  const counts = {};
+  (tracks || []).forEach((tr) => {
+    const items = cardsFor(tr.key);
+    counts[tr.key] = {
+      value: items.length,
+      kind: items.some(s => s.status === 'red') ? 'red' : items.some(s => s.status === 'amber') ? 'amber' : '',
+    };
+  });
+  const allItems = Object.values(cardsByTrack).flat();
+  counts.urgent = allItems.filter(i => i.status === 'red').length;
 
-  const allItems = [...sales, ...ops, ...workshop, ...finance];
   const urgent = allItems.filter(i => i.status === 'red').length;
   const watch  = allItems.filter(i => i.status === 'amber').length;
   const okay   = allItems.filter(i => i.status === 'green').length;
@@ -422,17 +435,17 @@ const App = () => {
   // When a track menu item is clicked, focus its scorecard for a better
   // overview — collapse any open pipelines and leave them closed.
   const [focusTrack, setFocusTrack] = React.useState(null);
+  const trackKeys = (tracks || []).map(tr => tr.key);
   React.useEffect(() => {
-    const tracks = ['sales','operations','workshop','finance'];
-    if (tracks.includes(active)) {
-      setOpenTracks({ sales: false, operations: false, workshop: false, finance: false });
+    if (trackKeys.includes(active)) {
+      setOpenTracks({});
       setFocusTrack(active);
       const el = document.getElementById(`scorecard-${active}`);
       if (el) setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
       const tmo = setTimeout(() => setFocusTrack(null), 2000);
       return () => clearTimeout(tmo);
     }
-  }, [active]);
+  }, [active, trackKeys.join(',')]);
 
   // Leaving the Roles section closes any open configurator.
   React.useEffect(() => { if (active !== 'roles') setRbacRole(null); }, [active]);
@@ -477,7 +490,9 @@ const App = () => {
       body="Outbound and inbound messages with fleet operators — emails, portal messages, automated SMS confirmations. Sourced from the same DataSource as the dashboard." />;
 
     // Overview / dashboard
-    const isDept = ['sales','operations','workshop','finance'].includes(active);
+    const isDept = trackKeys.includes(active);
+    const anyOpen = Object.values(openTracks).some(Boolean);
+    const openVisibleTracks = visibleTracks.filter(tr => openTracks[tr.key]);
     return (
       <>
         <div className="contextBar">
@@ -493,56 +508,31 @@ const App = () => {
 
         {!isDept && <Snapshot urgent={urgent} watch={watch} allOk={okay} total={allItems.length} />}
 
-        <ScorecardRow sales={sales} ops={ops} workshop={workshop} finance={finance}
+        <ScorecardRow tracks={visibleTracks} cardsByTrack={cardsByTrack}
                       openTracks={openTracks} focused={focusTrack}
-                      allowedTracks={allowedTracks}
                       only={isDept ? active : null}
                       onClearFilter={() => setActive('overview')}
                       onToggle={toggleTrack} onAct={openFlow} />
 
-        {(openTracks.sales || openTracks.operations || openTracks.workshop || openTracks.finance) && (
-          <div className="openTracksLabel">{t('track.openPipelines')}</div>
+        {tracks && visibleTracks.length === 0 && (
+          <div className="openTracksLabel" style={{ color: 'var(--text-tertiary)' }}>
+            {tracks.length === 0
+              ? 'No tracks are configured yet. An administrator can add tracks in the Data model.'
+              : 'You don’t have access to any tracks yet.'}
+          </div>
         )}
 
-        {openTracks.sales && (
-          <Track trackId="sales" title={t('track.sales')}
-                 stages={stagesFor('sales')} items={sales}
-                 isOpen={true} onToggle={() => toggleTrack('sales')}
-                 onOpenTimeline={openTimeline}
-                 onAct={openFlow} onMoveStage={moveStage('sales', stagesFor('sales'), setSales)}
-                 onCreate={createItem} onDelete={deleteItem}
-                 flashIds={flashIds} />
-        )}
+        {anyOpen && <div className="openTracksLabel">{t('track.openPipelines')}</div>}
 
-        {openTracks.operations && (
-          <Track trackId="operations" title={t('track.operations')}
-                 stages={stagesFor('operations')} items={ops}
-                 isOpen={true} onToggle={() => toggleTrack('operations')}
+        {openVisibleTracks.map(tr => (
+          <Track key={tr.key} trackId={tr.key} title={tr.label}
+                 stages={stagesFor(tr.key)} items={cardsFor(tr.key)}
+                 isOpen={true} onToggle={() => toggleTrack(tr.key)}
                  onOpenTimeline={openTimeline}
-                 onAct={openFlow} onMoveStage={moveStage('operations', stagesFor('operations'), setOps)}
+                 onAct={openFlow} onMoveStage={moveStage(tr.key, stagesFor(tr.key))}
                  onCreate={createItem} onDelete={deleteItem}
                  flashIds={flashIds} />
-        )}
-
-        {openTracks.workshop && (
-          <Track trackId="workshop" title={t('track.workshop')}
-                 stages={stagesFor('workshop')} items={workshop}
-                 isOpen={true} onToggle={() => toggleTrack('workshop')}
-                 onOpenTimeline={openTimeline}
-                 onAct={openFlow} onMoveStage={moveStage('workshop', stagesFor('workshop'), setWorkshop)}
-                 onCreate={createItem} onDelete={deleteItem}
-                 flashIds={flashIds} />
-        )}
-
-        {openTracks.finance && (
-          <Track trackId="finance" title={t('track.finance')}
-                 stages={stagesFor('finance')} items={finance}
-                 isOpen={true} onToggle={() => toggleTrack('finance')}
-                 onOpenTimeline={openTimeline}
-                 onAct={openFlow} onMoveStage={moveStage('finance', stagesFor('finance'), setFinance)}
-                 onCreate={createItem} onDelete={deleteItem}
-                 flashIds={flashIds} />
-        )}
+        ))}
 
       </>
     );
@@ -550,8 +540,8 @@ const App = () => {
 
   return (
     <div className="app v1Shell">
-      <SideMenu active={active} setActive={setActive} counts={counts} allowedTracks={allowedTracks} isAdmin={isAdmin} isPlatformAdmin={isPlatformAdmin}
-                onTrackSelect={() => setOpenTracks({ sales: false, operations: false, workshop: false, finance: false })} />
+      <SideMenu active={active} setActive={setActive} counts={counts} tracks={visibleTracks} isAdmin={isAdmin} isPlatformAdmin={isPlatformAdmin}
+                onTrackSelect={() => setOpenTracks({})} />
 
       <div className="v1Main">
         {previewUser && (
