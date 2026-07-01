@@ -421,7 +421,22 @@ const App = () => {
     setFlashIds([itemId]);
     setTimeout(() => setFlashIds([]), 1500);
     api.put(`/cards/${itemId}/stage`, { stageId: newStageId })
-      .then(card => setCardsForTrack(tKey, prev => prev.map(it => it.id === itemId ? { ...it, ...card } : it)))
+      .then(({ card, createdCards = [], cascades = [] }) => {
+        if (card) setCardsForTrack(tKey, prev => prev.map(it => it.id === itemId ? { ...it, ...card } : it));
+        // A cross-track trigger may have cascaded a card into another track.
+        createdCards.forEach(addCard);
+        if (createdCards.length) {
+          const opened = {};
+          createdCards.forEach(c => { opened[trackKey(c.track)] = true; });
+          setOpenTracks(o => ({ ...o, ...opened }));
+          setFlashIds([itemId, ...createdCards.map(c => c.id)]);
+          setTimeout(() => setFlashIds([]), 1800);
+        }
+        if (cascades.length) {
+          setToast({ title: `${card?.customer || 'Card'} moved to ${stage.label}`, lines: cascades.map(c => `→ ${c.track}: ${c.text}`) });
+          setTimeout(() => setToast(null), 6500);
+        }
+      })
       .catch(err => {
         if (snapshot) setCardsForTrack(tKey, () => snapshot); // revert optimistic move
         setToast({ title: 'Move blocked', lines: [err?.message || 'Could not move this card'] });

@@ -119,7 +119,7 @@ export async function runAction(
       whenStageName: cascadeCfg.whenStageName,
       sourceCard: card,
       actor,
-    });
+    }, tenantId);
 
     // The Brussels sign cascade also touches the customer portal (3rd line).
     const cascades: CascadeLine[] = [...cascadeLines];
@@ -140,6 +140,9 @@ export async function runAction(
         kind: 'critical',
         icon: 'bolt',
         cascades,
+        // Record the ids the cascade created so a revert can remove exactly
+        // those (the engine's ids are dynamic, not a fixed o1/f1).
+        meta: { createdCardIds: createdCards.map((c) => c.id) },
       },
       db,
       tenantId,

@@ -39,7 +39,7 @@ describe('cards + stage locks', () => {
     if (next) {
       const ok = await put('/cards/s1/stage', { stageId: next.stageId }, tok);
       expect(ok.status).toBe(200);
-      expect(ok.body.stageId).toBe(next.stageId);
+      expect(ok.body.card.stageId).toBe(next.stageId); // move response is { card, createdCards, cascades }
     }
   });
 });

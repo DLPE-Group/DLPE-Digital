@@ -21,6 +21,6 @@ describe('stage config is DB-driven at runtime', () => {
     // move s1 (currently lead/meeting) one step is lock-guarded; move s2 (contract) back to offer is allowed (backwards)
     const moved = await put('/cards/s2/stage', { stageId: 'offer' }, tok);
     expect(moved.status).toBe(200);
-    expect(moved.body.stageName).toBe('Offer (edited)');
+    expect(moved.body.card.stageName).toBe('Offer (edited)'); // move response is { card, createdCards, cascades }
   });
 });

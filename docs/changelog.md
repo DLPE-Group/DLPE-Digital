@@ -5,6 +5,7 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 
 ## 2026-07-01
 
+- `06b18c6` fix(review): address whole-branch code review findings
 - `af35877` test(ui): comprehensive Playwright pipeline + non-fleet fixture (Part B)
 - `8615ebf` feat(data-model): custom (non-builtin) tracks carry pipeline cards (Part A)
 - `25b6ae1` chore(reports): drop fabricated trend + de-brand AI prompt (cleanup)
@@ -208,5 +209,5 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 - `a8c1e03` Implement Intelligence Layer as Vite + React app
 - `6fede3e` Claude Design handoff: Dlpe Digital
 
-<small>172 commits.</small>
+<small>173 commits.</small>
 

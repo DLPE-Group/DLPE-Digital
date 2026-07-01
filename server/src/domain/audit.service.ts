@@ -106,9 +106,16 @@ export async function revertAudit(
     // The auditEntry.findUnique above runs under `db` (RLS), so a non-demo tenant gets a
     // 404 before reaching this block — no other tenant has entity ids o1/f1/s5.
     // Do NOT convert these inner $transaction blocks to withTenant.
+    // Prefer the exact ids the cascade recorded on the audit entry (the trigger
+    // engine's ids are dynamic); fall back to the legacy fixed ids for older entries.
+    const meta = (full.meta ?? null) as { createdCardIds?: unknown } | null;
+    const cascadeIds = Array.isArray(meta?.createdCardIds) && meta.createdCardIds.length
+      ? (meta.createdCardIds as string[])
+      : SIGN_CASCADE_CARD_IDS;
+
     return prisma.$transaction(async (tx) => {
       const removedCardIds: string[] = [];
-      for (const id of SIGN_CASCADE_CARD_IDS) {
+      for (const id of cascadeIds) {
         const existing = await tx.entity.findUnique({ where: { id } });
         if (existing) {
           await tx.entity.delete({ where: { id } });

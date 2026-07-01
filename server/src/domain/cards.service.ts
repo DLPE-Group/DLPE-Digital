@@ -7,6 +7,7 @@ import { filterCard } from '../rbac/applyCardRules.js';
 import { visibleCompanyIds } from '../rbac/scope.js';
 import { entityToCardDTO, type EntityRow } from './projection.js';
 import { operationalKey, tenantSlugPrefix, tenantTrackKeys } from './trackKeys.js';
+import { runTriggers } from './triggers.engine.js';
 
 // Phase 1b: Entity is the source of truth for pipeline items. Load pipeline
 // entities (optionally one track) and project them to the legacy Card shape so
@@ -150,7 +151,7 @@ export async function moveStage(
   userId: string | undefined,
   tenantId: string,
   db: Prisma.TransactionClient | typeof prisma = prisma,
-): Promise<Card> {
+): Promise<{ card: Card; createdCards: Card[]; cascades: { track: string; text: string }[] }> {
   const row = await db.entity.findUnique({ where: { id } });
   if (!row) throw new Error('Card not found');
   const card = entityToCardDTO(row as unknown as EntityRow) as unknown as Card;
@@ -208,7 +209,15 @@ export async function moveStage(
     },
   }, db as Prisma.TransactionClient, tenantId);
 
-  return updated;
+  // Cross-track triggers: entering this stage may cascade a card into another
+  // track (config-driven, any track). Fires on every stage change.
+  const { createdCards, cascadeLines } = await runTriggers(
+    db as Prisma.TransactionClient,
+    { whenTrack: updated.track, whenStageName: stageName, sourceCard: updated, actor },
+    tenantId,
+  );
+
+  return { card: updated, createdCards, cascades: cascadeLines };
 }
 
 export async function patchCard(id: string, patch: Partial<Card>, db: Prisma.TransactionClient | typeof prisma = prisma): Promise<Card> {
