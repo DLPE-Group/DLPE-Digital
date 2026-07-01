@@ -36,7 +36,7 @@ export async function generateProse(spec: ReportSpec, userId?: string): Promise<
   spec.scope.forEach((t) => (data[t] = computed[t].metrics));
 
   // Stable instruction prefix is cached; volatile request specifics follow.
-  const prefix = `You are the analyst of an "Intelligence Layer" fleet-operations console for DLPE-Group.
+  const prefix = `You are the analyst of an operations intelligence console.
 Reply with ONLY a JSON object, no markdown. Keep it crisp and specific to the figures. Use ONLY the computed figures provided (do not invent numbers).`;
 
   const prompt = `Write a ${spec.format} report titled "${spec.title}" covering ${spec.period.toLowerCase()}.

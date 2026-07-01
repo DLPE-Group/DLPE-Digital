@@ -67,10 +67,6 @@ const useTrackAggregates = (tracks) => {
   return { get, loading };
 };
 
-const TREND = { title: 'Records synced · last 7 days',
-  labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-  points: [2100, 2380, 1980, 2560, 2240, 2680, 2840] };
-
 /* ---- Report templates (one-click) ---- */
 const REPORT_TEMPLATES = [
   { id: 'weekly', icon: 'document', title: 'Weekly fleet summary',
@@ -102,26 +98,6 @@ const BarChart = ({ bars, color }) => {
           <span className="val">{b.display}</span>
         </div>
       ))}
-    </div>
-  );
-};
-
-const TrendLine = ({ points, labels, color }) => {
-  const max = Math.max(...points), min = Math.min(...points);
-  const span = max - min || 1;
-  const n = points.length;
-  const xy = points.map((v, i) => [ (i / (n - 1)) * 100, 38 - ((v - min) / span) * 30 - 4 ]);
-  const line = xy.map(p => `${p[0]},${p[1]}`).join(' ');
-  const area = `0,40 ${line} 100,40`;
-  return (
-    <div className="repTrend">
-      <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="repTrendSvg">
-        <polygon points={area} fill={color} opacity="0.1" />
-        <polyline points={line} fill="none" stroke={color} strokeWidth="1.4"
-                  vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
-        {xy.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="1.4" fill={color} vectorEffect="non-scaling-stroke" />)}
-      </svg>
-      <div className="repTrendLabels">{labels.map((l, i) => <span key={i}>{l}</span>)}</div>
     </div>
   );
 };
@@ -164,11 +140,6 @@ const ReportDoc = ({ report, onBack, trackMeta }) => {
         <section className="repSummary">
           <h2>Executive summary</h2>
           <p>{report.prose.headline}</p>
-        </section>
-
-        <section className="repTrendSection">
-          <h2>{TREND.title}</h2>
-          <TrendLine points={TREND.points} labels={TREND.labels} color="var(--brand)" />
         </section>
 
         {loading && <div className="repLoading">Loading track metrics…</div>}

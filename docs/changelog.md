@@ -5,6 +5,7 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 
 ## 2026-07-01
 
+- `985ab77` feat(dashboard): generic, track-driven Reports Dashboard builder (Phase 4)
 - `001aabd` feat(platform): entitlement-gate fleet views + real Workspace facts (Phase 3)
 - `04eb5b5` feat(reports): generic, data-driven per-track aggregation (Phase 2)
 
@@ -204,5 +205,5 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 - `a8c1e03` Implement Intelligence Layer as Vite + React app
 - `6fede3e` Claude Design handoff: Dlpe Digital
 
-<small>168 commits.</small>
+<small>169 commits.</small>
 
