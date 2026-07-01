@@ -273,6 +273,19 @@ const App = () => {
     (tr) => !allowedTracks || !allowedTracks.length || allowedTracks.includes(tr.key),
   );
 
+  // Tenant capabilities (GET /features) — gates the fleet-specific views so a
+  // non-fleet tenant never sees Vehicles/Timelines/Portal. Driven by the
+  // presence of the matching reference entity types in the data model.
+  const [features, setFeatures] = React.useState(null);
+  React.useEffect(() => {
+    api.get('/features')
+      .then((f) => setFeatures(f && typeof f === 'object' ? f : {}))
+      .catch(() => setFeatures({}));
+  }, []);
+  const refTypes = features?.referenceTypes || [];
+  const hasVehicles = refTypes.includes('vehicle');
+  const hasPortal = refTypes.includes('fleet_operator');
+
   // Accordion state — keyed by track key, all closed by default.
   const [openTracks, setOpenTracks] = React.useState({});
 
@@ -463,9 +476,15 @@ const App = () => {
         body="The Control Plane is restricted to platform administrators." />;
     }
     if (active === 'platform') return <ControlPlaneView />;
-    if (active === 'portal') return <CustomerPortal />;
+    // Fleet-specific views render only when the tenant's data model has the
+    // matching reference entity types (defense-in-depth alongside hidden nav).
+    if (active === 'portal') {
+      return hasPortal ? <CustomerPortal /> : <StubPanel icon="user" title="Customer portal not available"
+        body="This workspace has no customer-facing operator records, so the portal is not enabled." />;
+    }
     if (active === 'timeline' || active === 'vehicles') {
-      return <VehiclesView onOpenTimeline={openTimeline} />;
+      return hasVehicles ? <VehiclesView onOpenTimeline={openTimeline} /> : <StubPanel icon="truck" title="Vehicles not available"
+        body="This workspace's data model has no vehicle records, so the fleet views are not enabled." />;
     }
     if (active === 'integrations') return <IntegrationsView />;
     if (active === 'datamodel') return <DataModelView />;
@@ -486,8 +505,6 @@ const App = () => {
     if (active === 'reports') return <ReportsView />;
     if (active === 'audit') return <AuditView />;
     if (active === 'settings') return <SettingsView />;
-    if (active === 'messages') return <StubPanel icon="mail" title="Messages"
-      body="Outbound and inbound messages with fleet operators — emails, portal messages, automated SMS confirmations. Sourced from the same DataSource as the dashboard." />;
 
     // Overview / dashboard
     const isDept = trackKeys.includes(active);
@@ -541,6 +558,7 @@ const App = () => {
   return (
     <div className="app v1Shell">
       <SideMenu active={active} setActive={setActive} counts={counts} tracks={visibleTracks} isAdmin={isAdmin} isPlatformAdmin={isPlatformAdmin}
+                hasVehicles={hasVehicles} hasPortal={hasPortal}
                 onTrackSelect={() => setOpenTracks({})} />
 
       <div className="v1Main">

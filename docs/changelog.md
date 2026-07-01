@@ -3,6 +3,10 @@
 Auto-generated from git history (newest first). Refreshed on every commit by the `.githooks/pre-commit` hook; merge commits are omitted.
 
 
+## 2026-07-01
+
+- `04eb5b5` feat(reports): generic, data-driven per-track aggregation (Phase 2)
+
 ## 2026-06-30
 
 - `22400be` feat(dashboard): drive track set from the data layer (Phase 1)
@@ -199,5 +203,5 @@ Auto-generated from git history (newest first). Refreshed on every commit by the
 - `a8c1e03` Implement Intelligence Layer as Vite + React app
 - `6fede3e` Claude Design handoff: Dlpe Digital
 
-<small>166 commits.</small>
+<small>167 commits.</small>
 

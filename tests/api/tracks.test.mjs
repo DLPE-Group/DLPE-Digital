@@ -25,3 +25,26 @@ describe('GET /tracks — tenant track set', () => {
     expect(r.body.length).toBeGreaterThan(0);
   });
 });
+
+// GET /features drives fleet-view gating (Vehicles/Timelines/Portal render only
+// when the matching reference entity types exist) and the Settings → Workspace
+// panel. Tenant-scoped, readable by any authenticated user.
+describe('GET /features — tenant capabilities', () => {
+  it('reports tenant facts + operational entity-type keys', async () => {
+    const r = await get('/features', ADMIN());
+    expect(r.status).toBe(200);
+    expect(r.body.tenant).toBeTruthy();
+    expect(typeof r.body.tenant.name).toBe('string');
+    // The fleet demo has vehicle + fleet_operator reference types (bare keys).
+    expect(r.body.referenceTypes).toContain('vehicle');
+    expect(r.body.referenceTypes).toContain('fleet_operator');
+    expect(Array.isArray(r.body.pipelineTypes)).toBe(true);
+  });
+
+  it('is readable by a non-admin user', async () => {
+    const eva = token('u-eva', 'e.devries@group.eu', 'sales-mgr');
+    const r = await get('/features', eva);
+    expect(r.status).toBe(200);
+    expect(r.body.referenceTypes).toContain('vehicle');
+  });
+});

@@ -4,7 +4,7 @@ import { useT } from './i18n.jsx';
 
 /* Side menu — primary navigation for the dashboard */
 
-export const SideMenu = ({ active, setActive, counts = {}, onTrackSelect, tracks = [], isAdmin, isPlatformAdmin }) => {
+export const SideMenu = ({ active, setActive, counts = {}, onTrackSelect, tracks = [], isAdmin, isPlatformAdmin, hasVehicles = false, hasPortal = false }) => {
   const { t } = useT();
 
   const item = (id, icon, label, badge, badgeKind) => (
@@ -31,8 +31,8 @@ export const SideMenu = ({ active, setActive, counts = {}, onTrackSelect, tracks
         <div className="navSection">
           {item('overview', 'eye', t('nav.overview'), counts.urgent || null, counts.urgent ? 'red' : '')}
           {item('reports', 'chart', t('nav.reports'))}
-          {item('vehicles', 'truck', t('nav.vehicles'))}
-          {item('timeline', 'timeline', t('nav.timelines'))}
+          {hasVehicles && item('vehicles', 'truck', t('nav.vehicles'))}
+          {hasVehicles && item('timeline', 'timeline', t('nav.timelines'))}
         </div>
 
         {tracks.length > 0 && (
@@ -57,11 +57,12 @@ export const SideMenu = ({ active, setActive, counts = {}, onTrackSelect, tracks
           </div>
         )}
 
-        <div className="navSection">
-          <div className="navHead">{t('nav.customerFacing')}</div>
-          {item('portal', 'user', t('nav.portal'))}
-          {item('messages', 'mail', t('nav.messages'), null)}
-        </div>
+        {hasPortal && (
+          <div className="navSection">
+            <div className="navHead">{t('nav.customerFacing')}</div>
+            {item('portal', 'user', t('nav.portal'))}
+          </div>
+        )}
 
         {/* Administration + Integrations + Audit are group-admin only
             (mirrors the server's requireAdmin guard). */}

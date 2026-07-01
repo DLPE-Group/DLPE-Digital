@@ -4,6 +4,14 @@ import { withTenant } from '../db/withTenant.js';
 
 export const stagesRouter: Router = Router();
 
+// Recover the *operational* key from a (possibly prefixed) registry key.
+// TrackDef.key / EntityType.key are globally unique, so the provisioner
+// namespaces builtin rows as `<slug>-<key>`. The rest of the runtime (and the
+// UI) keys on the bare operational key, so strip the tenant `<slug>-` prefix
+// from builtin rows. Authored (builtin=false) rows are already bare.
+const operationalKey = (key: string, builtin: boolean, pfx: string): string =>
+  builtin && pfx && key.startsWith(pfx) ? key.slice(pfx.length) : key;
+
 // GET /api/stages — the tenant's saved stage configuration, grouped by track key.
 // Tenant-scoped, readable by ANY authenticated user (the dashboard board renders
 // it for everyone), unlike the admin-only editor endpoint /admin/stage-config.
@@ -42,8 +50,33 @@ stagesRouter.get('/tracks', async (req, res) => {
     return { slug: tenant?.slug ?? '', rows: trackRows };
   });
   const pfx = slug ? `${slug}-` : '';
-  res.json(rows.map((t) => {
-    const key = t.builtin && pfx && t.key.startsWith(pfx) ? t.key.slice(pfx.length) : t.key;
-    return { key, label: t.label, color: t.color, builtin: t.builtin };
-  }));
+  res.json(rows.map((t) => ({
+    key: operationalKey(t.key, t.builtin, pfx),
+    label: t.label,
+    color: t.color,
+    builtin: t.builtin,
+  })));
+});
+
+// GET /api/features — tenant-level capabilities for the UI, readable by ANY
+// authenticated user. Drives (a) fleet-view gating — the Vehicles/Timelines and
+// Customer-portal nav + views render only when the tenant's data model actually
+// has the matching reference entity types ('vehicle', 'fleet_operator'); and
+// (b) the Settings → Workspace panel, which shows the tenant's REAL name/region
+// instead of hardcoded copy. Entity-type keys are returned as operational
+// (prefix-stripped) keys, consistent with /tracks.
+stagesRouter.get('/features', async (req, res) => {
+  const { tenant, types } = await withTenant(req.tenantId!, async (db) => {
+    const t = await db.tenant.findUnique({ where: { id: req.tenantId! } });
+    const et = await db.entityType.findMany({ orderBy: { order: 'asc' } });
+    return { tenant: t, types: et };
+  });
+  const pfx = tenant?.slug ? `${tenant.slug}-` : '';
+  const keysOf = (kindMatch: (k: string) => boolean) =>
+    types.filter((t) => kindMatch(t.kind)).map((t) => operationalKey(t.key, t.builtin, pfx));
+  res.json({
+    tenant: tenant ? { name: tenant.name, region: tenant.region, slug: tenant.slug } : null,
+    referenceTypes: keysOf((k) => k !== 'pipeline'),
+    pipelineTypes: keysOf((k) => k === 'pipeline'),
+  });
 });

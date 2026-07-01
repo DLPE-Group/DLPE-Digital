@@ -22,6 +22,17 @@ export const SettingsView = () => {
     return () => { cancelled = true; };
   }, []);
 
+  // Real tenant/workspace facts (name, region) from the data layer — no more
+  // hardcoded country/currency copy.
+  const [workspace, setWorkspace] = React.useState(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    api.get('/features').then((f) => {
+      if (!cancelled && f?.tenant) setWorkspace(f.tenant);
+    }).catch(() => { /* leave null */ });
+    return () => { cancelled = true; };
+  }, []);
+
   const flip = (k) => setToggles(t => {
     const next = { ...t, [k]: !t[k] };
     api.put('/me/preferences', { [k]: next[k] }).catch(e => console.error('Failed to save preference', e));
@@ -100,15 +111,14 @@ export const SettingsView = () => {
       <div className="settingsSection">
         <div className="h">
           <h3>Workspace</h3>
-          <div className="hint">Defaults applied to all users in this workspace.</div>
+          <div className="hint">This workspace, from the platform record.</div>
         </div>
         <div className="settingsBody">
           <table className="stageTable">
             <tbody>
-              <tr><td style={{ width: 220, color: 'var(--text-tertiary)' }}>Country scope</td><td>Belgium · Netherlands · Luxembourg · Germany</td></tr>
-              <tr><td style={{ color: 'var(--text-tertiary)' }}>Currency</td><td>EUR · two-decimal · DE/NL number formatting</td></tr>
-              <tr><td style={{ color: 'var(--text-tertiary)' }}>Working calendar</td><td>5-day · public holidays per country</td></tr>
-              <tr><td style={{ color: 'var(--text-tertiary)' }}>Languages</td><td>English (default) · Dutch · French · German</td></tr>
+              <tr><td style={{ width: 220, color: 'var(--text-tertiary)' }}>Workspace</td><td>{workspace?.name ?? '—'}</td></tr>
+              <tr><td style={{ color: 'var(--text-tertiary)' }}>Region</td><td>{workspace?.region ?? '—'}</td></tr>
+              <tr><td style={{ color: 'var(--text-tertiary)' }}>Interface languages</td><td>English · Dutch · French · German</td></tr>
               <tr><td style={{ color: 'var(--text-tertiary)' }}>Timezone</td><td>UTC</td></tr>
             </tbody>
           </table>
