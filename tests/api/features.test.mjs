@@ -7,7 +7,7 @@ describe('dashboard + reports', () => {
   it('dashboard snapshot is computed from real cards', async () => {
     const r = await get('/aggregations/dashboard', tok);
     expect(r.status).toBe(200);
-    expect(typeof r.body.metrics.pipeline.value).toBe('number');
+    expect(typeof r.body.metrics.openItems.value).toBe('number');
     expect(r.body.metrics.openByTrack.cats.length).toBe(4);
     expect(r.body.asOf).toBeTruthy();
   });

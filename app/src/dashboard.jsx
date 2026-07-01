@@ -12,18 +12,15 @@ const dbMoney = (n) =>
   : n >= 1e3 ? '€' + Math.round(n / 1e3) + 'k'
   : '€' + Math.round(n);
 
-/* ---- Metric catalogue — metadata only; VALUES come from the server. ---- */
+/* ---- Metric catalogue — generic + data-driven; VALUES come from the server
+   (/aggregations/dashboard), which computes them from the tenant's own tracks.
+   No fleet-specific metrics: these apply to ANY tenant. ---- */
 export const METRICS = {
-  wonThisWeek:  { id: 'wonThisWeek',  label: 'Closed-won this week',  unit: '€', shape: 'money',   color: 'var(--status-green)' },
-  followupsDue: { id: 'followupsDue', label: 'Follow-ups due today',  unit: '',  shape: 'counter', color: 'var(--track-ops)' },
-  newLeads:     { id: 'newLeads',     label: 'New leads today',       unit: '',  shape: 'counter', color: 'var(--track-sales)' },
-  pipeline:     { id: 'pipeline',     label: 'Open pipeline',         unit: '€', shape: 'money',   color: 'var(--track-sales)' },
-  atRisk:       { id: 'atRisk',       label: 'At-risk pipeline',      unit: '€', shape: 'money',   color: 'var(--status-red)' },
-  ontime:       { id: 'ontime',       label: 'On-time delivery',      unit: '%', shape: 'segments',color: 'var(--status-green)' },
-  receivables:  { id: 'receivables',  label: 'Receivables split',     unit: '€', shape: 'segments',color: 'var(--track-finance)' },
-  pipelineStage:{ id: 'pipelineStage',label: 'Pipeline by stage',     unit: '€', shape: 'cats',    color: 'var(--track-sales)' },
-  openByTrack:  { id: 'openByTrack',  label: 'Open items by track',   unit: '',  shape: 'cats',    color: 'var(--brand)' },
-  workorders:   { id: 'workorders',   label: 'Work orders by stage',  unit: '',  shape: 'cats',    color: 'var(--track-workshop)' },
+  openItems:    { id: 'openItems',    label: 'Open items',          unit: '',  shape: 'counter', color: 'var(--brand)' },
+  totalValue:   { id: 'totalValue',   label: 'Total value',         unit: '€', shape: 'money',   color: 'var(--track-sales)' },
+  atRisk:       { id: 'atRisk',       label: 'At risk',             unit: '€', shape: 'money',   color: 'var(--status-red)' },
+  openByTrack:  { id: 'openByTrack',  label: 'Open items by track', unit: '',  shape: 'cats',    color: 'var(--brand)' },
+  valueByTrack: { id: 'valueByTrack', label: 'Value by track',      unit: '€', shape: 'cats',    color: 'var(--track-sales)' },
 };
 
 const TYPES_FOR_SHAPE = {
@@ -131,7 +128,7 @@ const LiveChart = ({ type, metric, d }) => {
 
 /* ---- Chart builder modal ---- */
 const ChartBuilder = ({ live, onAdd, onClose }) => {
-  const [metricId, setMetricId] = React.useState('pipeline');
+  const [metricId, setMetricId] = React.useState('openItems');
   const metric = METRICS[metricId];
   const allowed = TYPES_FOR_SHAPE[metric.shape];
   const [type, setType] = React.useState(allowed[0]);
@@ -210,12 +207,11 @@ const ChartBuilder = ({ live, onAdd, onClose }) => {
 
 /* ---- Dashboard tab ---- */
 export const DEFAULT_CHARTS = [
-  { id: 'd1', metricId: 'pipeline', type: 'stat', title: 'Open pipeline' },
-  { id: 'd2', metricId: 'atRisk', type: 'stat', title: 'At-risk pipeline' },
-  { id: 'd3', metricId: 'wonThisWeek', type: 'stat', title: 'Closed-won this week' },
-  { id: 'd4', metricId: 'pipelineStage', type: 'bar', title: 'Pipeline by stage' },
-  { id: 'd5', metricId: 'ontime', type: 'donut', title: 'On-time delivery' },
-  { id: 'd6', metricId: 'openByTrack', type: 'bar', title: 'Open items by track' },
+  { id: 'd1', metricId: 'openItems', type: 'stat', title: 'Open items' },
+  { id: 'd2', metricId: 'totalValue', type: 'stat', title: 'Total value' },
+  { id: 'd3', metricId: 'atRisk', type: 'stat', title: 'At risk' },
+  { id: 'd4', metricId: 'openByTrack', type: 'bar', title: 'Open items by track' },
+  { id: 'd5', metricId: 'valueByTrack', type: 'bar', title: 'Value by track' },
 ];
 
 export const DashboardTab = () => {

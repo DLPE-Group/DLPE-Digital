@@ -430,14 +430,14 @@ const REPORTS = [
   { title: 'Q2 cashflow & receivables', spec: { title: 'Q2 cashflow & receivables', prompt: 'Cashflow and receivables review', period: 'This quarter', format: 'Detailed breakdown', scope: ['finance'] }, when: 'May 22 · 16:12', prose: scriptedProse(['finance']), createdById: 'u-markus' },
 ];
 
-/* ---- Dashboard ---- */
+/* ---- Dashboard (generic, track-driven metric ids — see METRICS in
+   app/src/dashboard.jsx and dashboardSnapshot in domain/aggregations.ts) ---- */
 const DASHBOARD_CHARTS = [
-  { id: 'd1', metricId: 'pipeline', type: 'stat', title: 'Open pipeline' },
-  { id: 'd2', metricId: 'atRisk', type: 'stat', title: 'At-risk pipeline' },
-  { id: 'd3', metricId: 'wonThisWeek', type: 'stat', title: 'Closed-won this week' },
-  { id: 'd4', metricId: 'pipelineStage', type: 'bar', title: 'Pipeline by stage' },
-  { id: 'd5', metricId: 'ontime', type: 'donut', title: 'On-time delivery' },
-  { id: 'd6', metricId: 'openByTrack', type: 'bar', title: 'Open items by track' },
+  { id: 'd1', metricId: 'openItems', type: 'stat', title: 'Open items' },
+  { id: 'd2', metricId: 'totalValue', type: 'stat', title: 'Total value' },
+  { id: 'd3', metricId: 'atRisk', type: 'stat', title: 'At risk' },
+  { id: 'd4', metricId: 'openByTrack', type: 'bar', title: 'Open items by track' },
+  { id: 'd5', metricId: 'valueByTrack', type: 'bar', title: 'Value by track' },
 ];
 
 /* ---- RBAC versions ---- */

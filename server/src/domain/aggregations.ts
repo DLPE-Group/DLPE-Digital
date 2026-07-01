@@ -156,108 +156,57 @@ function computeTrackInner(items: Card[], stages: TrackStage[]): TrackAggregate 
   };
 }
 
-// Dashboard snapshot payload — METRICS catalogue + DEFAULT_CHARTS init values
-// ported from app/src/dashboard.jsx (static snapshot, no streaming).
+// Dashboard snapshot payload — generic metric ids + DEFAULT_CHARTS init layout.
+// Mirrors the generic METRICS catalogue in app/src/dashboard.jsx.
 export const DEFAULT_CHARTS = [
-  { id: 'd1', metricId: 'pipeline', type: 'stat', title: 'Open pipeline' },
-  { id: 'd2', metricId: 'atRisk', type: 'stat', title: 'At-risk pipeline' },
-  { id: 'd3', metricId: 'wonThisWeek', type: 'stat', title: 'Closed-won this week' },
-  { id: 'd4', metricId: 'pipelineStage', type: 'bar', title: 'Pipeline by stage' },
-  { id: 'd5', metricId: 'ontime', type: 'donut', title: 'On-time delivery' },
-  { id: 'd6', metricId: 'openByTrack', type: 'bar', title: 'Open items by track' },
+  { id: 'd1', metricId: 'openItems', type: 'stat', title: 'Open items' },
+  { id: 'd2', metricId: 'totalValue', type: 'stat', title: 'Total value' },
+  { id: 'd3', metricId: 'atRisk', type: 'stat', title: 'At risk' },
+  { id: 'd4', metricId: 'openByTrack', type: 'bar', title: 'Open items by track' },
+  { id: 'd5', metricId: 'valueByTrack', type: 'bar', title: 'Value by track' },
 ];
 
-// Dashboard snapshot — computed from live DB cards. Returns render-ready shapes
-// matching what app/src/dashboard.jsx chart components consume.
-// NOTE: wonThisWeek / ontime / followupsDue / newLeads are documented approximations
-// (no first-class source columns exist for them).
-export async function dashboardSnapshot(userId?: string, db: Prisma.TransactionClient | typeof prisma = prisma) {
+// Dashboard snapshot — computed from live DB cards, fully generic and
+// track-driven (no hardcoded track keys, stage ids, or entity types). The
+// per-track breakdowns render from the tenant's own TrackDef rows, so a
+// non-fleet tenant sees its own tracks (or none) rather than a fleet layout.
+export async function dashboardSnapshot(userId?: string, tenantId?: string, db: Prisma.TransactionClient | typeof prisma = prisma) {
   // Track-access (H3) + scope (H4): the snapshot reflects only what the caller
   // may see, so the overview matches the side menu and the per-track lists.
   const { cards, allowed } = await scopeCardsFor(await loadPipelineCards(undefined, db), userId, db);
-  // Per-type money gates: Sales money follows the contract rules, Finance money
-  // follows the invoice rules — so the dashboard reflects per-EntityType field
-  // governance ("aggregates follow").
+  // Coarse money gate: if the caller can't see contract values, mask money.
   const restricted = await callerValueRestricted(userId, 'contract', db);
-  const restrictedInvoice = await callerValueRestricted(userId, 'invoice', db);
-  const money = (v: number) => (restricted ? null : v); // Sales/contract money
-  const moneyInv = (v: number) => (restrictedInvoice ? null : v); // Finance/invoice money
-  const byTrack = (t: string) => cards.filter((c) => c.track === t);
+  const money = (v: number) => (restricted ? null : v);
   const sumValue = (arr: Card[]) => arr.reduce((a, x) => a + (x.value ?? 0), 0);
+  const opKeyOf = (c: Card) => TRACK_KEY_FROM_ENUM[c.track];
 
-  const sales = byTrack('SALES');
-  const ops = byTrack('OPERATIONS');
-  const workshop = byTrack('WORKSHOP');
-  const finance = byTrack('FINANCE');
+  // The tenant's tracks drive the per-track charts (operational keys + labels
+  // + colors straight from TrackDef). Cross-tenant TrackDef.key uniqueness means
+  // builtin keys are prefixed `<slug>-<key>`, so strip the tenant slug prefix.
+  // NB: the Tenant registry is NOT RLS-filtered, so fetch by id — never findMany.
+  const tenant = tenantId ? await db.tenant.findUnique({ where: { id: tenantId } }) : null;
+  const pfx = tenant?.slug ? `${tenant.slug}-` : '';
+  const opKey = (k: string, builtin: boolean) => (builtin && pfx && k.startsWith(pfx) ? k.slice(pfx.length) : k);
+  const trackRows = await db.trackDef.findMany({ orderBy: { order: 'asc' } });
+  const tracks = trackRows
+    .map((t) => ({ key: opKey(t.key, t.builtin), label: t.label, color: t.color || 'var(--brand)' }))
+    .filter((t) => !allowed || allowed.includes(t.key));
 
-  const stageVal = (arr: Card[], id: string) =>
-    sumValue(arr.filter((x) => x.stageId === id));
-  const stageCount = (arr: Card[], id: string) =>
-    arr.filter((x) => x.stageId === id).length;
+  const cardsInTrack = (key: string) => cards.filter((c) => opKeyOf(c) === key);
+  const openByTrack = tracks.map((t) => ({ key: t.key, label: t.label, color: t.color, value: cardsInTrack(t.key).length }));
+  const valueByTrack = tracks.map((t) => ({ key: t.key, label: t.label, color: t.color, value: money(sumValue(cardsInTrack(t.key))) }));
 
-  // Approximations
-  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const wonThisWeek = sumValue(
-    sales.filter((x) => x.stageId === 'won' && !!x.updatedAt && x.updatedAt >= weekAgo),
-  );
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
-  const newLeads = cards.filter((x) => !!x.createdAt && x.createdAt >= startOfToday).length;
-  const followupsDue = sales.filter((x) => x.status === 'amber' || x.status === 'red').length;
-  const onGreen = ops.filter((x) => x.status === 'green').length;
-  const ontimePct = ops.length ? Math.round((onGreen / ops.length) * 100) : 0;
-
-  // Finance receivables
-  const receivable = finance.filter((x) => x.type === 'INVOICE');
-  const current = sumValue(receivable.filter((x) => x.stageId === 'awaiting'));
-  const overdue = sumValue(receivable.filter((x) => x.stageId === 'overdue'));
+  const redCards = cards.filter((c) => c.status === 'red');
 
   return {
     asOf: new Date().toISOString(),
     restricted,
     metrics: {
-      pipeline: { value: money(sumValue(sales)) },
-      atRisk: { value: money(sumValue(sales.filter((x) => x.status === 'red'))) },
-      wonThisWeek: { value: money(wonThisWeek) },
-      followupsDue: { value: followupsDue },
-      newLeads: { value: newLeads },
-      ontime: {
-        pct: ontimePct,
-        segments: [
-          { label: 'On-time', value: ontimePct, color: 'var(--status-green)' },
-          { label: 'Late', value: 100 - ontimePct, color: 'var(--status-amber)' },
-        ],
-      },
-      receivables: {
-        segments: [
-          { label: 'Current', value: moneyInv(current), color: 'var(--track-finance)' },
-          { label: '31d+ overdue', value: moneyInv(overdue), color: 'var(--status-red)' },
-        ],
-      },
-      pipelineStage: {
-        cats: [
-          { label: 'Meeting', value: money(stageVal(sales, 'meeting')) },
-          { label: 'Offer', value: money(stageVal(sales, 'offer')) },
-          { label: 'Contract', value: money(stageVal(sales, 'contract')) },
-        ],
-      },
-      openByTrack: {
-        // Only tracks the caller may view (null = all, for unauthenticated/admin-all).
-        cats: [
-          { key: 'sales', label: 'Sales', value: sales.length, color: 'var(--track-sales)' },
-          { key: 'operations', label: 'Operations', value: ops.length, color: 'var(--track-ops)' },
-          { key: 'workshop', label: 'Workshop', value: workshop.length, color: 'var(--track-workshop)' },
-          { key: 'finance', label: 'Finance', value: finance.length, color: 'var(--track-finance)' },
-        ].filter((c) => !allowed || allowed.includes(c.key)),
-      },
-      workorders: {
-        cats: [
-          { label: 'Parts', value: stageCount(workshop, 'parts') },
-          { label: 'In repair', value: stageCount(workshop, 'in_repair') },
-          { label: 'Released', value: stageCount(workshop, 'released') },
-          { label: 'Invoice in', value: stageCount(workshop, 'invoice_in') },
-        ],
-      },
+      openItems: { value: cards.length },
+      totalValue: { value: money(sumValue(cards)) },
+      atRisk: { value: money(sumValue(redCards)) },
+      openByTrack: { cats: openByTrack },
+      valueByTrack: { cats: valueByTrack },
     },
     defaultCharts: DEFAULT_CHARTS,
   };

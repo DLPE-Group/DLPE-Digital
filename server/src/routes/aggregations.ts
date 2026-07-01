@@ -14,5 +14,5 @@ aggregationsRouter.get('/track/:track', async (req, res) => {
 });
 
 aggregationsRouter.get('/dashboard', async (req, res) => {
-  res.json(await withTenant(req.tenantId!, (db) => dashboardSnapshot(actingUserId(req), db)));
+  res.json(await withTenant(req.tenantId!, (db) => dashboardSnapshot(actingUserId(req), req.tenantId!, db)));
 });
