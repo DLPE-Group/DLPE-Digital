@@ -25,65 +25,18 @@ const TRACK_META_FALLBACK = {
 const metaFor = (track, trackMeta) =>
   (trackMeta && trackMeta[track]) || TRACK_META_FALLBACK[track] || { label: track, color: 'var(--brand)' };
 
-/* ---- Zero/empty fallback aggregate (for loading / empty tenant) ---- */
-const EMPTY_AGG = {
-  sales: {
-    metrics: [
-      { label: 'Open pipeline', value: repMoney(0) },
-      { label: 'Open deals', value: 0 },
-      { label: 'At risk', value: repMoney(0), tone: 'bad', sub: '0 deals' },
-      { label: 'In contract', value: 0 },
-    ],
-    chart: { kind: 'bar', title: 'Pipeline value by stage', bars: [
-      { label: 'Meeting', value: 0, display: repMoney(0) },
-      { label: 'Offer', value: 0, display: repMoney(0) },
-      { label: 'Contract', value: 0, display: repMoney(0) },
-    ] },
-    sources: [],
-  },
-  operations: {
-    metrics: [
-      { label: 'Vehicles in flow', value: 0 },
-      { label: 'Needs attention', value: 0, tone: 'good' },
-      { label: 'Delayed', value: 0 },
-      { label: 'Service due', value: 0 },
-    ],
-    chart: { kind: 'bar', title: 'Vehicles by status', bars: [
-      { label: 'On track', value: 0, display: '0' },
-      { label: 'Attention', value: 0, display: '0' },
-      { label: 'Late', value: 0, display: '0' },
-    ] },
-    sources: [],
-  },
-  workshop: {
-    metrics: [
-      { label: 'Open work orders', value: 0 },
-      { label: 'In repair', value: 0 },
-      { label: 'Ready for pickup', value: 0, tone: 'good' },
-      { label: 'Supplier invoices', value: repMoney(0) },
-    ],
-    chart: { kind: 'bar', title: 'Work orders by stage', bars: [
-      { label: 'Parts', value: 0, display: '0' },
-      { label: 'In repair', value: 0, display: '0' },
-      { label: 'Released', value: 0, display: '0' },
-      { label: 'Invoice in', value: 0, display: '0' },
-    ] },
-    sources: [],
-  },
-  finance: {
-    metrics: [
-      { label: 'Receivables', value: repMoney(0) },
-      { label: 'Overdue', value: repMoney(0), tone: 'bad', sub: '0 invoice' },
-      { label: 'Awaiting', value: repMoney(0) },
-      { label: 'Supplier payable', value: repMoney(0) },
-    ],
-    chart: { kind: 'bar', title: 'Receivables aging', bars: [
-      { label: 'Current', value: 0, display: repMoney(0) },
-      { label: '31d+', value: 0, display: repMoney(0) },
-    ] },
-    sources: [],
-  },
-};
+/* ---- Generic zero/empty aggregate (for loading / empty tenant / API error) ----
+   Mirrors the server's generic per-track shape (server/src/domain/aggregations.ts)
+   so a failed/empty fetch degrades to the same metric labels as a live one. */
+const emptyAgg = () => ({
+  metrics: [
+    { label: 'Open items', value: 0 },
+    { label: 'At risk', value: 0, sub: '0 items' },
+    { label: 'On track', value: 0 },
+  ],
+  chart: { kind: 'bar', title: 'Items by stage', bars: [] },
+  sources: [],
+});
 
 /* ---- Hook: fetch /aggregations/track/:track for a set of tracks ---- */
 const useTrackAggregates = (tracks) => {
@@ -98,7 +51,7 @@ const useTrackAggregates = (tracks) => {
       tracks.map(t =>
         api.get('/aggregations/track/' + t)
           .then(data => [t, data])
-          .catch(() => [t, EMPTY_AGG[t] || null])
+          .catch(() => [t, emptyAgg()])
       )
     ).then(results => {
       if (cancelled) return;
@@ -110,7 +63,7 @@ const useTrackAggregates = (tracks) => {
     return () => { cancelled = true; };
   }, [tracks.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const get = (track) => aggs[track] || EMPTY_AGG[track] || null;
+  const get = (track) => aggs[track] || emptyAgg();
   return { get, loading };
 };
 
@@ -184,7 +137,7 @@ const ReportDoc = ({ report, onBack, trackMeta }) => {
   const scope = report.spec.scope;
   const { get, loading } = useTrackAggregates(scope);
 
-  const allSources = [...new Set(scope.flatMap(t => (get(t) || EMPTY_AGG[t]).sources))];
+  const allSources = [...new Set(scope.flatMap(t => (get(t) || emptyAgg()).sources))];
 
   return (
     <div className="repDocWrap">

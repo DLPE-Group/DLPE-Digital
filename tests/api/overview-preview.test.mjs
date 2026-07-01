@@ -24,11 +24,12 @@ describe('overview aggregations respect track access + scope', () => {
   });
 
   it('computeTrack returns zeros for a track the caller cannot view', async () => {
-    // Eva (sales-mgr) has no finance access → every finance metric is 0/€0.
+    // Eva (sales-mgr) has no finance access → the scoped set is empty, so the
+    // generic aggregate reports zero open items (and no money metric at all).
     const r = await get('/aggregations/track/finance', EVA());
     expect(r.status).toBe(200);
-    const receivables = r.body.metrics.find((m) => m.label === 'Receivables');
-    expect(receivables.value).toBe('€0');
+    const openItems = r.body.metrics.find((m) => m.label === 'Open items');
+    expect(openItems.value).toBe(0);
   });
 });
 

@@ -3,7 +3,7 @@ import { userAllowedTracks, loadPipelineCards } from './cards.service.js';
 import { visibleCompanyIds } from '../rbac/scope.js';
 import { buildEffectiveForUser } from '../rbac/context.js';
 import { valueRestricted } from '../rbac/applyCardRules.js';
-import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
+import { TRACK_KEY_FROM_ENUM, TRACK_ENUM } from '@dlpe/shared';
 import type { CardDTO as Card } from '@dlpe/shared';
 import type { Prisma } from '@prisma/client';
 
@@ -80,7 +80,8 @@ export async function computeTrack(track: string, userId?: string, db: Prisma.Tr
   // scoped set is empty and every metric computes to zero.
   const { cards: items } = await scopeCardsFor(raw, userId, db);
   const restricted = await callerValueRestricted(userId, TYPE_KEY_BY_TRACK_KEY[key] ?? 'contract', db);
-  const agg = await computeTrackInner(items, key);
+  const stages = await loadTrackStages(key, items, db);
+  const agg = computeTrackInner(items, stages);
   if (!restricted) return agg;
   // Mask any money-shaped string (starts with €) in metrics + chart displays.
   const maskMoney = (s: string | number) => (typeof s === 'string' && s.startsWith('€') ? MASK : s);
@@ -91,112 +92,67 @@ export async function computeTrack(track: string, userId?: string, db: Prisma.Tr
   };
 }
 
-async function computeTrackInner(items: Card[], key: string): Promise<TrackAggregate> {
+export interface TrackStage { id: string; label: string }
 
-  if (key === 'sales') {
-    const s = items;
-    const pipeline = s.reduce((a, x) => a + (x.value ?? 0), 0);
-    const risk = s.filter((x) => x.status === 'red');
-    const riskVal = risk.reduce((a, x) => a + (x.value ?? 0), 0);
-    const stageVal = (id: string) =>
-      s.filter((x) => x.stageId === id).reduce((a, x) => a + (x.value ?? 0), 0);
-    return {
-      metrics: [
-        { label: 'Open pipeline', value: repMoney(pipeline) },
-        { label: 'Open deals', value: s.length },
-        { label: 'At risk', value: repMoney(riskVal), tone: 'bad', sub: `${risk.length} deals` },
-        { label: 'In contract', value: s.filter((x) => x.stageId === 'contract').length },
-      ],
-      chart: {
-        kind: 'bar',
-        title: 'Pipeline value by stage',
-        bars: [
-          { label: 'Meeting', value: stageVal('meeting') },
-          { label: 'Offer', value: stageVal('offer') },
-          { label: 'Contract', value: stageVal('contract') },
-        ].map((b) => ({ ...b, display: repMoney(b.value) })),
-      },
-      sources: sourcesFrom(s),
-    };
+// Load the ordered stage set for a track. Prefer the tenant's saved StageConfig
+// (matched via the Track enum for builtin tracks); fall back to the distinct
+// stages actually present on the cards so custom/enum-less tracks still chart.
+async function loadTrackStages(key: string, cards: Card[], db: Prisma.TransactionClient | typeof prisma): Promise<TrackStage[]> {
+  const trackEnum = TRACK_ENUM[key];
+  if (trackEnum) {
+    const rows = await db.stageConfig.findMany({
+      where: { track: trackEnum as Prisma.StageConfigWhereInput['track'] },
+      orderBy: { order: 'asc' },
+    });
+    if (rows.length) return rows.map((r) => ({ id: r.stageId, label: r.label }));
   }
+  return distinctStagesFromCards(cards);
+}
 
-  if (key === 'operations') {
-    const o = items;
-    const attention = o.filter((x) => x.status !== 'green');
-    return {
-      metrics: [
-        { label: 'Vehicles in flow', value: o.length },
-        { label: 'Needs attention', value: attention.length, tone: attention.length ? 'warn' : 'good' },
-        { label: 'Delayed', value: o.filter((x) => /late/.test(x.daysLabel || '')).length },
-        { label: 'Service due', value: o.filter((x) => x.stageId === 'service_due').length },
-      ],
-      chart: {
-        kind: 'bar',
-        title: 'Vehicles by status',
-        bars: [
-          { label: 'On track', value: o.filter((x) => x.status === 'green').length },
-          { label: 'Attention', value: o.filter((x) => x.status === 'amber').length },
-          { label: 'Late', value: o.filter((x) => x.status === 'red').length },
-        ].map((b) => ({ ...b, display: String(b.value) })),
-      },
-      sources: sourcesFrom(o),
-    };
+// Distinct stages present on a card set, in first-seen order (best-effort when
+// no StageConfig exists for the track).
+function distinctStagesFromCards(cards: Card[]): TrackStage[] {
+  const seen = new Map<string, string>();
+  for (const c of cards) {
+    if (c.stageId && !seen.has(c.stageId)) seen.set(c.stageId, c.stageName || c.stageId);
   }
+  return [...seen.entries()].map(([id, label]) => ({ id, label }));
+}
 
-  if (key === 'workshop') {
-    const w = items;
-    const stageCount = (id: string) => w.filter((x) => x.stageId === id).length;
-    return {
-      metrics: [
-        { label: 'Open work orders', value: w.length },
-        { label: 'In repair', value: stageCount('in_repair') },
-        {
-          label: 'Ready for pickup',
-          value: w.filter((x) => /pickup|released/i.test(x.stageName)).length,
-          tone: 'good',
-        },
-        {
-          label: 'Supplier invoices',
-          value: repMoney(w.filter((x) => x.value).reduce((a, x) => a + (x.value ?? 0), 0)),
-        },
-      ],
-      chart: {
-        kind: 'bar',
-        title: 'Work orders by stage',
-        bars: [
-          { label: 'Parts', value: stageCount('parts') },
-          { label: 'In repair', value: stageCount('in_repair') },
-          { label: 'Released', value: stageCount('released') },
-          { label: 'Invoice in', value: stageCount('invoice_in') },
-        ].map((b) => ({ ...b, display: String(b.value) })),
-      },
-      sources: sourcesFrom(w),
-    };
-  }
-
-  // finance
-  const f = items;
-  const receivable = f.filter((x) => x.type === 'INVOICE');
-  const overdue = receivable.filter((x) => x.stageId === 'overdue');
-  const awaiting = receivable.filter((x) => x.stageId === 'awaiting');
-  const payable = f.filter((x) => x.type === 'SUPPLIER');
+// Generic, data-driven per-track aggregate — works for ANY track (builtin or
+// custom) with NO hardcoded stage ids or entity types. Metrics: open item
+// count, total value (only when the track carries money), at-risk, and on-track.
+// The chart is a per-stage breakdown over the track's real stages (value when
+// the track has money, otherwise item count).
+function computeTrackInner(items: Card[], stages: TrackStage[]): TrackAggregate {
   const sum = (arr: Card[]) => arr.reduce((a, x) => a + (x.value ?? 0), 0);
+  const hasMoney = items.some((x) => typeof x.value === 'number' && x.value);
+  const red = items.filter((x) => x.status === 'red');
+  const green = items.filter((x) => x.status === 'green');
+
+  const metrics: TrackAggregate['metrics'] = [
+    { label: 'Open items', value: items.length },
+  ];
+  if (hasMoney) metrics.push({ label: 'Total value', value: repMoney(sum(items)) });
+  metrics.push({
+    label: 'At risk',
+    value: hasMoney ? repMoney(sum(red)) : red.length,
+    tone: red.length ? 'bad' : undefined,
+    sub: `${red.length} ${red.length === 1 ? 'item' : 'items'}`,
+  });
+  metrics.push({ label: 'On track', value: green.length, tone: green.length ? 'good' : undefined });
+
+  const stageList = stages.length ? stages : distinctStagesFromCards(items);
+  const bars = stageList.map((st) => {
+    const inStage = items.filter((x) => x.stageId === st.id);
+    const value = hasMoney ? sum(inStage) : inStage.length;
+    return { label: st.label, value, display: hasMoney ? repMoney(value) : String(value) };
+  });
+
   return {
-    metrics: [
-      { label: 'Receivables', value: repMoney(sum(receivable)) },
-      { label: 'Overdue', value: repMoney(sum(overdue)), tone: 'bad', sub: `${overdue.length} invoice` },
-      { label: 'Awaiting', value: repMoney(sum(awaiting)) },
-      { label: 'Supplier payable', value: repMoney(sum(payable)) },
-    ],
-    chart: {
-      kind: 'bar',
-      title: 'Receivables aging',
-      bars: [
-        { label: 'Current', value: sum(awaiting) },
-        { label: '31d+', value: sum(overdue) },
-      ].map((b) => ({ ...b, display: repMoney(b.value) })),
-    },
-    sources: sourcesFrom(f),
+    metrics,
+    chart: { kind: 'bar', title: hasMoney ? 'Value by stage' : 'Items by stage', bars },
+    sources: sourcesFrom(items),
   };
 }
 
