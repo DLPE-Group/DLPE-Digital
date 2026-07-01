@@ -36,4 +36,10 @@ if (process.env.CI || process.env.PREPARE_DB_PSQL === '1') {
 console.log('[prepare-db] seeding …');
 run('seed', 'npx', ['prisma', 'db', 'seed'], { cwd: serverDir, env });
 
+// Test-only: a second, NON-FLEET tenant (admin@testco.test / demo1234) so UI
+// tests can prove the negative gating cases (no Vehicles/Portal) against a real
+// tenant that has its own track but no fleet reference types.
+console.log('[prepare-db] seeding non-fleet fixture tenant …');
+run('seed-nonfleet', 'npx', ['tsx', 'prisma/seed-nonfleet.ts'], { cwd: serverDir, env });
+
 console.log('[prepare-db] test DB ready.');

@@ -35,7 +35,7 @@ test('control plane: suspend and reactivate demo tenant', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Control plane' })).toBeVisible({ timeout: 10000 });
 
   // Locate the demo tenant row by slug — scope all assertions to it
-  const tenantRow = page.locator('div').filter({ hasText: 'dlpe-demo' }).filter({ has: page.getByRole('button') }).first();
+  const tenantRow = page.getByTestId('cp-tenant-dlpe-demo');
 
   // Row is visible and shows the DLPE Demo tenant
   await expect(tenantRow).toBeVisible({ timeout: 10000 });
@@ -49,13 +49,13 @@ test('control plane: suspend and reactivate demo tenant', async ({ page }) => {
   await tenantRow.getByRole('button', { name: 'Suspend' }).click();
 
   // Wait for the UI to reload and show SUSPENDED in the same row
-  const suspendedRow = page.locator('div').filter({ hasText: 'dlpe-demo' }).filter({ has: page.getByRole('button') }).first();
+  const suspendedRow = page.getByTestId('cp-tenant-dlpe-demo');
   await expect(suspendedRow).toContainText('SUSPENDED', { timeout: 10000 });
 
   // Reactivate — leave tenant ACTIVE so other tests/runs are not affected
   await suspendedRow.getByRole('button', { name: 'Reactivate' }).click();
 
-  const reactivatedRow = page.locator('div').filter({ hasText: 'dlpe-demo' }).filter({ has: page.getByRole('button') }).first();
+  const reactivatedRow = page.getByTestId('cp-tenant-dlpe-demo');
   await expect(reactivatedRow).toContainText('ACTIVE', { timeout: 10000 });
 });
 

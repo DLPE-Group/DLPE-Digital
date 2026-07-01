@@ -13,19 +13,17 @@ describe('Tenant foundation', () => {
     const demo = tenants.find((t) => t.slug === 'dlpe-demo');
     expect(demo).toBeTruthy();
 
-    // spot-check representative scoped tables are all stamped
-    // tenantId is now NOT NULL; confirm every row belongs to the demo tenant.
+    // spot-check representative scoped tables carry a REAL tenant id (no orphans).
+    // The test DB may hold more than one tenant (the demo plus the non-fleet UI
+    // fixture), so check "tenantId ∈ known tenants", not "== demo".
     const demoId = demo.id;
-    const totalEntities = await prisma.entity.count();
-    const stampedEntities = await prisma.entity.count({ where: { tenantId: demoId } });
-    const totalUsers = await prisma.user.count();
-    const stampedUsers = await prisma.user.count({ where: { tenantId: demoId } });
-    const totalRoles = await prisma.role.count();
-    const stampedRoles = await prisma.role.count({ where: { tenantId: demoId } });
-    const orphanEntities = totalEntities - stampedEntities;
-    const orphanUsers = totalUsers - stampedUsers;
-    const orphanRoles = totalRoles - stampedRoles;
+    const ids = tenants.map((t) => t.id);
+    const orphanEntities = await prisma.entity.count({ where: { tenantId: { notIn: ids } } });
+    const orphanUsers = await prisma.user.count({ where: { tenantId: { notIn: ids } } });
+    const orphanRoles = await prisma.role.count({ where: { tenantId: { notIn: ids } } });
     expect(orphanEntities + orphanUsers + orphanRoles).toBe(0);
+    // …and the demo tenant itself is populated.
+    expect(await prisma.entity.count({ where: { tenantId: demoId } })).toBeGreaterThan(0);
   });
 
   it('exposes the tenant on /me/permissions principal', async () => {

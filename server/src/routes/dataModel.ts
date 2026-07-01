@@ -224,6 +224,10 @@ dataModelRouter.delete('/data-model/tracks/:key', async (req, res) => {
     const ents = await db.entity.count({ where: { trackId: req.params.key } });
     if (ents > 0) return { ents } as const;
     await db.trackDef.delete({ where: { id: track.id } }); // cascades stageDefs
+    // StageConfig is keyed by the operational track key (a bare string, no FK),
+    // so it does NOT cascade — remove it explicitly. Only non-builtin tracks are
+    // deletable and their key IS the operational key, so this matches exactly.
+    await db.stageConfig.deleteMany({ where: { track: req.params.key } });
     return { ok: true } as const;
   });
   if ('notFound' in result) return res.status(404).json({ error: 'Track not found' });

@@ -122,7 +122,7 @@ export const ControlPlaneView = () => {
                 <div style={{ fontSize: 13, color: 'var(--text-tertiary)', padding: '8px 0' }}>No tenants found.</div>
               )}
               {tenants.map((t) => (
-                <div key={t.id} style={card}>
+                <div key={t.id} style={card} data-testid={`cp-tenant-${t.slug}`}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <strong>{t.name}</strong>
                     <code style={codeChip}>{t.slug}</code>
