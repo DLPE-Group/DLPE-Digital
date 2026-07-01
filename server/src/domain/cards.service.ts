@@ -28,7 +28,11 @@ export function allowedFromTracksText(tracksArr: string[], tenantTracks: string[
   for (const t of tracksArr) {
     const s = String(t).toLowerCase();
     if (s.startsWith('all')) { tenantTracks.forEach((k) => out.add(k)); continue; }
-    for (const k of tenantTracks) if (s.includes(k)) out.add(k);
+    // Whole-word match so one track key can't be granted via another that
+    // contains it as a substring (e.g. "Paralegal" must NOT grant `legal`).
+    for (const k of tenantTracks) {
+      if (new RegExp(`\\b${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(s)) out.add(k);
+    }
   }
   return [...out];
 }

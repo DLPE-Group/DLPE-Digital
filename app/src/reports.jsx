@@ -61,7 +61,7 @@ const useTrackAggregates = (tracks) => {
       setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [tracks.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [(tracks || []).join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const get = (track) => aggs[track] || emptyAgg();
   return { get, loading };

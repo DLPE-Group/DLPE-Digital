@@ -36,7 +36,13 @@ async function callerValueRestricted(userId?: string, typeKey = 'contract', db: 
   }
 }
 
-// The pipeline EntityType key whose money governs a given track's aggregates.
+// The pipeline EntityType key whose money-field rule governs a track's money
+// aggregates. KNOWN LIMITATION: only the builtin tracks are mapped; a custom
+// track's money aggregates are gated against the 'contract' rule (the fallback
+// in computeTrack), not the custom type's own field rules. Custom entity types
+// don't ship field rules today, so nothing is currently mis-masked — but wiring
+// this to the card's actual EntityType is the correct fix if custom tracks ever
+// carry restricted money fields. Same caveat applies to applyCardRules.ts.
 const TYPE_KEY_BY_TRACK_KEY: Record<string, string> = {
   sales: 'contract', operations: 'operation', workshop: 'workshop_order', finance: 'invoice',
 };

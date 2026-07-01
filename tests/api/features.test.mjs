@@ -8,7 +8,10 @@ describe('dashboard + reports', () => {
     const r = await get('/aggregations/dashboard', tok);
     expect(r.status).toBe(200);
     expect(typeof r.body.metrics.openItems.value).toBe('number');
-    expect(r.body.metrics.openByTrack.cats.length).toBe(4);
+    // openByTrack is driven by the tenant's own tracks (not a hardcoded four):
+    // assert the demo's tracks are present rather than a brittle exact count.
+    const trackKeys = r.body.metrics.openByTrack.cats.map((c) => c.key);
+    expect(trackKeys).toEqual(expect.arrayContaining(['sales', 'operations', 'workshop', 'finance']));
     expect(r.body.asOf).toBeTruthy();
   });
 

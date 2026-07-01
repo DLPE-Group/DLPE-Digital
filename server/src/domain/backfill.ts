@@ -1,15 +1,8 @@
-import type { Prisma, PrismaClient } from '@prisma/client';
-import { TRACK_KEYS, STAGE_CONFIG, DATA_TYPES, TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
-import { loadTenantResolver, DEMO_TENANT_ID } from './tenancy.js';
+import type { Prisma } from '@prisma/client';
+import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
 
-const TRACK_META: Record<string, { label: string; color: string; order: number }> = {
-  sales: { label: 'Sales', color: 'var(--track-sales)', order: 0 },
-  operations: { label: 'Operations', color: 'var(--track-ops)', order: 1 },
-  workshop: { label: 'Workshop', color: 'var(--track-workshop)', order: 2 },
-  finance: { label: 'Finance', color: 'var(--track-finance)', order: 3 },
-};
-
-// One pipeline EntityType per track; key reused for RBAC/data-type alignment.
+// One pipeline EntityType per BUILTIN track; key reused for RBAC/data-type
+// alignment. Used as a fallback when a seed row doesn't name its own type.
 const PIPELINE_TYPE: Record<string, { key: string; label: string }> = {
   sales: { key: 'contract', label: 'Contract' },
   operations: { key: 'operation', label: 'Operation' },
@@ -17,90 +10,11 @@ const PIPELINE_TYPE: Record<string, { key: string; label: string }> = {
   finance: { key: 'invoice', label: 'Invoice' },
 };
 
-const REFERENCE_TYPES = [
-  { key: 'vehicle', label: 'Vehicle' },
-  { key: 'fleet_operator', label: 'Fleet operator' },
-];
-
-const dataKindFor = (cat: string | undefined): string => (cat === 'Financial' ? 'money' : 'text');
-
 export interface MetaCtx {
   trackIdByKey: Record<string, string>;
   typeIdByKey: Record<string, string>;
   tenantFor: (companyId: string | null) => string;
   tenantId: string;
-}
-
-// Create/refresh the data-driven meta-model (tracks, stages, entity types,
-// fields) from the shared catalogues. Idempotent. Returns lookups + the tenant
-// resolver so callers can build Entity rows.
-export async function seedMetaModel(prisma: PrismaClient): Promise<MetaCtx> {
-  // Derive the demo tenant id from the GROUP org node so meta rows are stamped.
-  const tenantForRaw = await loadTenantResolver(prisma);
-  const tenantId = tenantForRaw(null) ?? DEMO_TENANT_ID; // null companyId → falls back to GROUP's tenantId
-  // Wrap to always return a string (post-Task-2, all rows have a valid tenantId)
-  const tenantFor = (companyId: string | null): string => tenantForRaw(companyId) ?? DEMO_TENANT_ID;
-
-  const trackIdByKey: Record<string, string> = {};
-  for (const key of TRACK_KEYS) {
-    const meta = TRACK_META[key];
-    const row = await prisma.trackDef.upsert({
-      where: { key },
-      update: { label: meta.label, color: meta.color, order: meta.order, builtin: true, tenantId },
-      create: { key, label: meta.label, color: meta.color, order: meta.order, builtin: true, tenantId },
-    });
-    trackIdByKey[key] = row.id;
-  }
-
-  for (const key of TRACK_KEYS) {
-    const stages = STAGE_CONFIG[key] ?? [];
-    for (let i = 0; i < stages.length; i++) {
-      const s = stages[i];
-      await prisma.stageDef.upsert({
-        where: { trackId_stageId: { trackId: trackIdByKey[key], stageId: s.id } },
-        update: { order: i, label: s.label, sla: s.sla, lock: s.lock ?? null, cta: s.cta, tenantId },
-        create: { trackId: trackIdByKey[key], order: i, stageId: s.id, label: s.label, sla: s.sla, lock: s.lock ?? null, cta: s.cta, tenantId },
-      });
-    }
-  }
-
-  const typeIdByKey: Record<string, string> = {};
-  let order = 0;
-  for (const key of TRACK_KEYS) {
-    const t = PIPELINE_TYPE[key];
-    const row = await prisma.entityType.upsert({
-      where: { key: t.key },
-      update: { label: t.label, kind: 'pipeline', trackId: trackIdByKey[key], order, builtin: true, tenantId },
-      create: { key: t.key, label: t.label, kind: 'pipeline', trackId: trackIdByKey[key], order, builtin: true, tenantId },
-    });
-    typeIdByKey[t.key] = row.id;
-    order++;
-  }
-  for (const rt of REFERENCE_TYPES) {
-    const row = await prisma.entityType.upsert({
-      where: { key: rt.key },
-      update: { label: rt.label, kind: 'reference', trackId: null, order, builtin: true, tenantId },
-      create: { key: rt.key, label: rt.label, kind: 'reference', trackId: null, order, builtin: true, tenantId },
-    });
-    typeIdByKey[rt.key] = row.id;
-    order++;
-  }
-  const fieldsByTypeKey: Record<string, { id: string; label: string; cat: string }[]> = {};
-  for (const dt of DATA_TYPES) fieldsByTypeKey[dt.id] = dt.fields;
-  for (const [typeKey, defs] of Object.entries(fieldsByTypeKey)) {
-    const entityTypeId = typeIdByKey[typeKey];
-    if (!entityTypeId) continue;
-    for (let i = 0; i < defs.length; i++) {
-      const fd = defs[i];
-      await prisma.fieldDef.upsert({
-        where: { entityTypeId_key: { entityTypeId, key: fd.id } },
-        update: { label: fd.label, category: fd.cat, dataKind: dataKindFor(fd.cat), order: i, builtin: true, tenantId },
-        create: { entityTypeId, key: fd.id, label: fd.label, category: fd.cat, dataKind: dataKindFor(fd.cat), order: i, builtin: true, tenantId },
-      });
-    }
-  }
-
-  return { trackIdByKey, typeIdByKey, tenantFor, tenantId };
 }
 
 // A legacy card-shaped seed row (track may be the enum 'SALES' or key 'sales').
@@ -130,7 +44,13 @@ export interface CardSeed {
 // (the checked type requires `tenant: { connect: ... }` once the relation exists).
 export function cardToEntityCreate(c: CardSeed, ctx: MetaCtx): Prisma.EntityUncheckedCreateInput {
   const trackKey = TRACK_KEY_FROM_ENUM[c.track] ?? c.track.toLowerCase();
-  const typeKey = PIPELINE_TYPE[trackKey]?.key ?? 'operation';
+  // Prefer the seed row's OWN pipeline type when it names a real one (so custom
+  // tracks seed onto their own type); else the builtin track→type map; else
+  // 'operation'. NB: demo seed rows carry display types ('RENEWAL', 'SERVICE')
+  // that aren't type keys, so they correctly fall through to the track map.
+  const typeKey =
+    (typeof c.type === 'string' && ctx.typeIdByKey[c.type]) ? c.type
+    : (PIPELINE_TYPE[trackKey]?.key ?? 'operation');
   return {
     id: c.id,
     tenantId: ctx.tenantFor(c.companyId ?? null),
