@@ -5,7 +5,7 @@
 export interface CardDTO {
   id: string;
   companyId: string | null;
-  track: string; // SALES | OPERATIONS | WORKSHOP | FINANCE
+  track: string; // operational track key (bare, e.g. 'sales' or a custom 'insurance')
   type: string;
   customer: string;
   value: number | null;

@@ -95,14 +95,6 @@ function flattenOrgTree(
   }
 }
 
-/** Map the Track enum used in SMALL_SPEC and the schema. */
-const TRACK_ENUM: Record<string, string> = {
-  sales: 'SALES',
-  operations: 'OPERATIONS',
-  workshop: 'WORKSHOP',
-  finance: 'FINANCE',
-};
-
 // ---------- main export ----------
 
 export async function provisionTenant(args: ProvisionTenantArgs): Promise<ProvisioningResult> {
@@ -304,13 +296,13 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
           });
         }
 
-        // StageConfig is now per-tenant (@@unique[tenantId, track, stageId]), so each
-        // tenant gets its own full stage set — no cross-tenant skipping.
-        const trackEnum = TRACK_ENUM[track.key];
-        if (trackEnum) {
+        // StageConfig.track is the operational key (bare, e.g. 'sales' or a
+        // custom 'insurance'). Per-tenant unique [tenantId, track, stageId], so
+        // every track — builtin AND custom — gets its own full stage set.
+        if (track.stages.length > 0) {
           await tx.stageConfig.createMany({
             data: track.stages.map((s) => ({
-              track: trackEnum as Prisma.StageConfigCreateManyInput['track'],
+              track: track.key,
               order: s.order,
               stageId: s.stageId,
               label: s.label,
@@ -321,8 +313,6 @@ export async function provisionTenant(args: ProvisionTenantArgs): Promise<Provis
             })),
           });
         }
-        // If no TRACK_ENUM mapping (custom track), we skip StageConfig — only builtin
-        // Track enum values are supported by the current schema's Track enum.
       }
 
       // 5f. CrossTriggers

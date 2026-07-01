@@ -1,5 +1,3 @@
-import { TRACK_ENUM } from '@dlpe/shared';
-
 // Minimal shapes the projection needs (a subset of the Prisma Entity row).
 export interface EntityRow {
   id: string;
@@ -21,15 +19,16 @@ export interface EntityRow {
   createdById?: string | null;
 }
 
-// Project a pipeline entity back to the legacy Card DTO (byte-identical to what
-// listCards/getCard return today). `trackId` holds the track KEY (e.g. 'sales');
-// the DTO exposes the enum (e.g. 'SALES').
+// Project a pipeline entity back to the Card DTO. `track` is the bare
+// operational track key (e.g. 'sales', or a custom 'insurance') — the same key
+// used by Entity.trackId, /cards, /stages, and allowedTracks. (It used to be
+// projected through the fixed `Track` enum, which dropped custom tracks.)
 export function entityToCardDTO(e: EntityRow) {
   const f = (e.fields ?? {}) as Record<string, unknown>;
   return {
     id: e.id,
     companyId: e.companyId,
-    track: TRACK_ENUM[String(e.trackId)] ?? null,
+    track: e.trackId ?? null,
     type: (f.type as string) ?? null,
     customer: e.title,
     value: e.value ?? null,

@@ -1,6 +1,5 @@
 import type { CardDTO as Card } from '@dlpe/shared';
 import type { Prisma } from '@prisma/client';
-import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
 import { runTriggers } from './triggers.engine.js';
 import { writeAudit, type CascadeLine } from './audit.service.js';
 import { entityToCardDTO, type EntityRow } from './projection.js';
@@ -114,7 +113,7 @@ export async function runAction(
     });
     const card = entityToCardDTO(updatedRow as unknown as EntityRow) as unknown as Card;
 
-    const whenTrack = TRACK_KEY_FROM_ENUM[source.track];
+    const whenTrack = source.track;
     const { createdCards, cascadeLines } = await runTriggers(db, {
       whenTrack,
       whenStageName: cascadeCfg.whenStageName,
@@ -165,7 +164,7 @@ export async function runAction(
     actorRole: actor.roleId,
     verb: actionVerb(action),
     target: `${card.customer}${card.vehicle ? ' · ' + card.vehicle : ''}`,
-    track: TRACK_KEY_FROM_ENUM[card.track],
+    track: card.track,
     kind: 'normal',
     icon: 'mail',
   }, db, tenantId);

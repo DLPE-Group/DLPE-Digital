@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
 import { loadPipelineCards } from '../domain/cards.service.js';
 import { entityToVehicleDTO, type EntityRow } from '../domain/projection.js';
 import { withTenant } from '../db/withTenant.js';
@@ -32,7 +31,7 @@ searchRouter.get('/search', async (req, res) => {
 
   const results = [
     ...cards.map((c) => ({
-      type: 'card', id: c.id, track: TRACK_KEY_FROM_ENUM[c.track],
+      type: 'card', id: c.id, track: c.track,
       label: c.customer, sub: `${c.stageName}${c.vehicle ? ` · ${c.vehicle}` : ''}`,
     })),
     ...vehicles.map((v) => ({

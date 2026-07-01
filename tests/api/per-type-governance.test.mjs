@@ -12,15 +12,15 @@ const maskInvoiceAmount = {
 
 describe('per-EntityType field governance', () => {
   it('hiding contract_value nulls Sales card value but leaves Finance/Invoice value intact', () => {
-    const sales = { track: 'SALES', value: 120000, customer: 'Acme', owner: 'Eva' };
-    const finance = { track: 'FINANCE', value: 5000, customer: 'Acme Invoice', owner: 'Ines' };
+    const sales = { track: 'sales', value: 120000, customer: 'Acme', owner: 'Eva' };
+    const finance = { track: 'finance', value: 5000, customer: 'Acme Invoice', owner: 'Ines' };
     expect(filterCard(sales, hideContractValue).value).toBe(null);
     expect(filterCard(finance, hideContractValue).value).toBe(5000); // invoice.amount has no rule
   });
 
   it('masking invoice amount masks Finance card value but leaves Sales value intact', () => {
-    const sales = { track: 'SALES', value: 120000 };
-    const finance = { track: 'FINANCE', value: 5000 };
+    const sales = { track: 'sales', value: 120000 };
+    const finance = { track: 'finance', value: 5000 };
     expect(filterCard(sales, maskInvoiceAmount).value).toBe(120000);
     expect(typeof filterCard(finance, maskInvoiceAmount).value).toBe('string'); // masked
   });

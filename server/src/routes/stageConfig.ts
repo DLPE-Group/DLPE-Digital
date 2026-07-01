@@ -2,20 +2,14 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { withTenant } from '../db/withTenant.js';
-import { trackKeyToEnum } from '../domain/cards.service.js';
 
 export const stageConfigRouter: Router = Router();
 
-// GET /admin/stage-config?track=
+// GET /admin/stage-config?track=  — track is the operational key (bare, e.g.
+// 'sales' or a custom 'insurance').
 stageConfigRouter.get('/stage-config', async (req, res) => {
-  const where: { track?: ReturnType<typeof trackKeyToEnum> } = {};
-  if (typeof req.query.track === 'string') {
-    try {
-      where.track = trackKeyToEnum(req.query.track);
-    } catch (e) {
-      return res.status(400).json({ error: (e as Error).message });
-    }
-  }
+  const where: { track?: string } = {};
+  if (typeof req.query.track === 'string') where.track = req.query.track.toLowerCase();
   const rows = await withTenant(req.tenantId!, (db) => db.stageConfig.findMany({ where, orderBy: [{ track: 'asc' }, { order: 'asc' }] }));
   res.json(rows);
 });
@@ -31,12 +25,9 @@ const putSchema = z.object({ stages: z.array(stageSchema).min(1) });
 
 // PUT /admin/stage-config/:track — replace the ordered stage set for a track.
 stageConfigRouter.put('/stage-config/:track', async (req, res) => {
-  let trackEnum: ReturnType<typeof trackKeyToEnum>;
-  try {
-    trackEnum = trackKeyToEnum(req.params.track);
-  } catch (e) {
-    return res.status(400).json({ error: (e as Error).message });
-  }
+  // Operational track key (bare). Any track with a pipeline type may have stages
+  // — builtin or custom — so there is no enum to validate against.
+  const track = req.params.track.toLowerCase();
   const parsed = putSchema.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ error: 'Invalid stage-config payload' });
 
@@ -52,7 +43,7 @@ stageConfigRouter.put('/stage-config/:track', async (req, res) => {
       // Guard: don't delete a stage that still has records in it — that would
       // orphan them. Diff the incoming set against the persisted one and, for
       // any removed stage, count records currently sitting there.
-      const existing = await db.stageConfig.findMany({ where: { track: trackEnum }, select: { stageId: true } });
+      const existing = await db.stageConfig.findMany({ where: { track }, select: { stageId: true } });
       const keep = new Set(ids);
       const removed = existing.map((e) => e.stageId).filter((id) => !keep.has(id));
       if (removed.length > 0) {
@@ -67,13 +58,13 @@ stageConfigRouter.put('/stage-config/:track', async (req, res) => {
         if (blocking.length > 0) return { kind: 'conflict' as const, blocking };
       }
 
-      await db.stageConfig.deleteMany({ where: { track: trackEnum } });
+      await db.stageConfig.deleteMany({ where: { track } });
       const created = [];
       for (let i = 0; i < parsed.data.stages.length; i++) {
         const s = parsed.data.stages[i];
         created.push(
           await db.stageConfig.create({
-            data: { track: trackEnum, order: i, stageId: s.stageId, label: s.label, sla: s.sla, lock: s.lock ?? null, cta: s.cta, tenantId: req.tenantId! },
+            data: { track, order: i, stageId: s.stageId, label: s.label, sla: s.sla, lock: s.lock ?? null, cta: s.cta, tenantId: req.tenantId! },
           }),
         );
       }

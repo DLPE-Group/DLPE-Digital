@@ -274,7 +274,11 @@ model RbacVersion {
 // ---------------- Stage config + cross-track triggers ----------------
 model StageConfig {
   id    String @id @default(cuid())
-  track Track
+  // Operational track key (bare, e.g. 'sales' or a custom 'insurance'). Was the
+  // fixed `Track` enum, which prevented custom (non-builtin) tracks from having
+  // their own stage set. The enum is retained (unused) for back-compat of the
+  // generated `Track` type; the operational track key is a bare string everywhere.
+  track String
   order Int
   // stage definition
   stageId  String

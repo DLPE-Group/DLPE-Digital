@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
 import { loadPipelineCards } from '../domain/cards.service.js';
 import { withTenant } from '../db/withTenant.js';
 
@@ -22,7 +21,7 @@ notificationsRouter.get('/notifications', async (req, res) => {
       id: `card-${c.id}`,
       kind: 'risk',
       icon: 'flash',
-      track: TRACK_KEY_FROM_ENUM[c.track],
+      track: c.track,
       title: `${c.customer} at risk`,
       body: `${c.sub || c.stageName}${c.value ? ` · €${(c.value / 1e6).toFixed(2)}M` : ''}`,
       when: c.daysLabel || '',

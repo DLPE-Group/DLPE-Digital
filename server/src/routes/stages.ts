@@ -1,16 +1,8 @@
 import { Router } from 'express';
-import { TRACK_KEY_FROM_ENUM } from '@dlpe/shared';
 import { withTenant } from '../db/withTenant.js';
+import { operationalKey } from '../domain/trackKeys.js';
 
 export const stagesRouter: Router = Router();
-
-// Recover the *operational* key from a (possibly prefixed) registry key.
-// TrackDef.key / EntityType.key are globally unique, so the provisioner
-// namespaces builtin rows as `<slug>-<key>`. The rest of the runtime (and the
-// UI) keys on the bare operational key, so strip the tenant `<slug>-` prefix
-// from builtin rows. Authored (builtin=false) rows are already bare.
-const operationalKey = (key: string, builtin: boolean, pfx: string): string =>
-  builtin && pfx && key.startsWith(pfx) ? key.slice(pfx.length) : key;
 
 // GET /api/stages — the tenant's saved stage configuration, grouped by track key.
 // Tenant-scoped, readable by ANY authenticated user (the dashboard board renders
@@ -22,7 +14,8 @@ stagesRouter.get('/stages', async (req, res) => {
   );
   const byTrack: Record<string, Array<{ id: string; label: string; sla: number; lock: string | null; cta: string; order: number }>> = {};
   for (const r of rows) {
-    const key = TRACK_KEY_FROM_ENUM[r.track] ?? String(r.track).toLowerCase();
+    // StageConfig.track is the operational key (bare) — 'sales' or a custom 'insurance'.
+    const key = String(r.track);
     (byTrack[key] ||= []).push({ id: r.stageId, label: r.label, sla: r.sla, lock: r.lock ?? null, cta: r.cta, order: r.order });
   }
   res.json(byTrack);

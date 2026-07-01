@@ -3,7 +3,7 @@ import { userAllowedTracks, loadPipelineCards } from './cards.service.js';
 import { visibleCompanyIds } from '../rbac/scope.js';
 import { buildEffectiveForUser } from '../rbac/context.js';
 import { valueRestricted } from '../rbac/applyCardRules.js';
-import { TRACK_KEY_FROM_ENUM, TRACK_ENUM } from '@dlpe/shared';
+import { operationalKey, tenantSlugPrefix } from './trackKeys.js';
 import type { CardDTO as Card } from '@dlpe/shared';
 import type { Prisma } from '@prisma/client';
 
@@ -17,7 +17,7 @@ async function scopeCardsFor(
 ): Promise<{ cards: Card[]; allowed: string[] | null }> {
   if (!userId) return { cards, allowed: null };
   const allowed = await userAllowedTracks(userId, db);
-  let out = cards.filter((c) => allowed.includes(TRACK_KEY_FROM_ENUM[c.track]));
+  let out = cards.filter((c) => allowed.includes(c.track));
   const visible = await visibleCompanyIds(userId, db);
   if (visible) out = out.filter((c) => c.companyId != null && visible.has(c.companyId));
   return { cards: out, allowed };
@@ -98,14 +98,8 @@ export interface TrackStage { id: string; label: string }
 // (matched via the Track enum for builtin tracks); fall back to the distinct
 // stages actually present on the cards so custom/enum-less tracks still chart.
 async function loadTrackStages(key: string, cards: Card[], db: Prisma.TransactionClient | typeof prisma): Promise<TrackStage[]> {
-  const trackEnum = TRACK_ENUM[key];
-  if (trackEnum) {
-    const rows = await db.stageConfig.findMany({
-      where: { track: trackEnum as Prisma.StageConfigWhereInput['track'] },
-      orderBy: { order: 'asc' },
-    });
-    if (rows.length) return rows.map((r) => ({ id: r.stageId, label: r.label }));
-  }
+  const rows = await db.stageConfig.findMany({ where: { track: key }, orderBy: { order: 'asc' } });
+  if (rows.length) return rows.map((r) => ({ id: r.stageId, label: r.label }));
   return distinctStagesFromCards(cards);
 }
 
@@ -178,21 +172,17 @@ export async function dashboardSnapshot(userId?: string, tenantId?: string, db: 
   const restricted = await callerValueRestricted(userId, 'contract', db);
   const money = (v: number) => (restricted ? null : v);
   const sumValue = (arr: Card[]) => arr.reduce((a, x) => a + (x.value ?? 0), 0);
-  const opKeyOf = (c: Card) => TRACK_KEY_FROM_ENUM[c.track];
 
   // The tenant's tracks drive the per-track charts (operational keys + labels
-  // + colors straight from TrackDef). Cross-tenant TrackDef.key uniqueness means
-  // builtin keys are prefixed `<slug>-<key>`, so strip the tenant slug prefix.
-  // NB: the Tenant registry is NOT RLS-filtered, so fetch by id — never findMany.
-  const tenant = tenantId ? await db.tenant.findUnique({ where: { id: tenantId } }) : null;
-  const pfx = tenant?.slug ? `${tenant.slug}-` : '';
-  const opKey = (k: string, builtin: boolean) => (builtin && pfx && k.startsWith(pfx) ? k.slice(pfx.length) : k);
+  // + colors straight from TrackDef). Builtin keys are prefixed `<slug>-<key>`
+  // for cross-tenant uniqueness, so recover the operational key.
+  const pfx = tenantId ? await tenantSlugPrefix(tenantId, db) : '';
   const trackRows = await db.trackDef.findMany({ orderBy: { order: 'asc' } });
   const tracks = trackRows
-    .map((t) => ({ key: opKey(t.key, t.builtin), label: t.label, color: t.color || 'var(--brand)' }))
+    .map((t) => ({ key: operationalKey(t.key, t.builtin, pfx), label: t.label, color: t.color || 'var(--brand)' }))
     .filter((t) => !allowed || allowed.includes(t.key));
 
-  const cardsInTrack = (key: string) => cards.filter((c) => opKeyOf(c) === key);
+  const cardsInTrack = (key: string) => cards.filter((c) => c.track === key);
   const openByTrack = tracks.map((t) => ({ key: t.key, label: t.label, color: t.color, value: cardsInTrack(t.key).length }));
   const valueByTrack = tracks.map((t) => ({ key: t.key, label: t.label, color: t.color, value: money(sumValue(cardsInTrack(t.key))) }));
 

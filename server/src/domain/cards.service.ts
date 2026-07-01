@@ -1,11 +1,12 @@
 import { prisma } from '../prisma.js';
-import { STAGE_CONFIG, TRACK_ENUM, TRACK_KEY_FROM_ENUM, type TrackKey, type CardDTO as Card } from '@dlpe/shared';
-import type { Prisma, Track } from '@prisma/client';
+import { STAGE_CONFIG, type CardDTO as Card } from '@dlpe/shared';
+import type { Prisma } from '@prisma/client';
 import { writeAudit } from './audit.service.js';
 import { buildEffectiveForUser } from '../rbac/context.js';
 import { filterCard } from '../rbac/applyCardRules.js';
 import { visibleCompanyIds } from '../rbac/scope.js';
 import { entityToCardDTO, type EntityRow } from './projection.js';
+import { operationalKey, tenantSlugPrefix, tenantTrackKeys } from './trackKeys.js';
 
 // Phase 1b: Entity is the source of truth for pipeline items. Load pipeline
 // entities (optionally one track) and project them to the legacy Card shape so
@@ -17,35 +18,32 @@ export async function loadPipelineCards(trackKey?: string, tx: Prisma.Transactio
   return rows.map((e) => entityToCardDTO(e as unknown as EntityRow) as unknown as Card);
 }
 
-export function trackKeyToEnum(track: string): Track {
-  const e = TRACK_ENUM[track.toLowerCase()];
-  if (!e) throw new Error(`Unknown track: ${track}`);
-  return e as Track;
-}
-
-const ALL_TRACKS = ['sales', 'operations', 'workshop', 'finance'];
-
 // role.tracks holds human labels ("All tracks", "Sales", "Workshop (read)", …).
-// Parse them into the set of track keys the role may VIEW.
-export function allowedFromTracksText(tracksArr: string[]): string[] {
+// Given the tenant's actual track keys, return the subset the role may VIEW.
+// "All …" grants every track the tenant has — including custom (non-builtin)
+// ones — so authored tracks are visible, not silently hidden behind a fixed
+// four-track list.
+export function allowedFromTracksText(tracksArr: string[], tenantTracks: string[]): string[] {
   const out = new Set<string>();
   for (const t of tracksArr) {
     const s = String(t).toLowerCase();
-    if (s.startsWith('all')) { ALL_TRACKS.forEach((k) => out.add(k)); continue; }
-    for (const k of ALL_TRACKS) if (s.includes(k)) out.add(k);
+    if (s.startsWith('all')) { tenantTracks.forEach((k) => out.add(k)); continue; }
+    for (const k of tenantTracks) if (s.includes(k)) out.add(k);
   }
   return [...out];
 }
 
-// Union of track keys the user may view across primary + secondary roles.
+// Union of operational track keys the user may view across primary + secondary
+// roles, resolved against the tenant's real track set (so custom tracks work).
 // Pass `db` (from withTenant) when called from a request context so RLS is enforced.
 export async function userAllowedTracks(userId: string, db: Prisma.TransactionClient | typeof prisma = prisma): Promise<string[]> {
   const user = await db.user.findUnique({ where: { id: userId }, include: { secondary: true } });
-  if (!user) return ALL_TRACKS;
+  if (!user) return [];
+  const tenantTracks = await tenantTrackKeys(user.tenantId, db);
   const roleIds = Array.from(new Set([user.roleId, ...user.secondary.map((s) => s.roleId).filter((r): r is string => !!r)]));
   const roles = await db.role.findMany({ where: { id: { in: roleIds } } });
   const set = new Set<string>();
-  for (const r of roles) allowedFromTracksText(r.tracks).forEach((k) => set.add(k));
+  for (const r of roles) allowedFromTracksText(r.tracks, tenantTracks).forEach((k) => set.add(k));
   return [...set];
 }
 
@@ -55,11 +53,14 @@ export interface StageDef { id: string; label: string; sla: number; lock: string
 // back to the static shared STAGE_CONFIG if none persisted. This makes Stage
 // Config editor changes (labels / SLA / lock) actually drive runtime behavior.
 // Pass `db` (from withTenant) when called from a request context so RLS is enforced.
-export async function loadStages(trackEnum: Track, db: Prisma.TransactionClient | typeof prisma = prisma): Promise<StageDef[]> {
-  const rows = await db.stageConfig.findMany({ where: { track: trackEnum }, orderBy: { order: 'asc' } });
+// Load the ordered stage set for an operational track key (bare, e.g. 'sales'
+// or a custom 'insurance') from the DB. Falls back to the static shared
+// STAGE_CONFIG only for the builtin keys; custom tracks rely on their saved
+// StageConfig (empty until the admin defines stages).
+export async function loadStages(trackKey: string, db: Prisma.TransactionClient | typeof prisma = prisma): Promise<StageDef[]> {
+  const rows = await db.stageConfig.findMany({ where: { track: trackKey }, orderBy: { order: 'asc' } });
   if (rows.length) return rows.map((r) => ({ id: r.stageId, label: r.label, sla: r.sla, lock: r.lock, cta: r.cta }));
-  const key = TRACK_KEY_FROM_ENUM[trackEnum] as TrackKey;
-  return ((STAGE_CONFIG[key] ?? []) as unknown) as StageDef[];
+  return ((STAGE_CONFIG[trackKey] ?? []) as unknown) as StageDef[];
 }
 
 export async function listCards(track?: string, userId?: string, tx: Prisma.TransactionClient | typeof prisma = prisma): Promise<Card[]> {
@@ -68,7 +69,7 @@ export async function listCards(track?: string, userId?: string, tx: Prisma.Tran
 
   // Functional access: hide tracks the caller's role(s) cannot view.
   const allowed = await userAllowedTracks(userId, tx);
-  cards = cards.filter((c) => allowed.includes(TRACK_KEY_FROM_ENUM[c.track]));
+  cards = cards.filter((c) => allowed.includes(c.track));
 
   // Row-level scope: hide companies outside the caller's scope (null = all).
   const visible = await visibleCompanyIds(userId, tx);
@@ -82,15 +83,15 @@ export async function listCards(track?: string, userId?: string, tx: Prisma.Tran
   const autoEscalate = (pref?.prefs as { autoEscalate?: boolean } | null)?.autoEscalate ?? true;
 
   // Preload DB stage config (admin-editable SLAs) for the tracks present.
-  const stagesByTrack: Partial<Record<Track, StageDef[]>> = {};
+  const stagesByTrack: Record<string, StageDef[]> = {};
   if (autoEscalate) {
-    for (const tr of [...new Set(cards.map((c) => c.track))] as Track[]) stagesByTrack[tr] = await loadStages(tr, tx);
+    for (const tr of [...new Set(cards.map((c) => c.track))]) stagesByTrack[tr] = await loadStages(tr, tx);
   }
 
   return cards.map((c0) => {
     const c = filterCard(c0, eff.effective); // strip/mask restricted fields
     if (autoEscalate) {
-      const sla = stagesByTrack[c.track as Track]?.find((s) => s.id === c.stageId)?.sla ?? 0;
+      const sla = stagesByTrack[c.track]?.find((s) => s.id === c.stageId)?.sla ?? 0;
       if (sla > 0 && c.days > sla * 2 && c.status !== 'red') {
         return { ...c, status: 'red', escalated: true, daysLabel: `escalated · ${c.days}d in stage` } as Card;
       }
@@ -106,7 +107,7 @@ export async function getCard(id: string, userId?: string, db: Prisma.Transactio
   if (!userId) return card;
   // Track + row-level scope: a user can't fetch a card outside their access.
   const allowed = await userAllowedTracks(userId, db);
-  if (!allowed.includes(TRACK_KEY_FROM_ENUM[card.track])) return null;
+  if (!allowed.includes(card.track)) return null;
   const visible = await visibleCompanyIds(userId, db);
   if (visible && (card.companyId == null || !visible.has(card.companyId))) return null;
   const { effective } = await buildEffectiveForUser(userId, db);
@@ -150,8 +151,8 @@ export async function moveStage(
   if (!row) throw new Error('Card not found');
   const card = entityToCardDTO(row as unknown as EntityRow) as unknown as Card;
 
-  const trackKey = TRACK_KEY_FROM_ENUM[card.track] as TrackKey;
-  const stages = await loadStages(card.track as Track, db);
+  const trackKey = card.track;
+  const stages = await loadStages(card.track, db);
   const stage = stages.find((s) => s.id === stageId);
   const stageName = stage?.label ?? stageId;
 
@@ -214,10 +215,6 @@ export async function patchCard(id: string, patch: Partial<Card>, db: Prisma.Tra
   return entityToCardDTO(updated as unknown as EntityRow) as unknown as Card;
 }
 
-const PIPELINE_TYPE_KEY: Record<string, string> = {
-  sales: 'contract', operations: 'operation', workshop: 'workshop_order', finance: 'invoice',
-};
-
 export interface CreateCardInput {
   track: string; type?: string; customer: string; value?: number | null; vehicle?: string | null;
   sub?: string; stageId?: string; owner?: string; status?: string; companyId?: string | null;
@@ -230,14 +227,19 @@ export async function createCard(
   tenantId: string,
   db: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<Card> {
-  const trackKey = input.track.toLowerCase();
-  const typeKey = PIPELINE_TYPE_KEY[trackKey];
-  if (!typeKey) throw new Error(`Unknown track: ${input.track}`);
-  const type = await db.entityType.findUnique({ where: { key: typeKey } });
-  if (!type) throw new Error(`No entity type for track ${trackKey}`);
+  const trackKey = input.track.toLowerCase(); // operational track key
   if (!input.customer?.trim()) throw new Error('A title/customer is required');
 
-  const stages = await loadStages(trackKeyToEnum(trackKey), db);
+  // Resolve the pipeline EntityType for this track via its TrackDef relation,
+  // matched on the operational (prefix-stripped) key. Works for builtin AND
+  // custom tracks — the guard is "this track has a pipeline type", not a fixed
+  // enum of four.
+  const pfx = await tenantSlugPrefix(tenantId, db);
+  const pipelineTypes = await db.entityType.findMany({ where: { kind: 'pipeline' }, include: { track: true } });
+  const type = pipelineTypes.find((t) => t.track && operationalKey(t.track.key, t.track.builtin, pfx) === trackKey);
+  if (!type) throw new Error(`No pipeline type for track "${input.track}" — add a pipeline entity type to this track first.`);
+
+  const stages = await loadStages(trackKey, db);
   const stage = stages.find((s) => s.id === input.stageId) ?? stages[0];
   const id = `e-${Date.now().toString(36)}-${Math.round(Math.random() * 1e6).toString(36)}`;
 

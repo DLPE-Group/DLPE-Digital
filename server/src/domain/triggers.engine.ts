@@ -1,6 +1,5 @@
 import type { Prisma } from '@prisma/client';
 import type { CardDTO as Card } from '@dlpe/shared';
-import { trackKeyToEnum } from './cards.service.js';
 import { entityToCardDTO, type EntityRow } from './projection.js';
 import { loadTenantResolver, DEMO_TENANT_ID } from './tenancy.js';
 
@@ -165,4 +164,4 @@ export async function runTriggers(
   return { createdCards, cascadeLines };
 }
 
-export { BRUSSELS_OPS_ID, BRUSSELS_FIN_ID, trackKeyToEnum };
+export { BRUSSELS_OPS_ID, BRUSSELS_FIN_ID };

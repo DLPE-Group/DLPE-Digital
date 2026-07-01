@@ -71,7 +71,7 @@ describe('Records (entity) CRUD', () => {
   it('creates a pipeline item, lists it, deletes it', async () => {
     const created = await post('/cards', { track: 'sales', customer: 'CRUD Test Co', value: 5000 }, ADMIN());
     expect(created.status).toBe(200);
-    expect(created.body.track).toBe('SALES');
+    expect(created.body.track).toBe('sales'); // operational track key (bare, no longer the Track enum)
     expect(created.body.customer).toBe('CRUD Test Co');
     const id = created.body.id;
 

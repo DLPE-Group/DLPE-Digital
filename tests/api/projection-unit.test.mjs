@@ -15,7 +15,7 @@ describe('projection functions', () => {
       createdById: null,
     };
     expect(entityToCardDTO(entity)).toEqual({
-      id: 's5', companyId: 'cmp-brussels', track: 'SALES', type: 'RENEWAL',
+      id: 's5', companyId: 'cmp-brussels', track: 'sales', type: 'RENEWAL',
       customer: 'Brussels Energy SA', value: 120000, vehicle: 'BX-1234',
       sub: 'Renewal · 14 vehicles', stageId: 'contract', stageName: 'Contract',
       days: 3, daysLabel: '3d in stage', owner: 'Eva de Vries', status: 'amber',
