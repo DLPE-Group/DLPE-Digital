@@ -8,7 +8,7 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "start": "node dist/index.js",
-    "start:prod": "prisma migrate deploy && node dist/index.js",
+    "start:prod": "prisma migrate deploy && (node dist/scripts/bootstrap-blueprints.js || echo 'bootstrap-blueprints failed (continuing to serve)') && node dist/index.js",
     "bootstrap:admin": "node dist/scripts/bootstrap-admin.js",
     "bootstrap:blueprints": "node dist/scripts/bootstrap-blueprints.js",
     "db:migrate": "prisma migrate dev",
