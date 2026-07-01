@@ -68,7 +68,9 @@ app.use(express.json({ limit: '2mb' }));
 // --- Rate limiting ---
 const apiLimiter = rateLimit({
   windowMs: 60_000,
-  limit: 300,
+  // Relaxed under test: the E2E suite fires hundreds of requests/minute from a
+  // single IP (provisioning, CRUD, board moves) and must not trip the prod limit.
+  limit: env.NODE_ENV === 'test' ? 100000 : 300,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
 });

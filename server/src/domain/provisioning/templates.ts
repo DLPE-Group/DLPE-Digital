@@ -26,7 +26,7 @@
    prod bootstrap can upsert them identically.
    ============================================================ */
 
-import type { BlueprintSpec } from '@dlpe/shared';
+import { SPEC_VERSION, type BlueprintSpec } from '@dlpe/shared';
 import { dlpeDemoBlueprint } from './dlpeDemoBlueprint.js';
 
 export type BlueprintStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
@@ -82,6 +82,43 @@ const sampleSpec = {
   },
 } satisfies BlueprintSpec;
 
+// Blank — an EMPTY published template. Provisions a tenant with structure + an
+// admin + the group-admin role, but ZERO tracks / entity-types / field-rules /
+// seed. The onboarded admin builds the entire data model themselves in the UI
+// (Data model + Settings → Stage configuration). This is the "start from
+// scratch" option in the wizard's blueprint dropdown.
+const blankSpec = {
+  specVersion: SPEC_VERSION,
+  inputs: [
+    { key: 'slug', label: 'Tenant slug', type: 'string' as const, required: true },
+    { key: 'customerName', label: 'Customer name', type: 'string' as const, required: true },
+    { key: 'region', label: 'Region', type: 'region' as const, required: false },
+  ],
+  orgStructure: { id: 'root', kind: 'group' as const, name: 'Organisation', code: 'ORG', children: [] },
+  roles: [
+    {
+      id: 'group-admin',
+      name: 'Group admin',
+      system: true,
+      tracks: [],
+      edit: 'Everything, including data model & RBAC',
+      desc: 'Full control. Builds the data model and configures the permission system.',
+    },
+  ],
+  fieldRules: [],
+  tracks: [],
+  entityTypes: [],
+  crossTriggers: [],
+  adminUser: PLACEHOLDER_ADMIN,
+} satisfies BlueprintSpec;
+
+export const blankBlueprint: BlueprintTemplate = {
+  key: 'blank',
+  name: 'Blank — start from scratch',
+  status: 'PUBLISHED',
+  spec: blankSpec,
+};
+
 export const starterBlueprint: BlueprintTemplate = {
   key: 'dlpe-starter',
   name: 'Clean starter (config only)',
@@ -105,6 +142,7 @@ export const demoBlueprint: BlueprintTemplate = {
 
 /** All catalogue templates, in display order (PUBLISHED first). */
 export const BLUEPRINT_TEMPLATES: BlueprintTemplate[] = [
+  blankBlueprint,
   starterBlueprint,
   sampleBlueprint,
   demoBlueprint,

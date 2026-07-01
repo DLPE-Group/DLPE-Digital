@@ -15,7 +15,7 @@ import {
   FIELD_CATEGORIES,
 } from '@dlpe/shared';
 import { dlpeDemoBlueprint, demoInputs, DEMO_TENANT_ID } from '../src/domain/provisioning/dlpeDemoBlueprint.js';
-import { starterBlueprint, sampleBlueprint } from '../src/domain/provisioning/templates.js';
+import { blankBlueprint, starterBlueprint, sampleBlueprint } from '../src/domain/provisioning/templates.js';
 import { provisionTenant } from '../src/domain/provisioning/provisionTenant.js';
 import { SharedDbTarget } from '../src/domain/provisioning/target.js';
 import { PLATFORM_PLANS } from '../src/domain/billing/plans.js';
@@ -131,7 +131,9 @@ async function main() {
   //     no staff users; admin set per-onboarding in the wizard).
   //   - dlpe-sample  (PUBLISHED): starter config + the demo's seed business data, no
   //     staff users — a reusable populated demo, cloneable any number of times.
-  for (const t of [starterBlueprint, sampleBlueprint]) {
+  //   - blank        (PUBLISHED): empty — no tracks/types/seed; the admin builds
+  //     the whole data model in the UI ("start from scratch").
+  for (const t of [blankBlueprint, starterBlueprint, sampleBlueprint]) {
     await prisma.blueprint.upsert({
       where: { key: t.key },
       create: {
